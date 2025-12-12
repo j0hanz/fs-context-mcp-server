@@ -14,7 +14,10 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
     {
       title: 'Read Multiple Files',
       description:
-        'Read the contents of multiple files in parallel. More efficient than reading files one by one. Individual file errors do not fail the entire operation.',
+        'Read contents of multiple files in a single operation (parallel processing). ' +
+        'More efficient than calling read_file repeatedly. ' +
+        'Individual file errors do not fail the entire operation—each file reports success or error independently. ' +
+        'Supports head/tail for reading partial content from all files.',
       inputSchema: ReadMultipleFilesInputSchema,
       outputSchema: ReadMultipleFilesOutputSchema,
       annotations: {

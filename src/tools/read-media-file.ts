@@ -13,7 +13,10 @@ export function registerReadMediaFileTool(server: McpServer): void {
     {
       title: 'Read Media File',
       description:
-        'Read a binary/media file (image, audio, video, etc.) and return it as base64-encoded data with MIME type. Useful for images, fonts, and other non-text files.',
+        'Read binary/media files (images, audio, fonts, etc.) and return as base64-encoded data with MIME type. ' +
+        'For images, also returns dimensions (width x height) when available. ' +
+        'Use this instead of read_file for non-text files. ' +
+        'Supports common formats: PNG, JPG, GIF, WebP, SVG, MP3, WAV, TTF, WOFF2, etc.',
       inputSchema: ReadMediaFileInputSchema,
       outputSchema: ReadMediaFileOutputSchema,
       annotations: {

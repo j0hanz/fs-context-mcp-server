@@ -16,7 +16,10 @@ export function registerSearchFilesTool(server: McpServer): void {
     {
       title: 'Search Files',
       description:
-        'Search for files using glob patterns. Supports wildcards like **/*.ts to find all TypeScript files.',
+        'Find files matching a glob pattern within a directory tree. ' +
+        'Pattern examples: "**/*.ts" (all TypeScript files), "src/**/*.{js,jsx}" (JS/JSX in src), ' +
+        '"**/test/**" (all test directories). Returns paths, types, sizes, and modification dates. ' +
+        'Use excludePatterns to skip directories like node_modules.',
       inputSchema: SearchFilesInputSchema,
       outputSchema: SearchFilesOutputSchema,
       annotations: {

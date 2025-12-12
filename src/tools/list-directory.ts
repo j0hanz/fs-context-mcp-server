@@ -14,7 +14,10 @@ export function registerListDirectoryTool(server: McpServer): void {
     {
       title: 'List Directory',
       description:
-        'List contents of a directory. Returns files and subdirectories with their types and sizes. Supports recursive listing.',
+        'List files and subdirectories in a specified path with optional recursive traversal. ' +
+        'Returns names, types (file/directory/symlink), sizes, and modification dates. ' +
+        'Use recursive=true with maxDepth to explore nested structures. ' +
+        'For a visual tree structure, use directory_tree instead.',
       inputSchema: ListDirectoryInputSchema,
       outputSchema: ListDirectoryOutputSchema,
       annotations: {

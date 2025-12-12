@@ -10,7 +10,9 @@ export function registerListAllowedDirectoriesTool(server: McpServer): void {
     {
       title: 'List Allowed Directories',
       description:
-        'List all directories that this server is allowed to access. Use this to understand the scope of available file operations.',
+        'Returns the list of directories this server is permitted to access. ' +
+        'Call this FIRST to understand the scope of available file operations. ' +
+        'All other tools will only work within these directories for security.',
       inputSchema: {},
       outputSchema: ListAllowedDirectoriesOutputSchema,
       annotations: {

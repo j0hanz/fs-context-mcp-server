@@ -16,7 +16,10 @@ export function registerAnalyzeDirectoryTool(server: McpServer): void {
     {
       title: 'Analyze Directory',
       description:
-        'Analyze a directory structure. Returns statistics including file counts, sizes, types, and lists of largest/recently modified files.',
+        'Gather statistics about a directory: total files/directories, total size, ' +
+        'file type distribution by extension, largest files (topN), and most recently modified files. ' +
+        'Useful for understanding project structure and identifying large files. ' +
+        'Use excludePatterns to skip directories like node_modules.',
       inputSchema: AnalyzeDirectoryInputSchema,
       outputSchema: AnalyzeDirectoryOutputSchema,
       annotations: {

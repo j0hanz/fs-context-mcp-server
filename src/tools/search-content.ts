@@ -16,7 +16,11 @@ export function registerSearchContentTool(server: McpServer): void {
     {
       title: 'Search Content',
       description:
-        'Search for text content within files using regular expressions. Returns matching lines with context.',
+        'Search for text patterns within file contents using regular expressions (grep-like). ' +
+        'Returns matching lines with optional context (contextLines parameter). ' +
+        'Use isLiteral=true for exact string matching, wholeWord=true to avoid partial matches. ' +
+        'Filter files with filePattern glob (e.g., "**/*.ts" for TypeScript only). ' +
+        'Automatically skips binary files unless skipBinary=false.',
       inputSchema: SearchContentInputSchema,
       outputSchema: SearchContentOutputSchema,
       annotations: {

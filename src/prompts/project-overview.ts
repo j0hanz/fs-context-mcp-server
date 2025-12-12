@@ -16,6 +16,52 @@ function pathCompleter(value: string): string[] {
   );
 }
 
+// Common directories to exclude
+const DEFAULT_EXCLUDES = [
+  'node_modules/**',
+  '.git/**',
+  'dist/**',
+  'build/**',
+  'coverage/**',
+  '.next/**',
+  '.nuxt/**',
+];
+
+// Config files to look for by category
+const CONFIG_FILES: Record<string, string[]> = {
+  project: [
+    'package.json',
+    'pyproject.toml',
+    'Cargo.toml',
+    'go.mod',
+    'pom.xml',
+    'build.gradle',
+  ],
+  typescript: ['tsconfig.json', 'jsconfig.json'],
+  build: [
+    'vite.config.*',
+    'webpack.config.*',
+    'rollup.config.*',
+    'next.config.*',
+    'nuxt.config.*',
+  ],
+  lint: ['.eslintrc*', 'eslint.config.*', '.prettierrc*', 'biome.json'],
+  docker: ['Dockerfile', 'docker-compose.yml', 'docker-compose.yaml'],
+  ci: ['.github/workflows/*.yml', '.gitlab-ci.yml'],
+  docs: ['README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE'],
+  env: ['.env.example', '.env.sample', '.env.template'],
+};
+
+// Build flat list of priority config files for the prompt
+function getConfigFileList(): string {
+  return Object.entries(CONFIG_FILES)
+    .map(
+      ([category, files]) =>
+        `- **${category}**: ${files.slice(0, 3).join(', ')}`
+    )
+    .join('\n');
+}
+
 export function registerProjectOverviewPrompt(server: McpServer): void {
   server.registerPrompt(
     'project-overview',
@@ -35,32 +81,80 @@ export function registerProjectOverviewPrompt(server: McpServer): void {
           .optional()
           .default(4)
           .describe('Tree depth (1-10, default: 4)'),
+        includeCI: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe('Include CI/CD config analysis'),
       },
     },
-    ({ path, depth }) => ({
-      messages: [
-        {
-          role: 'user',
-          content: {
-            type: 'text',
-            text: `Analyze project at "${path}".
+    ({ path, depth, includeCI }) => {
+      const excludesJson = JSON.stringify(DEFAULT_EXCLUDES);
+      const configList = getConfigFileList();
+
+      // Priority files to always try reading
+      const priorityFiles = [
+        'package.json',
+        'README.md',
+        'tsconfig.json',
+        ...(includeCI ? ['.github/workflows/*.yml'] : []),
+      ];
+
+      return {
+        messages: [
+          {
+            role: 'user',
+            content: {
+              type: 'text',
+              text: `Analyze project at "${path}".
 
 ⚠️ First run \`list_allowed_directories\` to verify path is accessible.
 
-**Tools to use:**
-1. \`directory_tree\` (maxDepth=${String(depth)}) → structure
-2. \`analyze_directory\` → stats & largest files
-3. \`read_multiple_files\` → config files (package.json, tsconfig.json, README.md, etc.)
+**Default excludes:** ${DEFAULT_EXCLUDES.slice(0, 4).join(', ')}
 
-**Provide:**
-- Tech stack (languages, frameworks, build tools)
-- Folder organization & conventions
-- Entry points & key modules
-- Dependencies overview
-- Notable patterns or issues`,
+**Workflow:**
+1. \`directory_tree\` maxDepth=${String(depth)} excludePatterns=${excludesJson} → structure
+2. \`search_files\` pattern="*config*|*.json|*.toml|*.yml" excludePatterns=${excludesJson} → find config files
+3. \`analyze_directory\` excludePatterns=${excludesJson} → stats & largest files
+4. \`read_multiple_files\` → batch read found configs (priority: ${priorityFiles.join(', ')})
+
+**Config files to look for:**
+${configList}
+
+**Deliverables:**
+
+| Section | Details |
+|---------|---------|
+| **Tech Stack** | Languages, frameworks, runtime versions |
+| **Package Manager** | npm/yarn/pnpm + lock file present |
+| **Build System** | Bundler, compiler, scripts |
+| **Folder Structure** | src/, lib/, tests/ conventions |
+| **Entry Points** | main, bin, exports in package.json |
+| **Dependencies** | Key deps vs devDeps, outdated indicators |
+| **Code Quality** | Linting, formatting, type checking setup |
+${includeCI ? '| **CI/CD** | Workflows, test/deploy pipelines |' : ''}
+
+**Output Format:**
+\`\`\`
+## Project: {name}
+**Type**: {monorepo|library|application|cli}
+**Stack**: {languages} + {frameworks}
+**Build**: {tool} → {output}
+
+### Structure
+{tree summary}
+
+### Key Findings
+- {finding 1}
+- {finding 2}
+
+### Recommendations
+- {recommendation if any}
+\`\`\``,
+            },
           },
-        },
-      ],
-    })
+        ],
+      };
+    }
   );
 }

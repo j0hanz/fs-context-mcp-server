@@ -11,7 +11,11 @@ export function registerReadFileTool(server: McpServer): void {
     {
       title: 'Read File',
       description:
-        'Read the contents of a file. Supports different encodings, reading specific line ranges, and efficient head/tail operations for large files.',
+        'Read the text contents of a single file. ' +
+        'Supports different encodings and partial reads via head (first N lines), tail (last N lines), ' +
+        'or lineStart/lineEnd (specific line range). ' +
+        'For multiple files, use read_multiple_files for efficiency. ' +
+        'For binary/media files, use read_media_file instead.',
       inputSchema: ReadFileInputSchema,
       outputSchema: ReadFileOutputSchema,
       annotations: {

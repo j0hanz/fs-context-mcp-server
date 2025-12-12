@@ -14,7 +14,10 @@ export function registerGetFileInfoTool(server: McpServer): void {
     {
       title: 'Get File Info',
       description:
-        'Get detailed metadata about a file or directory including size, timestamps, and permissions.',
+        'Retrieve detailed metadata about a file or directory without reading its contents. ' +
+        'Returns: name, path, type, size, timestamps (created/modified/accessed), permissions, ' +
+        'MIME type (for files), hidden status, and symlink target (if applicable). ' +
+        'Use this to check file properties before reading large files.',
       inputSchema: GetFileInfoInputSchema,
       outputSchema: GetFileInfoOutputSchema,
       annotations: {

@@ -14,7 +14,11 @@ export function registerDirectoryTreeTool(server: McpServer): void {
     {
       title: 'Directory Tree',
       description:
-        'Get a JSON tree structure of a directory. More efficient for AI parsing than flat file lists. Useful for understanding project structure.',
+        'Generate a hierarchical JSON tree structure of a directory. ' +
+        'More efficient for AI parsing than flat file lists. ' +
+        'Ideal for understanding project layout and structure at a glance. ' +
+        'Use maxDepth to limit traversal depth and excludePatterns to skip folders like node_modules. ' +
+        'Optionally include file sizes with includeSize=true.',
       inputSchema: DirectoryTreeInputSchema,
       outputSchema: DirectoryTreeOutputSchema,
       annotations: {

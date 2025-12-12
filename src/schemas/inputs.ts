@@ -13,8 +13,14 @@ export const ListDirectoryInputSchema = {
   path: z
     .string()
     .min(1, 'Path cannot be empty')
-    .describe('Directory path to list'),
-  recursive: z.boolean().optional().default(false).describe('List recursively'),
+    .describe('Absolute or relative path to the directory to list'),
+  recursive: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'If true, list contents of subdirectories recursively up to maxDepth'
+    ),
   includeHidden: z
     .boolean()
     .optional()
@@ -71,7 +77,9 @@ export const SearchFilesInputSchema = {
       },
       { message: 'Invalid glob pattern syntax' }
     )
-    .describe('Glob pattern to match files (e.g., "**/*.ts")'),
+    .describe(
+      'Glob pattern to match files. Examples: "**/*.ts" (all TypeScript files), "src/**/*.js" (JS files in src), "*.json" (JSON files in current dir)'
+    ),
   excludePatterns: z
     .array(z.string().max(500, 'Individual exclude pattern is too long'))
     .max(100, 'Too many exclude patterns (max 100)')
@@ -207,12 +215,16 @@ export const SearchContentInputSchema = {
   path: z
     .string()
     .min(1, 'Path cannot be empty')
-    .describe('Base directory to search in'),
+    .describe(
+      'Absolute or relative path to the base directory to search within'
+    ),
   pattern: z
     .string()
     .min(1, 'Pattern cannot be empty')
     .max(1000, 'Pattern is too long (max 1000 characters)')
-    .describe('Regular expression pattern to search for'),
+    .describe(
+      'Regular expression pattern to search for. Examples: "TODO|FIXME" (find todos), "function\\s+\\w+" (find function declarations), "import.*from" (find imports). Use isLiteral=true for exact string matching.'
+    ),
   filePattern: z
     .string()
     .min(1, 'File pattern cannot be empty')
@@ -277,13 +289,15 @@ export const SearchContentInputSchema = {
     .boolean()
     .optional()
     .default(false)
-    .describe('Match whole words only (adds word boundaries to pattern)'),
+    .describe(
+      'Match whole words only by adding \\b word boundaries to pattern. Useful for avoiding partial matches (e.g., searching "test" won\'t match "testing")'
+    ),
   isLiteral: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      'Treat pattern as literal string (escape regex special characters)'
+      'Treat pattern as a literal string instead of regex. Special characters like ., *, ? will be escaped automatically. Use this when searching for exact text containing regex metacharacters.'
     ),
 };
 
