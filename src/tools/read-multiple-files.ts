@@ -6,6 +6,7 @@ import {
   ReadMultipleFilesInputSchema,
   ReadMultipleFilesOutputSchema,
 } from '../schemas/index.js';
+import { validateHeadTail } from '../schemas/validators.js';
 
 export function registerReadMultipleFilesTool(server: McpServer): void {
   server.registerTool(
@@ -23,6 +24,9 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
     },
     async ({ paths, encoding, maxSize, head, tail }) => {
       try {
+        // Validate head/tail mutual exclusivity early
+        validateHeadTail({ head, tail });
+
         const results = await readMultipleFiles(paths, {
           encoding: encoding as BufferEncoding,
           maxSize,

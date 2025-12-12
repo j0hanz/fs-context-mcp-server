@@ -76,12 +76,17 @@ interface ParallelResult<R> {
 async function processInParallel<T, R>(
   items: T[],
   processor: (item: T) => Promise<R>,
-  concurrency: number = PARALLEL_CONCURRENCY
+  concurrency: number = PARALLEL_CONCURRENCY,
+  signal?: AbortSignal
 ): Promise<ParallelResult<R>> {
   const results: R[] = [];
   const errors: { index: number; error: Error }[] = [];
 
   for (let i = 0; i < items.length; i += concurrency) {
+    // Check for abort before processing each batch
+    if (signal?.aborted) {
+      break;
+    }
     const batch = items.slice(i, i + concurrency);
     const batchResults = await Promise.allSettled(batch.map(processor));
 
@@ -235,7 +240,7 @@ export async function listDirectory(
   let maxDepthReached = 0;
   let truncated = false;
   let skippedInaccessible = 0;
-  let skippedSymlinks = 0;
+  let symlinksNotFollowed = 0;
 
   const stopIfNeeded = (): boolean => {
     if (maxEntries !== undefined && entries.length >= maxEntries) {
@@ -286,7 +291,7 @@ export async function listDirectory(
 
             try {
               if (item.isSymbolicLink()) {
-                skippedSymlinks++;
+                symlinksNotFollowed++;
                 const stats = await fs.lstat(fullPath);
 
                 let symlinkTarget: string | undefined;
@@ -395,7 +400,7 @@ export async function listDirectory(
       maxDepthReached,
       truncated,
       skippedInaccessible,
-      skippedSymlinks,
+      symlinksNotFollowed,
     },
   };
 }
@@ -868,7 +873,7 @@ export async function analyzeDirectory(
   let totalSize = 0;
   let currentMaxDepth = 0;
   let skippedInaccessible = 0;
-  let skippedSymlinks = 0;
+  let symlinksNotFollowed = 0;
   const fileTypes: Record<string, number> = {};
   const largestFiles: { path: string; size: number }[] = [];
   const recentlyModified: { path: string; modified: Date }[] = [];
@@ -929,7 +934,7 @@ export async function analyzeDirectory(
         try {
           const validated = await validateExistingPathDetailed(fullPath);
           if (validated.isSymlink || item.isSymbolicLink()) {
-            skippedSymlinks++;
+            symlinksNotFollowed++;
             continue;
           }
 
@@ -970,7 +975,7 @@ export async function analyzeDirectory(
             (error.code === ErrorCode.E_ACCESS_DENIED ||
               error.code === ErrorCode.E_SYMLINK_NOT_ALLOWED)
           ) {
-            skippedSymlinks++;
+            symlinksNotFollowed++;
           } else {
             skippedInaccessible++;
           }
@@ -996,7 +1001,7 @@ export async function analyzeDirectory(
     summary: {
       truncated: false,
       skippedInaccessible,
-      skippedSymlinks,
+      symlinksNotFollowed,
     },
   };
 }
@@ -1038,7 +1043,7 @@ export async function getDirectoryTree(
   let totalDirectories = 0;
   let maxDepthReached = 0;
   let skippedInaccessible = 0;
-  let skippedSymlinks = 0;
+  let symlinksNotFollowed = 0;
   let truncated = false;
 
   const shouldExclude = createExcludeMatcher(excludePatterns);
@@ -1068,7 +1073,7 @@ export async function getDirectoryTree(
         (error.code === ErrorCode.E_ACCESS_DENIED ||
           error.code === ErrorCode.E_SYMLINK_NOT_ALLOWED)
       ) {
-        skippedSymlinks++;
+        symlinksNotFollowed++;
       } else {
         skippedInaccessible++;
       }
@@ -1089,7 +1094,7 @@ export async function getDirectoryTree(
     maxDepthReached = Math.max(maxDepthReached, depth);
 
     if (isSymlink) {
-      skippedSymlinks++;
+      symlinksNotFollowed++;
       return null;
     }
 
@@ -1186,7 +1191,7 @@ export async function getDirectoryTree(
       maxDepthReached,
       truncated,
       skippedInaccessible,
-      skippedSymlinks,
+      symlinksNotFollowed,
     },
   };
 }

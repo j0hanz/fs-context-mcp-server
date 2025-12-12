@@ -33,7 +33,12 @@ export const ListDirectoryOutputSchema = {
       maxDepthReached: z.number().optional(),
       truncated: z.boolean(),
       skippedInaccessible: z.number().optional(),
-      skippedSymlinks: z.number().optional(),
+      symlinksNotFollowed: z
+        .number()
+        .optional()
+        .describe(
+          'Number of symbolic links encountered but not followed (for security)'
+        ),
     })
     .optional(),
   error: ErrorSchema.optional(),
@@ -175,7 +180,7 @@ export const AnalyzeDirectoryOutputSchema = {
     .object({
       truncated: z.boolean().optional(),
       skippedInaccessible: z.number().optional(),
-      skippedSymlinks: z.number().optional(),
+      symlinksNotFollowed: z.number().optional(),
     })
     .optional(),
   error: ErrorSchema.optional(),
@@ -191,7 +196,7 @@ export const DirectoryTreeOutputSchema = {
       maxDepthReached: z.number().optional(),
       truncated: z.boolean(),
       skippedInaccessible: z.number().optional(),
-      skippedSymlinks: z.number().optional(),
+      symlinksNotFollowed: z.number().optional(),
     })
     .optional(),
   error: ErrorSchema.optional(),

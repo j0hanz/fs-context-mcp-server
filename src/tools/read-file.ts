@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
+import { validateLineRange } from '../schemas/validators.js';
 
 export function registerReadFileTool(server: McpServer): void {
   server.registerTool(
@@ -20,6 +21,9 @@ export function registerReadFileTool(server: McpServer): void {
     },
     async ({ path, encoding, maxSize, lineStart, lineEnd, head, tail }) => {
       try {
+        // Validate lineRange parameters early (before file I/O)
+        validateLineRange({ lineStart, lineEnd, head, tail, path });
+
         const lineRange =
           lineStart !== undefined && lineEnd !== undefined
             ? { start: lineStart, end: lineEnd }

@@ -50,7 +50,7 @@ export function registerAnalyzeDirectoryTool(server: McpServer): void {
           summary: {
             truncated: result.summary.truncated,
             skippedInaccessible: result.summary.skippedInaccessible,
-            skippedSymlinks: result.summary.skippedSymlinks,
+            symlinksNotFollowed: result.summary.symlinksNotFollowed,
           },
         };
         return {

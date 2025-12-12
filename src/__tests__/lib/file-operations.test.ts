@@ -331,7 +331,7 @@ describe('File Operations', () => {
         };
 
         expect(containsName(result.tree, 'outside.txt')).toBe(false);
-        expect(result.summary.skippedSymlinks).toBeGreaterThanOrEqual(1);
+        expect(result.summary.symlinksNotFollowed).toBeGreaterThanOrEqual(1);
       } catch {
         // Skip assertion when symlink creation isn't permitted in the environment.
         expect(createdLink).toBe(false);

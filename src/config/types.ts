@@ -49,7 +49,7 @@ export interface ListDirectoryResult {
     maxDepthReached: number;
     truncated: boolean;
     skippedInaccessible: number;
-    skippedSymlinks: number;
+    symlinksNotFollowed: number;
   };
 }
 
@@ -132,7 +132,7 @@ export interface AnalyzeDirectoryResult {
   summary: {
     truncated: boolean;
     skippedInaccessible: number;
-    skippedSymlinks: number;
+    symlinksNotFollowed: number;
   };
 }
 
@@ -161,7 +161,7 @@ export interface DirectoryTreeResult {
     maxDepthReached: number;
     truncated: boolean;
     skippedInaccessible: number;
-    skippedSymlinks: number;
+    symlinksNotFollowed: number;
   };
 }
 

@@ -24,3 +24,6 @@ export {
   SearchContentOutputSchema,
   SearchFilesOutputSchema,
 } from './outputs.js';
+
+// Validation helpers
+export { validateHeadTail, validateLineRange } from './validators.js';
