@@ -22,6 +22,7 @@ export function registerAnalyzeDirectoryTool(server: McpServer): void {
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
+        openWorldHint: true,
       },
     },
     async ({ path, maxDepth, topN, excludePatterns, includeHidden }) => {

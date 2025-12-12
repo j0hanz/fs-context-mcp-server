@@ -20,6 +20,7 @@ export function registerGetFileInfoTool(server: McpServer): void {
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
+        openWorldHint: true,
       },
     },
     async ({ path }) => {

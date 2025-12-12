@@ -19,6 +19,7 @@ export function registerReadMediaFileTool(server: McpServer): void {
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
+        openWorldHint: true,
       },
     },
     async ({ path, maxSize }) => {

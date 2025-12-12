@@ -1,5 +1,7 @@
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -13,12 +15,25 @@ import {
   getValidRootDirectories,
   setAllowedDirectories,
 } from './lib/path-validation.js';
+import { registerAllPrompts } from './prompts/index.js';
 import { registerAllTools } from './tools/index.js';
 
 // Get version from package.json
 const require = createRequire(import.meta.url);
 const packageJson = require('../package.json') as { version: string };
 const SERVER_VERSION = packageJson.version;
+
+// Load server instructions
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+let serverInstructions = '';
+try {
+  serverInstructions = await fs.readFile(
+    path.join(currentDir, 'instructions.md'),
+    'utf-8'
+  );
+} catch {
+  // Instructions file not found - continue without instructions
+}
 
 export async function parseArgs(): Promise<ParseArgsResult> {
   const args = process.argv.slice(2);
@@ -81,12 +96,18 @@ async function updateRootsFromClient(server: McpServer): Promise<void> {
 export function createServer(options: ServerOptions = {}): McpServer {
   serverOptions = options;
 
-  const server = new McpServer({
-    name: 'filesystem-context-mcp',
-    version: SERVER_VERSION,
-  });
+  const server = new McpServer(
+    {
+      name: 'filesystem-context-mcp',
+      version: SERVER_VERSION,
+    },
+    {
+      instructions: serverInstructions || undefined,
+    }
+  );
 
   registerAllTools(server);
+  registerAllPrompts(server);
 
   return server;
 }

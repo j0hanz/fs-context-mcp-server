@@ -20,6 +20,7 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
+        openWorldHint: true,
       },
     },
     async ({ paths, encoding, maxSize, head, tail }) => {

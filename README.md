@@ -5,7 +5,7 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 [![npm version](https://img.shields.io/npm/v/@j0hanz/filesystem-context-mcp.svg)](https://www.npmjs.com/package/@j0hanz/filesystem-context-mcp)
 [![License](https://img.shields.io/npm/l/@j0hanz/filesystem-context-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7.2-blue)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.12.0-purple)](https://modelcontextprotocol.io)
 
 ## One-Click Install
@@ -196,7 +196,7 @@ Search for files using glob patterns.
 | `path`            | string   | ✅       | -       | Base directory to search from                 |
 | `pattern`         | string   | ✅       | -       | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`) |
 | `excludePatterns` | string[] | ❌       | `[]`    | Patterns to exclude                           |
-| `maxResults`      | number   | ❌       | -       | Maximum matches to return (1-10,000)          |
+| `maxResults`      | number   | ❌       | -       | Maximum matches to return (max 10,000)        |
 | `sortBy`          | string   | ❌       | `path`  | Sort by: `name`, `size`, `modified`, `path`   |
 | `maxDepth`        | number   | ❌       | -       | Maximum directory depth to search (1-100)     |
 
@@ -218,15 +218,15 @@ Search for files using glob patterns.
 
 Read the contents of a text file.
 
-| Parameter   | Type   | Required | Default | Description                                      |
-| ----------- | ------ | -------- | ------- | ------------------------------------------------ |
-| `path`      | string | ✅       | -       | File path to read                                |
-| `encoding`  | string | ❌       | `utf-8` | File encoding (`utf-8`, `ascii`, `base64`, etc.) |
-| `maxSize`   | number | ❌       | 10MB    | Maximum file size in bytes                       |
-| `lineStart` | number | ❌       | -       | Start line (1-indexed) for reading a range       |
-| `lineEnd`   | number | ❌       | -       | End line (inclusive) for reading a range         |
-| `head`      | number | ❌       | -       | Read only first N lines                          |
-| `tail`      | number | ❌       | -       | Read only last N lines                           |
+| Parameter   | Type   | Required | Default | Description                                                |
+| ----------- | ------ | -------- | ------- | ---------------------------------------------------------- |
+| `path`      | string | ✅       | -       | File path to read                                          |
+| `encoding`  | string | ❌       | `utf-8` | File encoding (`utf-8`, `ascii`, `base64`, etc.)           |
+| `maxSize`   | number | ❌       | 10MB    | Maximum file size in bytes                                 |
+| `lineStart` | number | ❌       | -       | Start line (1-indexed, min 1) for reading a range          |
+| `lineEnd`   | number | ❌       | -       | End line (1-indexed, inclusive, min 1) for reading a range |
+| `head`      | number | ❌       | -       | Read only first N lines                                    |
+| `tail`      | number | ❌       | -       | Read only last N lines                                     |
 
 > **Note:** Cannot specify both `head` and `tail` simultaneously. Use `lineStart`/`lineEnd` for range reading.
 
@@ -301,13 +301,13 @@ Search for text content within files using regular expressions.
 
 Analyze a directory structure and return statistics.
 
-| Parameter         | Type     | Required | Default | Description                            |
-| ----------------- | -------- | -------- | ------- | -------------------------------------- |
-| `path`            | string   | ✅       | -       | Directory to analyze                   |
-| `maxDepth`        | number   | ❌       | `10`    | Maximum depth to analyze (0-100)       |
-| `topN`            | number   | ❌       | `10`    | Number of top items to return (1-1000) |
-| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude               |
-| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories   |
+| Parameter         | Type     | Required | Default | Description                              |
+| ----------------- | -------- | -------- | ------- | ---------------------------------------- |
+| `path`            | string   | ✅       | -       | Directory to analyze                     |
+| `maxDepth`        | number   | ❌       | `10`    | Maximum depth to analyze (0-100)         |
+| `topN`            | number   | ❌       | `10`    | Number of top items to return (max 1000) |
+| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude                 |
+| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories     |
 
 **Returns:** Statistics including total files/directories, total size, file type distribution, largest files, and recently modified files.
 
@@ -317,14 +317,14 @@ Analyze a directory structure and return statistics.
 
 Get a JSON tree structure of a directory, optimized for AI parsing.
 
-| Parameter         | Type     | Required | Default | Description                             |
-| ----------------- | -------- | -------- | ------- | --------------------------------------- |
-| `path`            | string   | ✅       | -       | Directory path to build tree from       |
-| `maxDepth`        | number   | ❌       | `5`     | Maximum depth to traverse (0-50)        |
-| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude                |
-| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories    |
-| `includeSize`     | boolean  | ❌       | `false` | Include file sizes in the tree          |
-| `maxFiles`        | number   | ❌       | -       | Maximum total files to include (1-100k) |
+| Parameter         | Type     | Required | Default | Description                                  |
+| ----------------- | -------- | -------- | ------- | -------------------------------------------- |
+| `path`            | string   | ✅       | -       | Directory path to build tree from            |
+| `maxDepth`        | number   | ❌       | `5`     | Maximum depth to traverse (0-50)             |
+| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude                     |
+| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories         |
+| `includeSize`     | boolean  | ❌       | `false` | Include file sizes in the tree               |
+| `maxFiles`        | number   | ❌       | -       | Maximum total files to include (max 100,000) |
 
 **Returns:** Hierarchical tree structure with file/directory nodes.
 
@@ -500,6 +500,7 @@ This server implements multiple layers of security:
 src/
 ├── index.ts              # Entry point, CLI argument parsing
 ├── server.ts             # MCP server setup, roots protocol handling
+├── instructions.md       # AI instructions for tool usage (bundled with dist)
 ├── config/
 │   └── types.ts          # Shared TypeScript types
 ├── lib/

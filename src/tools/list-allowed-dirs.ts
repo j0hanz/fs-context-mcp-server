@@ -16,6 +16,7 @@ export function registerListAllowedDirectoriesTool(server: McpServer): void {
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
+        openWorldHint: false,
       },
     },
     () => {

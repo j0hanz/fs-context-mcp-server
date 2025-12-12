@@ -22,6 +22,7 @@ export function registerSearchFilesTool(server: McpServer): void {
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
+        openWorldHint: true,
       },
     },
     async ({

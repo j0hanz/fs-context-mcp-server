@@ -17,6 +17,7 @@ export function registerReadFileTool(server: McpServer): void {
       annotations: {
         readOnlyHint: true,
         idempotentHint: true,
+        openWorldHint: true,
       },
     },
     async ({ path, encoding, maxSize, lineStart, lineEnd, head, tail }) => {
