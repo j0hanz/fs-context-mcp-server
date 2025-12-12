@@ -8,6 +8,12 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.12.0-purple)](https://modelcontextprotocol.io)
 
+## One-Click Install
+
+[![Install with NPX in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=filesystem-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D)[![Install with NPX in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=filesystem-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D&quality=insiders)
+
+[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=filesystem-context&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZmlsZXN5c3RlbS1jb250ZXh0LW1jcEBsYXRlc3QiLCIke3dvcmtzcGFjZUZvbGRlcn0iXX0=)
+
 ## ✨ Features
 
 | Feature                    | Description                                                            |
@@ -502,12 +508,14 @@ src/
 │   ├── file-operations.ts# Core filesystem operations
 │   ├── formatters.ts     # Output formatting utilities
 │   ├── fs-helpers.ts     # Low-level filesystem helpers
+│   ├── image-parsing.ts  # Image dimension parsing
 │   ├── path-utils.ts     # Path manipulation utilities
 │   └── path-validation.ts# Security: path validation layer
 ├── schemas/
 │   ├── common.ts         # Shared Zod schemas
 │   ├── inputs.ts         # Input validation schemas
 │   ├── outputs.ts        # Output validation schemas
+│   ├── validators.ts     # Custom validation functions
 │   └── index.ts          # Schema exports
 ├── tools/
 │   ├── analyze-directory.ts
