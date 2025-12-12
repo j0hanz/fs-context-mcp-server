@@ -133,25 +133,25 @@ export async function startServer(server: McpServer): Promise<void> {
   // Set server instance for MCP logging support
   setMcpServerInstance(server);
 
-  // Update allowed directories from roots protocol if available
-  void updateRootsFromClient(server).then((): void => {
-    const dirs = getAllowedDirectories();
-    if (dirs.length === 0) {
-      if (serverOptions.allowCwd) {
-        // Fall back to current working directory only if explicitly allowed
-        const cwd = normalizePath(process.cwd());
-        setAllowedDirectories([cwd]);
-        console.error(
-          'No directories specified. Using current working directory:'
-        );
-      } else {
-        console.error(
-          'WARNING: No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol.'
-        );
-        console.error(
-          'The server will not be able to access any files until directories are configured.'
-        );
-      }
+  // Update allowed directories from roots protocol
+  await updateRootsFromClient(server);
+
+  const dirs = getAllowedDirectories();
+  if (dirs.length === 0) {
+    if (serverOptions.allowCwd) {
+      // Fall back to current working directory only if explicitly allowed
+      const cwd = normalizePath(process.cwd());
+      setAllowedDirectories([cwd]);
+      console.error(
+        'No directories specified. Using current working directory:'
+      );
+    } else {
+      console.error(
+        'WARNING: No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol.'
+      );
+      console.error(
+        'The server will not be able to access any files until directories are configured.'
+      );
     }
-  });
+  }
 }
