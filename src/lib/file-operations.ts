@@ -618,6 +618,35 @@ export async function searchContent(
     );
   }
 
+  // Circular buffer to hold context lines before a match
+  class CircularLineBuffer {
+    private buffer: string[];
+    private writeIndex = 0;
+    private count = 0;
+
+    constructor(private capacity: number) {
+      this.buffer = new Array<string>(capacity);
+    }
+
+    push(line: string): void {
+      this.buffer[this.writeIndex] = line;
+      this.writeIndex = (this.writeIndex + 1) % this.capacity;
+      if (this.count < this.capacity) this.count++;
+    }
+
+    toArray(): string[] {
+      if (this.count === 0) return [];
+      if (this.count < this.capacity) {
+        return this.buffer.slice(0, this.count);
+      }
+      // Buffer is full - return in correct order starting from writeIndex
+      return [
+        ...this.buffer.slice(this.writeIndex),
+        ...this.buffer.slice(0, this.writeIndex),
+      ];
+    }
+  }
+
   const matches: ContentMatch[] = [];
   let filesScanned = 0;
   let filesMatched = 0;
@@ -700,7 +729,8 @@ export async function searchContent(
 
       let fileHadMatches = false;
       let lineNumber = 0;
-      const lineBuffer: string[] = [];
+      const lineBuffer =
+        contextLines > 0 ? new CircularLineBuffer(contextLines) : null;
       const pendingMatches: { match: ContentMatch; afterNeeded: number }[] = [];
 
       try {
@@ -738,11 +768,8 @@ export async function searchContent(
             console.error(
               `[searchContent] Skipping line ${lineNumber} in ${validFile} due to regex timeout`
             );
-            if (contextLines > 0) {
+            if (lineBuffer) {
               lineBuffer.push(trimmedLine);
-              if (lineBuffer.length > contextLines) {
-                lineBuffer.shift();
-              }
             }
             continue;
           }
@@ -755,8 +782,9 @@ export async function searchContent(
               matchCount,
             };
 
-            if (contextLines > 0 && lineBuffer.length > 0) {
-              newMatch.contextBefore = [...lineBuffer];
+            const contextBefore = lineBuffer?.toArray();
+            if (contextBefore && contextBefore.length > 0) {
+              newMatch.contextBefore = contextBefore;
             }
 
             matches.push(newMatch);
@@ -769,11 +797,8 @@ export async function searchContent(
             }
           }
 
-          if (contextLines > 0) {
+          if (lineBuffer) {
             lineBuffer.push(trimmedLine);
-            if (lineBuffer.length > contextLines) {
-              lineBuffer.shift();
-            }
           }
         }
       } finally {

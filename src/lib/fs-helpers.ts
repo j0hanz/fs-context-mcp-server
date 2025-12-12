@@ -1,6 +1,8 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import * as readline from 'node:readline';
 import type { Stats } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 
 import type { FileType } from '../config/types.js';
@@ -313,6 +315,54 @@ export async function headFile(
   }
 }
 
+// Read specific line range from file using streaming
+async function readLineRange(
+  filePath: string,
+  startLine: number,
+  endLine: number
+): Promise<{
+  content: string;
+  linesRead: number;
+  totalLinesScanned: number;
+  hasMoreLines: boolean;
+}> {
+  const fileStream = createReadStream(filePath, { encoding: 'utf-8' });
+  const rl = readline.createInterface({
+    input: fileStream,
+    crlfDelay: Infinity,
+  });
+
+  const lines: string[] = [];
+  let lineNumber = 0;
+  let hasMoreLines = false;
+
+  try {
+    for await (const line of rl) {
+      lineNumber++;
+
+      if (lineNumber >= startLine && lineNumber <= endLine) {
+        lines.push(line);
+      }
+
+      // Check if there are more lines after the requested range
+      if (lineNumber > endLine) {
+        hasMoreLines = true;
+        break;
+      }
+    }
+
+    return {
+      content: lines.join('\n'),
+      linesRead: lines.length,
+      totalLinesScanned: lineNumber,
+      hasMoreLines,
+    };
+  } finally {
+    rl.close();
+    fileStream.destroy();
+  }
+}
+
 export async function readFile(
   filePath: string,
   options: {
@@ -385,6 +435,27 @@ export async function readFile(
     return { path: validPath, content, truncated: true, totalLines: undefined };
   }
 
+  // For line range, use streaming to avoid loading entire file into memory
+  if (lineRange) {
+    const result = await readLineRange(
+      validPath,
+      lineRange.start,
+      lineRange.end
+    );
+    const expectedLines = lineRange.end - lineRange.start + 1;
+    // truncated if: not starting at line 1, OR didn't get all requested lines, OR file has more lines
+    const isTruncated =
+      lineRange.start > 1 ||
+      result.linesRead < expectedLines ||
+      result.hasMoreLines;
+    return {
+      path: validPath,
+      content: result.content,
+      truncated: isTruncated,
+      totalLines: undefined,
+    };
+  }
+
   if (stats.size > maxSize) {
     throw new McpError(
       ErrorCode.E_TOO_LARGE,
@@ -395,20 +466,6 @@ export async function readFile(
   }
 
   const content = await fs.readFile(validPath, { encoding });
-
-  if (lineRange) {
-    const lines = content.split('\n');
-    const totalLines = lines.length;
-    const start = Math.max(0, lineRange.start - 1);
-    const end = Math.min(lines.length, lineRange.end);
-
-    return {
-      path: validPath,
-      content: lines.slice(start, end).join('\n'),
-      truncated: start > 0 || end < lines.length,
-      totalLines,
-    };
-  }
 
   return { path: validPath, content, truncated: false };
 }
