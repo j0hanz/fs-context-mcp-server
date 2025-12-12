@@ -1,0 +1,72 @@
+import * as path from 'node:path';
+
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+import { createErrorResponse, ErrorCode } from '../lib/errors.js';
+import { searchFiles } from '../lib/file-operations.js';
+import { formatSearchResults } from '../lib/formatters.js';
+import {
+  SearchFilesInputSchema,
+  SearchFilesOutputSchema,
+} from '../schemas/index.js';
+
+export function registerSearchFilesTool(server: McpServer): void {
+  server.registerTool(
+    'search_files',
+    {
+      title: 'Search Files',
+      description:
+        'Search for files using glob patterns. Supports wildcards like **/*.ts to find all TypeScript files.',
+      inputSchema: SearchFilesInputSchema,
+      outputSchema: SearchFilesOutputSchema,
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
+    },
+    async ({
+      path: basePath,
+      pattern,
+      excludePatterns,
+      maxResults,
+      sortBy,
+      maxDepth,
+    }) => {
+      try {
+        const result = await searchFiles(basePath, pattern, excludePatterns, {
+          maxResults,
+          sortBy,
+          maxDepth,
+        });
+        const structured = {
+          ok: true,
+          basePath: result.basePath,
+          pattern: result.pattern,
+          results: result.results.map((r) => ({
+            path: path.relative(result.basePath, r.path),
+            type: r.type,
+            size: r.size,
+            modified: r.modified?.toISOString(),
+          })),
+          summary: {
+            matched: result.summary.matched,
+            truncated: result.summary.truncated,
+            skippedInaccessible: result.summary.skippedInaccessible,
+          },
+        };
+        return {
+          content: [
+            { type: 'text', text: formatSearchResults(result.results) },
+          ],
+          structuredContent: structured,
+        };
+      } catch (error) {
+        return createErrorResponse(
+          error,
+          ErrorCode.E_INVALID_PATTERN,
+          basePath
+        );
+      }
+    }
+  );
+}

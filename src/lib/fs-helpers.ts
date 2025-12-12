@@ -1,0 +1,414 @@
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import type { Stats } from 'node:fs';
+import { StringDecoder } from 'node:string_decoder';
+
+import type { FileType } from '../config/types.js';
+import {
+  BINARY_CHECK_BUFFER_SIZE,
+  KNOWN_BINARY_EXTENSIONS,
+  KNOWN_TEXT_EXTENSIONS,
+  MAX_TEXT_FILE_SIZE,
+} from './constants.js';
+import { ErrorCode, McpError } from './errors.js';
+import { validateExistingPath } from './path-validation.js';
+
+/**
+ * Concurrent work queue processor with optional abort support.
+ * Processes items with controlled concurrency, allowing new items to be enqueued during processing.
+ */
+export async function runWorkQueue<T>(
+  initialItems: T[],
+  worker: (item: T, enqueue: (item: T) => void) => Promise<void>,
+  concurrency: number,
+  signal?: AbortSignal
+): Promise<void> {
+  const queue: T[] = [...initialItems];
+  let head = 0;
+  let inFlight = 0;
+  let aborted = false;
+  let doneResolve: (() => void) | undefined;
+  const donePromise = new Promise<void>((resolve) => {
+    doneResolve = resolve;
+  });
+
+  const onAbort = (): void => {
+    aborted = true;
+    // Clear remaining work (keep the already-consumed prefix intact)
+    queue.length = head;
+    if (inFlight === 0) {
+      doneResolve?.();
+    }
+  };
+
+  signal?.addEventListener('abort', onAbort, { once: true });
+
+  const maybeCompactQueue = (): void => {
+    if (head > 1024 && head * 2 > queue.length) {
+      queue.splice(0, head);
+      head = 0;
+    }
+  };
+
+  const maybeStartNext = (): void => {
+    if (aborted) return;
+
+    while (inFlight < concurrency && head < queue.length) {
+      const next = queue[head];
+      if (next === undefined) break;
+      head++;
+
+      inFlight++;
+      void worker(next, (item: T) => {
+        if (!aborted) {
+          queue.push(item);
+          maybeStartNext();
+        }
+      }).finally(() => {
+        inFlight--;
+        maybeCompactQueue();
+        if (inFlight === 0 && (head >= queue.length || aborted)) {
+          doneResolve?.();
+        } else if (!aborted) {
+          maybeStartNext();
+        }
+      });
+    }
+  };
+
+  maybeStartNext();
+
+  if (inFlight === 0 && head >= queue.length) {
+    doneResolve?.();
+  }
+
+  try {
+    await donePromise;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+export function getFileType(stats: Stats): FileType {
+  if (stats.isFile()) return 'file';
+  if (stats.isDirectory()) return 'directory';
+  if (stats.isSymbolicLink()) return 'symlink';
+  return 'other';
+}
+
+export function isHidden(name: string): boolean {
+  return name.startsWith('.');
+}
+
+export async function isProbablyBinary(
+  filePath: string,
+  existingHandle?: fs.FileHandle
+): Promise<boolean> {
+  const ext = path.extname(filePath).toLowerCase();
+
+  if (KNOWN_TEXT_EXTENSIONS.has(ext)) {
+    return false;
+  }
+  if (KNOWN_BINARY_EXTENSIONS.has(ext)) {
+    return true;
+  }
+
+  let handle = existingHandle;
+  let shouldClose = false;
+  let effectivePath = filePath;
+
+  if (!handle) {
+    effectivePath = await validateExistingPath(filePath);
+    handle = await fs.open(effectivePath, 'r');
+    shouldClose = true;
+  }
+
+  try {
+    const buffer = Buffer.alloc(BINARY_CHECK_BUFFER_SIZE);
+    const { bytesRead } = await handle.read(
+      buffer,
+      0,
+      BINARY_CHECK_BUFFER_SIZE,
+      0
+    );
+
+    if (bytesRead === 0) {
+      return false; // Empty file is considered text
+    }
+
+    const slice = buffer.subarray(0, bytesRead);
+
+    if (
+      bytesRead >= 3 &&
+      slice[0] === 0xef &&
+      slice[1] === 0xbb &&
+      slice[2] === 0xbf
+    ) {
+      return false;
+    }
+
+    if (
+      bytesRead >= 2 &&
+      ((slice[0] === 0xff && slice[1] === 0xfe) ||
+        (slice[0] === 0xfe && slice[1] === 0xff))
+    ) {
+      return false;
+    }
+
+    return slice.includes(0);
+  } finally {
+    if (shouldClose) {
+      await handle.close().catch(() => {});
+    }
+  }
+}
+
+/**
+ * Find the start of a UTF-8 character by backtracking from a position.
+ * Used to align reads to character boundaries.
+ */
+async function findUTF8Boundary(
+  handle: fs.FileHandle,
+  position: number
+): Promise<number> {
+  if (position <= 0) return 0;
+  const buf = Buffer.alloc(1);
+  let currentPos = position;
+
+  // Backtrack up to 4 bytes (max UTF-8 char length)
+  // We want to find a byte that is NOT a continuation byte (10xxxxxx)
+  for (let i = 0; i < 4; i++) {
+    // If we reached the beginning of the file, that's a boundary
+    if (currentPos <= 0) return 0;
+
+    // Read the byte at the current position
+    // We read from currentPos - 1 because we are checking the byte *before* the current boundary
+    // Wait, no. We want to ensure 'position' (the start of our read) is a valid char start.
+    // So we check the byte at 'position'.
+    // If it is 10xxxxxx, it's a continuation. We need to move start back.
+
+    await handle.read(buf, 0, 1, currentPos);
+
+    // If it's not a continuation byte (0b10xxxxxx), it's a start byte or ASCII
+    // 0xC0 is 11000000, 0x80 is 10000000.
+    // (byte & 0xC0) === 0x80 checks if it starts with 10
+    const byte = buf[0];
+    if (byte !== undefined && (byte & 0xc0) !== 0x80) {
+      return currentPos;
+    }
+    currentPos--;
+  }
+
+  // If we didn't find a start byte, just return original to avoid infinite loops
+  return position;
+}
+
+export async function tailFile(
+  filePath: string,
+  numLines: number
+): Promise<string> {
+  const CHUNK_SIZE = 64 * 1024;
+  const validPath = await validateExistingPath(filePath);
+  const stats = await fs.stat(validPath);
+  const fileSize = stats.size;
+
+  if (fileSize === 0) return '';
+
+  const handle = await fs.open(validPath, 'r');
+  try {
+    const lines: string[] = [];
+    let position = fileSize;
+    const chunk = Buffer.alloc(CHUNK_SIZE + 4);
+    let linesFound = 0;
+    let remainingText = '';
+
+    while (position > 0 && linesFound < numLines) {
+      let size = Math.min(CHUNK_SIZE, position);
+      let startPos = position - size;
+
+      if (startPos > 0) {
+        const alignedPos = await findUTF8Boundary(handle, startPos);
+        // If we moved back, we need to read more
+        size = position - alignedPos;
+        startPos = alignedPos;
+      }
+
+      position = startPos;
+
+      const { bytesRead } = await handle.read(chunk, 0, size, position);
+      if (!bytesRead) break;
+
+      const readData = chunk.subarray(0, bytesRead).toString('utf-8');
+      const chunkText = readData + remainingText;
+      const chunkLines = chunkText.replace(/\r\n/g, '\n').split('\n');
+
+      if (position > 0) {
+        remainingText = chunkLines[0] ?? '';
+        chunkLines.shift();
+      }
+
+      for (
+        let i = chunkLines.length - 1;
+        i >= 0 && linesFound < numLines;
+        i--
+      ) {
+        lines.unshift(chunkLines[i] ?? '');
+        linesFound++;
+      }
+    }
+
+    return lines.join('\n');
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+export async function headFile(
+  filePath: string,
+  numLines: number
+): Promise<string> {
+  const validPath = await validateExistingPath(filePath);
+  const handle = await fs.open(validPath, 'r');
+  try {
+    const lines: string[] = [];
+    let bytesRead = 0;
+    const chunk = Buffer.alloc(64 * 1024);
+    const decoder = new StringDecoder('utf-8');
+    let buffer = '';
+
+    while (lines.length < numLines) {
+      const result = await handle.read(chunk, 0, chunk.length, bytesRead);
+      if (result.bytesRead === 0) break;
+      bytesRead += result.bytesRead;
+
+      buffer += decoder.write(chunk.subarray(0, result.bytesRead));
+      const normalizedBuffer = buffer.replace(/\r\n/g, '\n');
+      const newLineIndex = normalizedBuffer.lastIndexOf('\n');
+
+      if (newLineIndex !== -1) {
+        const completeLines = normalizedBuffer
+          .substring(0, newLineIndex)
+          .split('\n');
+        buffer = normalizedBuffer.substring(newLineIndex + 1);
+
+        for (const line of completeLines) {
+          lines.push(line);
+          if (lines.length >= numLines) break;
+        }
+      }
+    }
+
+    buffer += decoder.end();
+    if (buffer.length > 0 && lines.length < numLines) {
+      const remainingLines = buffer.replace(/\r\n/g, '\n').split('\n');
+      for (const line of remainingLines) {
+        lines.push(line);
+        if (lines.length >= numLines) break;
+      }
+    }
+
+    return lines.slice(0, numLines).join('\n');
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+export async function readFile(
+  filePath: string,
+  options: {
+    encoding?: BufferEncoding;
+    maxSize?: number;
+    lineRange?: { start: number; end: number };
+    head?: number;
+    tail?: number;
+  } = {}
+): Promise<{
+  path: string;
+  content: string;
+  truncated: boolean;
+  totalLines?: number;
+}> {
+  const {
+    encoding = 'utf-8',
+    maxSize = MAX_TEXT_FILE_SIZE,
+    lineRange,
+    head,
+    tail,
+  } = options;
+  const validPath = await validateExistingPath(filePath);
+
+  const stats = await fs.stat(validPath);
+
+  if (!stats.isFile()) {
+    throw new McpError(
+      ErrorCode.E_NOT_FILE,
+      `Not a file: ${filePath}`,
+      filePath
+    );
+  }
+
+  // Check for mutually exclusive options
+  const optionsCount = [lineRange, head, tail].filter(Boolean).length;
+  if (optionsCount > 1) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Cannot specify multiple of lineRange, head, or tail simultaneously',
+      filePath
+    );
+  }
+
+  // Validate lineRange if provided
+  if (lineRange) {
+    if (lineRange.start < 1) {
+      throw new McpError(
+        ErrorCode.E_INVALID_INPUT,
+        `Invalid lineRange: start must be at least 1 (got ${lineRange.start})`,
+        filePath
+      );
+    }
+    if (lineRange.end < lineRange.start) {
+      throw new McpError(
+        ErrorCode.E_INVALID_INPUT,
+        `Invalid lineRange: end (${lineRange.end}) must be >= start (${lineRange.start})`,
+        filePath
+      );
+    }
+  }
+
+  if (tail !== undefined) {
+    const content = await tailFile(validPath, tail);
+    return { path: validPath, content, truncated: true, totalLines: undefined };
+  }
+
+  if (head !== undefined) {
+    const content = await headFile(validPath, head);
+    return { path: validPath, content, truncated: true, totalLines: undefined };
+  }
+
+  if (stats.size > maxSize) {
+    throw new McpError(
+      ErrorCode.E_TOO_LARGE,
+      `File too large: ${stats.size} bytes (max: ${maxSize} bytes). Use head, tail, or lineRange for partial reads.`,
+      filePath,
+      { size: stats.size, maxSize }
+    );
+  }
+
+  const content = await fs.readFile(validPath, { encoding });
+
+  if (lineRange) {
+    const lines = content.split('\n');
+    const totalLines = lines.length;
+    const start = Math.max(0, lineRange.start - 1);
+    const end = Math.min(lines.length, lineRange.end);
+
+    return {
+      path: validPath,
+      content: lines.slice(start, end).join('\n'),
+      truncated: start > 0 || end < lines.length,
+      totalLines,
+    };
+  }
+
+  return { path: validPath, content, truncated: false };
+}

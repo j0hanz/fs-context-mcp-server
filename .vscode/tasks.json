@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "npm",
+      "script": "build",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "dev",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "test",
+      "type": "npm",
+      "script": "test",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "lint",
+      "type": "npm",
+      "script": "lint",
+      "problemMatcher": ["$eslint-stylish"]
+    },
+    {
+      "label": "type-check",
+      "type": "npm",
+      "script": "type-check",
+      "problemMatcher": ["$tsc"]
+    },
+    {
+      "label": "lint-and-typecheck",
+      "type": "shell",
+      "command": "npm run lint && npm run type-check",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "install:browsers",
+      "type": "npm",
+      "script": "install:browsers",
+      "problemMatcher": []
+    }
+  ]
+}

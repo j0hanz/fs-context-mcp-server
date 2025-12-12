@@ -1,0 +1,1395 @@
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
+import * as readline from 'node:readline';
+import { createReadStream } from 'node:fs';
+
+import fg from 'fast-glob';
+import { Minimatch } from 'minimatch';
+import safeRegex from 'safe-regex2';
+
+import type {
+  AnalyzeDirectoryResult,
+  ContentMatch,
+  DirectoryAnalysis,
+  DirectoryEntry,
+  DirectoryTreeResult,
+  FileInfo,
+  FileType,
+  ListDirectoryResult,
+  MediaFileResult,
+  SearchContentResult,
+  SearchFilesResult,
+  SearchResult,
+  TreeEntry,
+} from '../config/types.js';
+import {
+  DEFAULT_MAX_DEPTH,
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_TOP_N,
+  DIR_TRAVERSAL_CONCURRENCY,
+  MAX_LINE_CONTENT_LENGTH,
+  MAX_MEDIA_FILE_SIZE,
+  MAX_SEARCHABLE_FILE_SIZE,
+  MAX_TEXT_FILE_SIZE,
+  MIME_TYPES,
+  PARALLEL_CONCURRENCY,
+  REGEX_MATCH_TIMEOUT_MS,
+} from './constants.js';
+import { ErrorCode, McpError } from './errors.js';
+import {
+  getFileType,
+  isHidden,
+  isProbablyBinary,
+  readFile,
+  runWorkQueue,
+} from './fs-helpers.js';
+import {
+  validateExistingPath,
+  validateExistingPathDetailed,
+} from './path-validation.js';
+
+function shouldStopBecauseOfTimeout(deadlineMs: number | undefined): boolean {
+  return deadlineMs !== undefined && Date.now() > deadlineMs;
+}
+
+/**
+ * Result type for parallel operations with error collection.
+ * Allows callers to handle partial failures gracefully.
+ */
+interface ParallelResult<R> {
+  results: R[];
+  errors: { index: number; error: Error }[];
+}
+
+async function processInParallel<T, R>(
+  items: T[],
+  processor: (item: T) => Promise<R>,
+  concurrency: number = PARALLEL_CONCURRENCY
+): Promise<ParallelResult<R>> {
+  const results: R[] = [];
+  const errors: { index: number; error: Error }[] = [];
+
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map(processor));
+
+    for (let j = 0; j < batchResults.length; j++) {
+      const result = batchResults[j];
+      if (result?.status === 'fulfilled') {
+        results.push(result.value);
+      } else if (result?.status === 'rejected') {
+        const globalIndex = i + j;
+        const error =
+          result.reason instanceof Error
+            ? result.reason
+            : new Error(String(result.reason));
+        errors.push({ index: globalIndex, error });
+      }
+    }
+  }
+
+  return { results, errors };
+}
+
+function countRegexMatches(
+  line: string,
+  regex: RegExp,
+  timeoutMs: number = REGEX_MATCH_TIMEOUT_MS
+): number {
+  regex.lastIndex = 0;
+  let count = 0;
+  const deadline = Date.now() + timeoutMs;
+
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(line)) !== null) {
+    count++;
+    if (match[0] === '') {
+      regex.lastIndex++;
+    }
+    if (count % 100 === 0 && Date.now() > deadline) {
+      console.error(
+        `[countRegexMatches] Regex matching timed out after ${timeoutMs}ms on line (length: ${line.length})`
+      );
+      return -1; // Signal timeout
+    }
+  }
+
+  return count;
+}
+
+/**
+ * Check if a regex pattern is simple enough to be safe without full ReDoS analysis.
+ * This reduces false positives from safe-regex2 for common safe patterns.
+ *
+ * A pattern is considered "simple safe" if it:
+ * - Has no nested quantifiers (e.g., (a+)+ or (a*)*) which are the main ReDoS concern
+ * - Has no high repetition counts (e.g., {25} or higher) that safe-regex2 would flag
+ *
+ * This is a quick heuristic, not a full safety proof.
+ */
+function isSimpleSafePattern(pattern: string): boolean {
+  // Patterns with nested quantifiers are the main ReDoS concern
+  // Look for quantifier followed by closing paren then another quantifier
+  // Matches patterns like: (a+)+, (a*)+, (a+)*, (a?)+, (a{2})+
+  const nestedQuantifierPattern = /[+*?}]\s*\)\s*[+*?{]/;
+  if (nestedQuantifierPattern.test(pattern)) {
+    return false; // Potentially dangerous, needs full check
+  }
+
+  // Check for high repetition counts that safe-regex2 would flag (default limit is 25)
+  // Matches {n} or {n,} or {n,m} where n >= 25
+  const highRepetitionPattern = /\{(\d+)(?:,\d*)?\}/g;
+  let match;
+  while ((match = highRepetitionPattern.exec(pattern)) !== null) {
+    const count = parseInt(match[1] ?? '0', 10);
+    if (count >= 25) {
+      return false; // High repetition count, needs full check
+    }
+  }
+
+  // Simple patterns without nested quantifiers or high repetition are generally safe
+  // Examples: "throw new McpError\(", "\bword\b", "foo|bar"
+  return true;
+}
+
+function getPermissions(mode: number): string {
+  const p = ['---', '--x', '-w-', '-wx', 'r--', 'r-x', 'rw-', 'rwx'] as const;
+  const owner = p[(mode >> 6) & 7] ?? '---';
+  const group = p[(mode >> 3) & 7] ?? '---';
+  const other = p[mode & 7] ?? '---';
+  return `${owner}${group}${other}`;
+}
+
+export async function getFileInfo(filePath: string): Promise<FileInfo> {
+  const { requestedPath, resolvedPath, isSymlink } =
+    await validateExistingPathDetailed(filePath);
+
+  const name = path.basename(requestedPath);
+  const ext = path.extname(name).toLowerCase();
+  const mimeType = MIME_TYPES[ext] ?? undefined;
+
+  // If it is a symlink, try to read the link target without following.
+  let symlinkTarget: string | undefined;
+  if (isSymlink) {
+    try {
+      symlinkTarget = await fs.readlink(requestedPath);
+    } catch {
+      // Symlink target unreadable
+    }
+  }
+
+  // Use stat for size/dates (follows symlinks), but keep type as symlink based on lstat.
+  const stats = await fs.stat(resolvedPath);
+
+  return {
+    name,
+    path: requestedPath,
+    type: isSymlink ? 'symlink' : getFileType(stats),
+    size: stats.size,
+    created: stats.birthtime,
+    modified: stats.mtime,
+    accessed: stats.atime,
+    permissions: getPermissions(stats.mode),
+    isHidden: isHidden(name),
+    mimeType,
+    symlinkTarget,
+  };
+}
+
+export async function listDirectory(
+  dirPath: string,
+  options: {
+    recursive?: boolean;
+    includeHidden?: boolean;
+    maxDepth?: number;
+    maxEntries?: number;
+    sortBy?: 'name' | 'size' | 'modified' | 'type';
+    includeSymlinkTargets?: boolean;
+  } = {}
+): Promise<ListDirectoryResult> {
+  const {
+    recursive = false,
+    includeHidden = false,
+    maxDepth = DEFAULT_MAX_DEPTH,
+    maxEntries,
+    sortBy = 'name',
+    includeSymlinkTargets = false,
+  } = options;
+  const validPath = await validateExistingPath(dirPath);
+
+  const entries: DirectoryEntry[] = [];
+  let totalFiles = 0;
+  let totalDirectories = 0;
+  let maxDepthReached = 0;
+  let truncated = false;
+  let skippedInaccessible = 0;
+  let skippedSymlinks = 0;
+
+  const stopIfNeeded = (): boolean => {
+    if (maxEntries !== undefined && entries.length >= maxEntries) {
+      truncated = true;
+      return true;
+    }
+    return false;
+  };
+
+  await runWorkQueue<{ currentPath: string; depth: number }>(
+    [{ currentPath: validPath, depth: 0 }],
+    async ({ currentPath, depth }, enqueue) => {
+      if (depth > maxDepth) return;
+      if (stopIfNeeded()) return;
+      maxDepthReached = Math.max(maxDepthReached, depth);
+
+      let items;
+      try {
+        items = await fs.readdir(currentPath, { withFileTypes: true });
+      } catch (error) {
+        skippedInaccessible++;
+        const { code } = error as NodeJS.ErrnoException;
+        if (code !== 'ENOENT' && code !== 'EACCES' && code !== 'EPERM') {
+          console.error(
+            `[listDirectory] Error reading directory ${currentPath}:`,
+            error
+          );
+        }
+        return;
+      }
+
+      const visibleItems = includeHidden
+        ? items
+        : items.filter((item) => !isHidden(item.name));
+
+      const { results: processedEntries, errors: processingErrors } =
+        await processInParallel(
+          visibleItems,
+          async (
+            item
+          ): Promise<{
+            entry: DirectoryEntry;
+            enqueueDir?: { currentPath: string; depth: number };
+          }> => {
+            const fullPath = path.join(currentPath, item.name);
+            const relativePath =
+              path.relative(validPath, fullPath) || item.name;
+
+            try {
+              if (item.isSymbolicLink()) {
+                skippedSymlinks++;
+                const stats = await fs.lstat(fullPath);
+
+                let symlinkTarget: string | undefined;
+                if (includeSymlinkTargets) {
+                  try {
+                    symlinkTarget = await fs.readlink(fullPath);
+                  } catch {
+                    // Symlink target unreadable
+                  }
+                }
+
+                const entry: DirectoryEntry = {
+                  name: item.name,
+                  path: fullPath,
+                  relativePath,
+                  type: 'symlink',
+                  size: stats.size,
+                  modified: stats.mtime,
+                  symlinkTarget,
+                };
+                return { entry };
+              }
+
+              const stats = await fs.stat(fullPath);
+              const isDir = item.isDirectory();
+              const type: FileType = isDir
+                ? 'directory'
+                : item.isFile()
+                  ? 'file'
+                  : getFileType(stats);
+
+              const entry: DirectoryEntry = {
+                name: item.name,
+                path: fullPath,
+                relativePath,
+                type,
+                size: type === 'file' ? stats.size : undefined,
+                modified: stats.mtime,
+              };
+
+              const enqueueDir =
+                recursive && isDir && depth + 1 <= maxDepth
+                  ? {
+                      currentPath: await validateExistingPath(fullPath),
+                      depth: depth + 1,
+                    }
+                  : undefined;
+
+              return { entry, enqueueDir };
+            } catch {
+              skippedInaccessible++;
+              const entry: DirectoryEntry = {
+                name: item.name,
+                path: fullPath,
+                relativePath,
+                type: item.isDirectory()
+                  ? 'directory'
+                  : item.isFile()
+                    ? 'file'
+                    : 'other',
+              };
+              return { entry };
+            }
+          }
+        );
+
+      // Count errors from parallel processing as inaccessible
+      skippedInaccessible += processingErrors.length;
+
+      for (const { entry, enqueueDir } of processedEntries) {
+        if (stopIfNeeded()) break;
+        entries.push(entry);
+        if (entry.type === 'directory') totalDirectories++;
+        if (entry.type === 'file') totalFiles++;
+        if (enqueueDir) enqueue(enqueueDir);
+      }
+    },
+    DIR_TRAVERSAL_CONCURRENCY
+  );
+
+  entries.sort((a, b) => {
+    switch (sortBy) {
+      case 'size':
+        return (b.size ?? 0) - (a.size ?? 0);
+      case 'modified':
+        return (b.modified?.getTime() ?? 0) - (a.modified?.getTime() ?? 0);
+      case 'type':
+        // directories first, then by name
+        if (a.type !== b.type) {
+          return a.type === 'directory' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      case 'name':
+      default:
+        return a.name.localeCompare(b.name);
+    }
+  });
+
+  return {
+    path: validPath,
+    entries,
+    summary: {
+      totalEntries: entries.length,
+      totalFiles,
+      totalDirectories,
+      maxDepthReached,
+      truncated,
+      skippedInaccessible,
+      skippedSymlinks,
+    },
+  };
+}
+
+export async function searchFiles(
+  basePath: string,
+  pattern: string,
+  excludePatterns: string[] = [],
+  options: {
+    maxResults?: number;
+    sortBy?: 'name' | 'size' | 'modified' | 'path';
+    maxDepth?: number;
+  } = {}
+): Promise<SearchFilesResult> {
+  const validPath = await validateExistingPath(basePath);
+
+  const { maxResults, sortBy = 'path', maxDepth } = options;
+
+  const results: SearchResult[] = [];
+  let skippedInaccessible = 0;
+  let truncated = false;
+
+  const batch: string[] = [];
+
+  const flushBatch = async (): Promise<void> => {
+    if (batch.length === 0) return;
+    const toProcess = batch.splice(0, batch.length);
+
+    const settled = await Promise.allSettled(
+      toProcess.map(async (match) => {
+        const validMatch = await validateExistingPath(match);
+        const stats = await fs.stat(validMatch);
+        const { size, mtime: modified } = stats;
+        return {
+          path: validMatch,
+          type: getFileType(stats),
+          size: stats.isFile() ? size : undefined,
+          modified,
+        } satisfies SearchResult;
+      })
+    );
+
+    for (const r of settled) {
+      if (r.status === 'fulfilled') {
+        if (maxResults !== undefined && results.length >= maxResults) {
+          truncated = true;
+          break;
+        }
+        results.push(r.value);
+      } else {
+        skippedInaccessible++;
+      }
+    }
+  };
+
+  const stream = fg.stream(pattern, {
+    cwd: validPath,
+    absolute: true,
+    onlyFiles: false,
+    dot: true,
+    ignore: excludePatterns,
+    suppressErrors: true,
+    followSymbolicLinks: false, // Security: never follow symlinks
+    deep: maxDepth, // Limit search depth if specified
+  });
+
+  for await (const entry of stream) {
+    const matchPath = typeof entry === 'string' ? entry : String(entry);
+
+    if (maxResults !== undefined && results.length >= maxResults) {
+      truncated = true;
+      break;
+    }
+
+    batch.push(matchPath);
+    if (batch.length >= PARALLEL_CONCURRENCY) {
+      await flushBatch();
+      if (maxResults !== undefined && results.length >= maxResults) {
+        truncated = true;
+        break;
+      }
+    }
+  }
+
+  await flushBatch();
+
+  results.sort((a, b) => {
+    switch (sortBy) {
+      case 'size':
+        return (b.size ?? 0) - (a.size ?? 0);
+      case 'modified':
+        return (b.modified?.getTime() ?? 0) - (a.modified?.getTime() ?? 0);
+      case 'name':
+        return path.basename(a.path).localeCompare(path.basename(b.path));
+      case 'path':
+      default:
+        return a.path.localeCompare(b.path);
+    }
+  });
+
+  return {
+    basePath: validPath,
+    pattern,
+    results,
+    summary: {
+      matched: results.length,
+      truncated,
+      skippedInaccessible,
+    },
+  };
+}
+
+// Re-export readFile from fs-helpers so it can be used by tools
+export { readFile };
+
+/**
+ * Read multiple files in parallel.
+ * Individual file errors don't fail the entire operation.
+ */
+export async function readMultipleFiles(
+  filePaths: string[],
+  options: {
+    encoding?: BufferEncoding;
+    maxSize?: number;
+    head?: number;
+    tail?: number;
+  } = {}
+): Promise<{ path: string; content?: string; error?: string }[]> {
+  const {
+    encoding = 'utf-8',
+    maxSize = MAX_TEXT_FILE_SIZE,
+    head,
+    tail,
+  } = options;
+
+  if (filePaths.length === 0) return [];
+
+  // Preserve input order while limiting concurrency to avoid spiky I/O / EMFILE.
+  const output: { path: string; content?: string; error?: string }[] =
+    filePaths.map((filePath) => ({ path: filePath }));
+
+  const { results, errors } = await processInParallel(
+    filePaths.map((filePath, index) => ({ filePath, index })),
+    async ({ filePath, index }) => {
+      const result = await readFile(filePath, {
+        encoding,
+        maxSize,
+        head,
+        tail,
+      });
+      return {
+        index,
+        value: { path: result.path, content: result.content },
+      };
+    },
+    PARALLEL_CONCURRENCY
+  );
+
+  for (const r of results) {
+    output[r.index] = r.value;
+  }
+  for (const e of errors) {
+    const filePath = filePaths[e.index] ?? '(unknown)';
+    output[e.index] = {
+      path: filePath,
+      error: e.error.message,
+    };
+  }
+
+  return output;
+}
+
+export async function searchContent(
+  basePath: string,
+  searchPattern: string,
+  options: {
+    filePattern?: string;
+    excludePatterns?: string[];
+    caseSensitive?: boolean;
+    maxResults?: number;
+    maxFileSize?: number;
+    maxFilesScanned?: number;
+    timeoutMs?: number;
+    skipBinary?: boolean;
+    contextLines?: number;
+    wholeWord?: boolean;
+    isLiteral?: boolean;
+  } = {}
+): Promise<SearchContentResult> {
+  const {
+    filePattern = '**/*',
+    excludePatterns = [],
+    caseSensitive = false,
+    maxResults = DEFAULT_MAX_RESULTS,
+    maxFileSize = MAX_SEARCHABLE_FILE_SIZE,
+    maxFilesScanned,
+    timeoutMs,
+    skipBinary = true,
+    contextLines = 0,
+    wholeWord = false,
+    isLiteral = false,
+  } = options;
+  const validPath = await validateExistingPath(basePath);
+
+  const deadlineMs =
+    timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
+
+  // Build the final pattern
+  let finalPattern = searchPattern;
+
+  // Escape regex special characters if literal mode
+  if (isLiteral) {
+    finalPattern = finalPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // Add word boundaries if whole word mode
+  if (wholeWord) {
+    finalPattern = `\\b${finalPattern}\\b`;
+  }
+
+  // ReDoS protection: skip check for literal or simple patterns
+  const needsReDoSCheck = !isLiteral && !isSimpleSafePattern(finalPattern);
+
+  if (needsReDoSCheck && !safeRegex(finalPattern)) {
+    throw new McpError(
+      ErrorCode.E_INVALID_PATTERN,
+      `Potentially unsafe regular expression (ReDoS risk): ${searchPattern}. ` +
+        'Avoid patterns with nested quantifiers, overlapping alternations, or exponential backtracking.',
+      basePath,
+      {
+        searchPattern,
+        finalPattern,
+        reason: 'ReDoS risk detected by safe-regex2',
+      }
+    );
+  }
+
+  let regex: RegExp;
+  try {
+    regex = new RegExp(finalPattern, caseSensitive ? 'g' : 'gi');
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new McpError(
+      ErrorCode.E_INVALID_PATTERN,
+      `Invalid regular expression: ${finalPattern} (${message})`,
+      basePath,
+      { searchPattern: finalPattern }
+    );
+  }
+
+  const matches: ContentMatch[] = [];
+  let filesScanned = 0;
+  let filesMatched = 0;
+  let skippedTooLarge = 0;
+  let skippedBinary = 0;
+  let skippedInaccessible = 0;
+  let truncated = false;
+  let stoppedReason: SearchContentResult['summary']['stoppedReason'];
+
+  const stopNow = (reason: typeof stoppedReason): boolean => {
+    truncated = true;
+    stoppedReason = reason;
+    return true;
+  };
+
+  const stream = fg.stream(filePattern, {
+    cwd: validPath,
+    absolute: true,
+    onlyFiles: true,
+    dot: false,
+    ignore: excludePatterns,
+    suppressErrors: true,
+    followSymbolicLinks: false, // Security: never follow symlinks
+  });
+
+  for await (const entry of stream) {
+    const file = typeof entry === 'string' ? entry : String(entry);
+
+    if (shouldStopBecauseOfTimeout(deadlineMs)) {
+      stopNow('timeout');
+      break;
+    }
+    if (maxFilesScanned !== undefined && filesScanned >= maxFilesScanned) {
+      stopNow('maxFiles');
+      break;
+    }
+    if (matches.length >= maxResults) {
+      stopNow('maxResults');
+      break;
+    }
+
+    let validFile: string;
+    let handle: fs.FileHandle | undefined;
+    try {
+      validFile = await validateExistingPath(file);
+      handle = await fs.open(validFile, 'r');
+      const stats = await handle.stat();
+
+      filesScanned++;
+
+      if (stats.size > maxFileSize) {
+        skippedTooLarge++;
+        await handle.close();
+        handle = undefined;
+        continue;
+      }
+
+      if (skipBinary) {
+        const binary = await isProbablyBinary(validFile, handle);
+        if (binary) {
+          skippedBinary++;
+          await handle.close();
+          handle = undefined;
+          continue;
+        }
+      }
+
+      await handle.close();
+      handle = undefined;
+
+      const fileStream = createReadStream(validFile, {
+        encoding: 'utf-8',
+      });
+
+      const rl = readline.createInterface({
+        input: fileStream,
+        crlfDelay: Infinity,
+      });
+
+      let fileHadMatches = false;
+      let lineNumber = 0;
+      const lineBuffer: string[] = [];
+      const pendingMatches: { match: ContentMatch; afterNeeded: number }[] = [];
+
+      try {
+        for await (const line of rl) {
+          lineNumber++;
+
+          if (shouldStopBecauseOfTimeout(deadlineMs)) {
+            stopNow('timeout');
+            break;
+          }
+          if (matches.length >= maxResults) {
+            stopNow('maxResults');
+            break;
+          }
+
+          const trimmedLine = line.trim().substring(0, MAX_LINE_CONTENT_LENGTH);
+
+          for (const pending of pendingMatches) {
+            if (pending.afterNeeded > 0) {
+              pending.match.contextAfter ??= [];
+              pending.match.contextAfter.push(trimmedLine);
+              pending.afterNeeded--;
+            }
+          }
+          while (
+            pendingMatches.length > 0 &&
+            pendingMatches[0]?.afterNeeded === 0
+          ) {
+            pendingMatches.shift();
+          }
+
+          const matchCount = countRegexMatches(line, regex);
+          if (matchCount < 0) {
+            console.error(
+              `[searchContent] Skipping line ${lineNumber} in ${validFile} due to regex timeout`
+            );
+            // Still add to buffer for context
+            if (contextLines > 0) {
+              lineBuffer.push(trimmedLine);
+              if (lineBuffer.length > contextLines) {
+                lineBuffer.shift();
+              }
+            }
+            continue;
+          }
+          if (matchCount > 0) {
+            fileHadMatches = true;
+            const newMatch: ContentMatch = {
+              file: validFile,
+              line: lineNumber,
+              content: trimmedLine,
+              matchCount,
+            };
+
+            if (contextLines > 0 && lineBuffer.length > 0) {
+              newMatch.contextBefore = [...lineBuffer];
+            }
+
+            matches.push(newMatch);
+
+            if (contextLines > 0) {
+              pendingMatches.push({
+                match: newMatch,
+                afterNeeded: contextLines,
+              });
+            }
+          }
+
+          if (contextLines > 0) {
+            lineBuffer.push(trimmedLine);
+            if (lineBuffer.length > contextLines) {
+              lineBuffer.shift();
+            }
+          }
+        }
+      } finally {
+        rl.close();
+        fileStream.destroy();
+      }
+
+      if (fileHadMatches) filesMatched++;
+
+      if (stoppedReason !== undefined) break;
+    } catch (error) {
+      if (handle) {
+        await handle.close().catch(() => {});
+      }
+      skippedInaccessible++;
+
+      // Log unexpected errors for debugging
+      const { code } = error as NodeJS.ErrnoException;
+      if (code !== 'ENOENT' && code !== 'EACCES' && code !== 'EPERM') {
+        console.error(`[searchContent] Error processing ${file}:`, error);
+      }
+    }
+  }
+
+  return {
+    basePath: validPath,
+    pattern: searchPattern,
+    filePattern,
+    matches,
+    summary: {
+      filesScanned,
+      filesMatched,
+      matches: matches.length,
+      truncated,
+      skippedTooLarge,
+      skippedBinary,
+      skippedInaccessible,
+      stoppedReason,
+    },
+  };
+}
+
+export async function analyzeDirectory(
+  dirPath: string,
+  options: {
+    maxDepth?: number;
+    topN?: number;
+    excludePatterns?: string[];
+    includeHidden?: boolean;
+  } = {}
+): Promise<AnalyzeDirectoryResult> {
+  const {
+    maxDepth = DEFAULT_MAX_DEPTH,
+    topN = DEFAULT_TOP_N,
+    excludePatterns = [],
+    includeHidden = false,
+  } = options;
+  const validPath = await validateExistingPath(dirPath);
+
+  let totalFiles = 0;
+  let totalDirectories = 0;
+  let totalSize = 0;
+  let currentMaxDepth = 0;
+  let skippedInaccessible = 0;
+  let skippedSymlinks = 0;
+  const fileTypes: Record<string, number> = {};
+  const largestFiles: { path: string; size: number }[] = [];
+  const recentlyModified: { path: string; modified: Date }[] = [];
+
+  const excludeMatchers =
+    excludePatterns.length > 0
+      ? excludePatterns.map((pattern) => new Minimatch(pattern))
+      : [];
+
+  const shouldExclude = (name: string, relativePath: string): boolean => {
+    if (excludeMatchers.length === 0) return false;
+    return excludeMatchers.some((m) => m.match(name) || m.match(relativePath));
+  };
+
+  const insertSorted = <T>(
+    arr: T[],
+    item: T,
+    compare: (a: T, b: T) => boolean,
+    maxLen: number
+  ): void => {
+    if (maxLen <= 0) return;
+    const idx = arr.findIndex((el) => compare(item, el));
+    if (idx === -1) {
+      if (arr.length < maxLen) arr.push(item);
+    } else {
+      arr.splice(idx, 0, item);
+      if (arr.length > maxLen) arr.pop();
+    }
+  };
+
+  await runWorkQueue<{ currentPath: string; depth: number }>(
+    [{ currentPath: validPath, depth: 0 }],
+    async ({ currentPath, depth }, enqueue) => {
+      if (depth > maxDepth) return;
+      currentMaxDepth = Math.max(currentMaxDepth, depth);
+
+      let items;
+      try {
+        items = await fs.readdir(currentPath, { withFileTypes: true });
+      } catch (error) {
+        skippedInaccessible++;
+        const { code } = error as NodeJS.ErrnoException;
+        if (code !== 'ENOENT' && code !== 'EACCES' && code !== 'EPERM') {
+          console.error(
+            `[analyzeDirectory] Error reading directory ${currentPath}:`,
+            error
+          );
+        }
+        return;
+      }
+
+      for (const item of items) {
+        const fullPath = path.join(currentPath, item.name);
+        const relativePath = path.relative(validPath, fullPath);
+
+        // Skip hidden files/directories unless includeHidden is true
+        if (!includeHidden && isHidden(item.name)) {
+          continue;
+        }
+
+        // Skip items matching exclude patterns
+        if (shouldExclude(item.name, relativePath)) {
+          continue;
+        }
+
+        try {
+          const validated = await validateExistingPathDetailed(fullPath);
+          if (validated.isSymlink || item.isSymbolicLink()) {
+            skippedSymlinks++;
+            continue;
+          }
+
+          const stats = await fs.stat(validated.resolvedPath);
+
+          if (stats.isDirectory()) {
+            totalDirectories++;
+            if (depth + 1 <= maxDepth) {
+              enqueue({
+                currentPath: validated.resolvedPath,
+                depth: depth + 1,
+              });
+            }
+          } else if (stats.isFile()) {
+            totalFiles++;
+            totalSize += stats.size;
+
+            const ext =
+              path.extname(item.name).toLowerCase() || '(no extension)';
+            fileTypes[ext] = (fileTypes[ext] ?? 0) + 1;
+
+            insertSorted(
+              largestFiles,
+              { path: validated.resolvedPath, size: stats.size },
+              (a, b) => a.size > b.size,
+              topN
+            );
+            insertSorted(
+              recentlyModified,
+              { path: validated.resolvedPath, modified: stats.mtime },
+              (a, b) => a.modified.getTime() > b.modified.getTime(),
+              topN
+            );
+          }
+        } catch (error) {
+          if (
+            error instanceof McpError &&
+            (error.code === ErrorCode.E_ACCESS_DENIED ||
+              error.code === ErrorCode.E_SYMLINK_NOT_ALLOWED)
+          ) {
+            skippedSymlinks++;
+          } else {
+            skippedInaccessible++;
+          }
+        }
+      }
+    },
+    DIR_TRAVERSAL_CONCURRENCY
+  );
+
+  const analysis: DirectoryAnalysis = {
+    path: validPath,
+    totalFiles,
+    totalDirectories,
+    totalSize,
+    fileTypes,
+    largestFiles,
+    recentlyModified,
+    maxDepth: currentMaxDepth,
+  };
+
+  return {
+    analysis,
+    summary: {
+      truncated: false,
+      skippedInaccessible,
+      skippedSymlinks,
+    },
+  };
+}
+
+/**
+ * Build a JSON tree structure of a directory.
+ * More efficient for AI parsing than flat file lists.
+ */
+export async function getDirectoryTree(
+  dirPath: string,
+  options: {
+    maxDepth?: number;
+    excludePatterns?: string[];
+    includeHidden?: boolean;
+    includeSize?: boolean;
+    maxFiles?: number;
+  } = {}
+): Promise<DirectoryTreeResult> {
+  const {
+    maxDepth = DEFAULT_MAX_DEPTH,
+    excludePatterns = [],
+    includeHidden = false,
+    includeSize = false,
+    maxFiles,
+  } = options;
+  const validPath = await validateExistingPath(dirPath);
+
+  // Ensure the requested path is a directory (not just an existing path).
+  const rootStats = await fs.stat(validPath);
+  if (!rootStats.isDirectory()) {
+    throw new McpError(
+      ErrorCode.E_NOT_DIRECTORY,
+      `Not a directory: ${dirPath}`,
+      dirPath
+    );
+  }
+
+  let totalFiles = 0;
+  let totalDirectories = 0;
+  let maxDepthReached = 0;
+  let skippedInaccessible = 0;
+  let skippedSymlinks = 0;
+  let truncated = false;
+
+  const excludeMatchers =
+    excludePatterns.length > 0
+      ? excludePatterns.map((pattern) => new Minimatch(pattern))
+      : [];
+
+  const hitMaxFiles = (): boolean => {
+    return maxFiles !== undefined && totalFiles >= maxFiles;
+  };
+
+  const shouldExclude = (name: string, relativePath: string): boolean => {
+    if (excludeMatchers.length === 0) return false;
+    return excludeMatchers.some((m) => m.match(name) || m.match(relativePath));
+  };
+
+  const buildTree = async (
+    currentPath: string,
+    depth: number,
+    relativePath = ''
+  ): Promise<TreeEntry | null> => {
+    if (hitMaxFiles()) {
+      truncated = true;
+      return null;
+    }
+
+    let validatedPath: string;
+    let isSymlink = false;
+    try {
+      ({ resolvedPath: validatedPath, isSymlink } =
+        await validateExistingPathDetailed(currentPath));
+    } catch (error) {
+      if (
+        error instanceof McpError &&
+        (error.code === ErrorCode.E_ACCESS_DENIED ||
+          error.code === ErrorCode.E_SYMLINK_NOT_ALLOWED)
+      ) {
+        skippedSymlinks++;
+      } else {
+        skippedInaccessible++;
+      }
+      return null;
+    }
+
+    const name = path.basename(currentPath);
+
+    // Check exclusions
+    if (shouldExclude(name, relativePath)) {
+      return null;
+    }
+
+    if (!includeHidden && name.startsWith('.') && relativePath !== '') {
+      return null;
+    }
+
+    maxDepthReached = Math.max(maxDepthReached, depth);
+
+    if (isSymlink) {
+      skippedSymlinks++;
+      return null;
+    }
+
+    let stats;
+    try {
+      stats = await fs.stat(validatedPath);
+    } catch {
+      skippedInaccessible++;
+      return null;
+    }
+
+    const { size } = stats;
+
+    if (stats.isFile()) {
+      if (hitMaxFiles()) {
+        truncated = true;
+        return null;
+      }
+      totalFiles++;
+      const entry: TreeEntry = { name, type: 'file' };
+      if (includeSize) {
+        entry.size = size;
+      }
+      return entry;
+    }
+
+    if (stats.isDirectory()) {
+      totalDirectories++;
+
+      if (depth >= maxDepth) {
+        truncated = true;
+        return { name, type: 'directory', children: [] };
+      }
+
+      let items;
+      try {
+        items = await fs.readdir(validatedPath, { withFileTypes: true });
+      } catch {
+        skippedInaccessible++;
+        return { name, type: 'directory', children: [] };
+      }
+
+      const children: TreeEntry[] = [];
+      for (
+        let i = 0;
+        i < items.length && !hitMaxFiles();
+        i += DIR_TRAVERSAL_CONCURRENCY
+      ) {
+        const batch = items.slice(i, i + DIR_TRAVERSAL_CONCURRENCY);
+        const batchResults = await Promise.all(
+          batch.map((item) => {
+            const childPath = path.join(validatedPath, item.name);
+            const childRelative = relativePath
+              ? `${relativePath}/${item.name}`
+              : item.name;
+            return buildTree(childPath, depth + 1, childRelative);
+          })
+        );
+        for (const entry of batchResults) {
+          if (entry !== null) {
+            children.push(entry);
+          }
+        }
+      }
+
+      children.sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === 'directory' ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+      return { name, type: 'directory', children };
+    }
+
+    return null;
+  };
+
+  const tree = await buildTree(validPath, 0);
+
+  if (!tree) {
+    throw new McpError(
+      ErrorCode.E_UNKNOWN,
+      `Unable to build tree for path: ${dirPath}`,
+      dirPath
+    );
+  }
+
+  return {
+    tree,
+    summary: {
+      totalFiles,
+      totalDirectories,
+      maxDepthReached,
+      truncated,
+      skippedInaccessible,
+      skippedSymlinks,
+    },
+  };
+}
+
+/**
+ * Read a media/binary file and return as base64.
+ * Useful for images, audio, and other binary content.
+ */
+export async function readMediaFile(
+  filePath: string,
+  options: {
+    maxSize?: number;
+  } = {}
+): Promise<MediaFileResult> {
+  const { maxSize = MAX_MEDIA_FILE_SIZE } = options;
+  const validPath = await validateExistingPath(filePath);
+
+  const stats = await fs.stat(validPath);
+  const { size } = stats;
+
+  if (!stats.isFile()) {
+    throw new McpError(
+      ErrorCode.E_NOT_FILE,
+      `Not a file: ${filePath}`,
+      filePath
+    );
+  }
+
+  if (size > maxSize) {
+    throw new McpError(
+      ErrorCode.E_TOO_LARGE,
+      `File too large: ${size} bytes (max: ${maxSize} bytes)`,
+      filePath,
+      { size, maxSize }
+    );
+  }
+
+  const ext = path.extname(validPath).toLowerCase();
+  const mimeType = MIME_TYPES[ext] ?? 'application/octet-stream';
+
+  const buffer = await fs.readFile(validPath);
+  const data = buffer.toString('base64');
+
+  let width: number | undefined;
+  let height: number | undefined;
+
+  if (mimeType.startsWith('image/')) {
+    const dimensions = parseImageDimensions(buffer, ext);
+    if (dimensions) {
+      ({ width, height } = dimensions);
+    }
+  }
+
+  return {
+    path: validPath,
+    mimeType,
+    size,
+    data,
+    width,
+    height,
+  };
+}
+
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+type ImageParser = (buffer: Buffer) => ImageDimensions | null;
+
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47] as const;
+const JPEG_SIGNATURE = [0xff, 0xd8] as const;
+const GIF_SIGNATURE = [0x47, 0x49, 0x46] as const;
+const BMP_SIGNATURE = [0x42, 0x4d] as const;
+const WEBP_RIFF = [0x52, 0x49, 0x46, 0x46] as const;
+const WEBP_MARKER = [0x57, 0x45, 0x42, 0x50] as const;
+
+function matchesSignature(
+  buffer: Buffer,
+  signature: readonly number[],
+  offset = 0
+): boolean {
+  if (buffer.length < offset + signature.length) return false;
+  return signature.every((byte, i) => buffer[offset + i] === byte);
+}
+
+function parsePng(buffer: Buffer): ImageDimensions | null {
+  if (buffer.length < 24 || !matchesSignature(buffer, PNG_SIGNATURE))
+    return null;
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+function parseJpeg(buffer: Buffer): ImageDimensions | null {
+  if (buffer.length < 2 || !matchesSignature(buffer, JPEG_SIGNATURE))
+    return null;
+  let offset = 2;
+  while (offset < buffer.length - 8) {
+    if (buffer[offset] !== 0xff) {
+      offset++;
+      continue;
+    }
+    const marker = buffer[offset + 1];
+    const isSOF =
+      marker !== undefined &&
+      ((marker >= 0xc0 && marker <= 0xc3) ||
+        (marker >= 0xc5 && marker <= 0xc7) ||
+        (marker >= 0xc9 && marker <= 0xcb) ||
+        (marker >= 0xcd && marker <= 0xcf));
+    if (isSOF) {
+      return {
+        width: buffer.readUInt16BE(offset + 7),
+        height: buffer.readUInt16BE(offset + 5),
+      };
+    }
+    if (offset + 3 >= buffer.length) break;
+    offset += 2 + buffer.readUInt16BE(offset + 2);
+  }
+  return null;
+}
+
+function parseGif(buffer: Buffer): ImageDimensions | null {
+  if (buffer.length < 10 || !matchesSignature(buffer, GIF_SIGNATURE))
+    return null;
+  return { width: buffer.readUInt16LE(6), height: buffer.readUInt16LE(8) };
+}
+
+function parseBmp(buffer: Buffer): ImageDimensions | null {
+  if (buffer.length < 26 || !matchesSignature(buffer, BMP_SIGNATURE))
+    return null;
+  return {
+    width: buffer.readInt32LE(18),
+    height: Math.abs(buffer.readInt32LE(22)),
+  };
+}
+
+function parseWebp(buffer: Buffer): ImageDimensions | null {
+  if (buffer.length < 30) return null;
+  if (
+    !matchesSignature(buffer, WEBP_RIFF) ||
+    !matchesSignature(buffer, WEBP_MARKER, 8)
+  )
+    return null;
+
+  const chunkType = [buffer[12], buffer[13], buffer[14], buffer[15]];
+  // VP8 (lossy): 0x56 0x50 0x38 0x20
+  if (
+    chunkType[0] === 0x56 &&
+    chunkType[1] === 0x50 &&
+    chunkType[2] === 0x38 &&
+    chunkType[3] === 0x20
+  ) {
+    return {
+      width: buffer.readUInt16LE(26) & 0x3fff,
+      height: buffer.readUInt16LE(28) & 0x3fff,
+    };
+  }
+  // VP8L (lossless): 0x56 0x50 0x38 0x4c
+  if (
+    chunkType[0] === 0x56 &&
+    chunkType[1] === 0x50 &&
+    chunkType[2] === 0x38 &&
+    chunkType[3] === 0x4c
+  ) {
+    const bits = buffer.readUInt32LE(21);
+    return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+  }
+  // VP8X (extended): 0x56 0x50 0x38 0x58
+  if (
+    chunkType[0] === 0x56 &&
+    chunkType[1] === 0x50 &&
+    chunkType[2] === 0x38 &&
+    chunkType[3] === 0x58
+  ) {
+    const width =
+      (buffer[24] ?? 0) | ((buffer[25] ?? 0) << 8) | ((buffer[26] ?? 0) << 16);
+    const height =
+      (buffer[27] ?? 0) | ((buffer[28] ?? 0) << 8) | ((buffer[29] ?? 0) << 16);
+    return { width: width + 1, height: height + 1 };
+  }
+  return null;
+}
+
+const IMAGE_PARSERS: Record<string, ImageParser> = {
+  '.png': parsePng,
+  '.jpg': parseJpeg,
+  '.jpeg': parseJpeg,
+  '.gif': parseGif,
+  '.bmp': parseBmp,
+  '.webp': parseWebp,
+};
+
+/**
+ * Parse image dimensions from common image format headers.
+ * Supports PNG, JPEG, GIF, BMP, and WebP.
+ */
+function parseImageDimensions(
+  buffer: Buffer,
+  ext: string
+): ImageDimensions | null {
+  try {
+    const parser = IMAGE_PARSERS[ext];
+    return parser ? parser(buffer) : null;
+  } catch {
+    return null;
+  }
+}
