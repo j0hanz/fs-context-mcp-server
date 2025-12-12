@@ -84,7 +84,8 @@ export const SearchFilesInputSchema = {
     .describe('Maximum directory depth to search'),
 };
 
-export const ReadFileInputSchema = {
+// Base schema for reading a file with various options.
+const ReadFileBaseSchema = z.object({
   path: z
     .string()
     .min(1, 'Path cannot be empty')
@@ -132,9 +133,13 @@ export const ReadFileInputSchema = {
     .describe(
       'Read only the last N lines of the file (memory efficient for large files)'
     ),
-};
+});
 
-export const ReadMultipleFilesInputSchema = {
+// Schema for reading a single file.
+export const ReadFileInputSchema = ReadFileBaseSchema.shape;
+
+// Schema for reading multiple files in one request.
+const ReadMultipleFilesBaseSchema = z.object({
   paths: z
     .array(z.string().min(1, 'Path cannot be empty'))
     .min(1, 'At least one path is required')
@@ -167,7 +172,9 @@ export const ReadMultipleFilesInputSchema = {
     .max(100000, 'tail cannot exceed 100,000 lines')
     .optional()
     .describe('Read only the last N lines of each file'),
-};
+});
+
+export const ReadMultipleFilesInputSchema = ReadMultipleFilesBaseSchema.shape;
 
 export const GetFileInfoInputSchema = {
   path: z

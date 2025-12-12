@@ -71,9 +71,12 @@ export function registerSearchContentTool(server: McpServer): void {
             filesMatched: result.summary.filesMatched,
             totalMatches: result.summary.matches,
             truncated: result.summary.truncated,
-            skippedTooLarge: result.summary.skippedTooLarge,
-            skippedBinary: result.summary.skippedBinary,
-            skippedInaccessible: result.summary.skippedInaccessible,
+            skippedTooLarge: result.summary.skippedTooLarge || undefined,
+            skippedBinary: result.summary.skippedBinary || undefined,
+            skippedInaccessible:
+              result.summary.skippedInaccessible || undefined,
+            linesSkippedDueToRegexTimeout:
+              result.summary.linesSkippedDueToRegexTimeout || undefined,
             stoppedReason: result.summary.stoppedReason,
           },
         };

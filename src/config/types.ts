@@ -105,6 +105,7 @@ export interface SearchContentResult {
     skippedTooLarge: number;
     skippedBinary: number;
     skippedInaccessible: number;
+    linesSkippedDueToRegexTimeout: number;
     stoppedReason?: 'maxResults' | 'maxFiles' | 'timeout';
   };
 }

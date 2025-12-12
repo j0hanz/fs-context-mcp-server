@@ -19,12 +19,24 @@ const require = createRequire(import.meta.url);
 const packageJson = require('../package.json') as { version: string };
 const SERVER_VERSION = packageJson.version;
 
-export async function parseArgs(): Promise<string[]> {
+export interface ParseArgsResult {
+  allowedDirs: string[];
+  allowCwd: boolean;
+}
+
+export async function parseArgs(): Promise<ParseArgsResult> {
   const args = process.argv.slice(2);
 
-  // Allow empty args when roots protocol is available
+  // Check for --allow-cwd flag
+  const allowCwdIndex = args.indexOf('--allow-cwd');
+  const allowCwd = allowCwdIndex !== -1;
+  if (allowCwd) {
+    args.splice(allowCwdIndex, 1);
+  }
+
+  // Allow empty args - will fall back to CWD or roots protocol
   if (args.length === 0) {
-    return [];
+    return { allowedDirs: [], allowCwd };
   }
 
   const validatedDirs: string[] = [];
@@ -46,8 +58,15 @@ export async function parseArgs(): Promise<string[]> {
     }
   }
 
-  return validatedDirs;
+  return { allowedDirs: validatedDirs, allowCwd };
 }
+
+export interface ServerOptions {
+  allowCwd?: boolean;
+}
+
+// Store server options for use in startServer
+let serverOptions: ServerOptions = {};
 
 async function updateRootsFromClient(server: McpServer): Promise<void> {
   try {
@@ -69,7 +88,9 @@ async function updateRootsFromClient(server: McpServer): Promise<void> {
   }
 }
 
-export function createServer(): McpServer {
+export function createServer(options: ServerOptions = {}): McpServer {
+  serverOptions = options;
+
   const server = new McpServer({
     name: 'filesystem-context-mcp',
     version: SERVER_VERSION,
@@ -94,16 +115,26 @@ export async function startServer(server: McpServer): Promise<void> {
   await server.connect(transport);
   console.error('Server connected and ready');
 
-  // Try to update roots from client after connection
-  // We don't wait for this to complete, but we log a warning if no roots are found after a short delay
-  // This is a best-effort check for the user
+  // Update allowed directories from roots protocol if available
   void updateRootsFromClient(server).then(() => {
     const dirs = getAllowedDirectories();
     if (dirs.length === 0) {
-      console.error('Warning: No allowed directories configured.');
-      console.error(
-        'Either specify directories via CLI arguments or ensure client provides roots.'
-      );
+      if (serverOptions.allowCwd) {
+        // Fall back to current working directory only if explicitly allowed
+        const cwd = normalizePath(process.cwd());
+        setAllowedDirectories([cwd]);
+        console.error(
+          'No directories specified. Using current working directory:'
+        );
+        console.error(`  - ${cwd}`);
+      } else {
+        console.error(
+          'WARNING: No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol.'
+        );
+        console.error(
+          'The server will not be able to access any files until directories are configured.'
+        );
+      }
     }
   });
 }

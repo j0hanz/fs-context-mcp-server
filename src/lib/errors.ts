@@ -10,6 +10,33 @@ import {
 // Re-export ErrorCode from centralized location
 export { ErrorCode };
 
+// Type guard for Node.js ErrnoException
+export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    typeof (error as NodeJS.ErrnoException).code === 'string'
+  );
+}
+
+// Mapping of Node.js error codes to McpError codes
+export const NODE_ERROR_CODE_MAP: Readonly<Record<string, ErrorCode>> = {
+  ENOENT: ErrorCode.E_NOT_FOUND,
+  EACCES: ErrorCode.E_PERMISSION_DENIED,
+  EPERM: ErrorCode.E_PERMISSION_DENIED,
+  ENOTDIR: ErrorCode.E_NOT_DIRECTORY,
+  EISDIR: ErrorCode.E_NOT_FILE,
+  ELOOP: ErrorCode.E_SYMLINK_NOT_ALLOWED,
+  ENAMETOOLONG: ErrorCode.E_INVALID_INPUT,
+  ETIMEDOUT: ErrorCode.E_TIMEOUT,
+  EMFILE: ErrorCode.E_TIMEOUT,
+  ENFILE: ErrorCode.E_TIMEOUT,
+  EBUSY: ErrorCode.E_PERMISSION_DENIED,
+  ENOTEMPTY: ErrorCode.E_NOT_DIRECTORY,
+  EEXIST: ErrorCode.E_INVALID_INPUT,
+  EINVAL: ErrorCode.E_INVALID_INPUT,
+} as const;
+
 export class McpError extends Error {
   constructor(
     public code: ErrorCode,
@@ -24,9 +51,7 @@ export class McpError extends Error {
     Object.setPrototypeOf(this, McpError.prototype);
   }
 
-  /**
-   * Create an McpError from an existing error with proper cause chaining
-   */
+  // Create McpError from existing error
   static fromError(
     code: ErrorCode,
     message: string,
@@ -75,52 +100,27 @@ const ERROR_SUGGESTIONS: Readonly<Record<ErrorCode, string>> = {
     'An unexpected error occurred. Check the error message for details.',
 } as const;
 
-/**
- * Classify an error into an appropriate error code based on message patterns and Node.js error codes
- */
+// Classify an unknown error into a standardized ErrorCode
 export function classifyError(error: unknown): ErrorCode {
+  // 1. Direct McpError classification
   if (error instanceof McpError) {
     return error.code;
   }
-
-  // Extract Node.js error code if available
-  const nodeErrorCode =
-    error instanceof Error && 'code' in error
-      ? (error as NodeJS.ErrnoException).code
-      : undefined;
-
-  // Classify by Node.js error code first (most reliable)
-  if (nodeErrorCode) {
-    switch (nodeErrorCode) {
-      case 'ENOENT':
-        return ErrorCode.E_NOT_FOUND;
-      case 'EACCES':
-      case 'EPERM':
-        return ErrorCode.E_PERMISSION_DENIED;
-      case 'ENOTDIR':
-        return ErrorCode.E_NOT_DIRECTORY;
-      case 'EISDIR':
-        return ErrorCode.E_NOT_FILE;
-      case 'ELOOP':
-        return ErrorCode.E_SYMLINK_NOT_ALLOWED;
-      case 'ENAMETOOLONG':
-        return ErrorCode.E_INVALID_INPUT;
-      case 'ETIMEDOUT':
-        return ErrorCode.E_TIMEOUT;
-      case 'EMFILE':
-      case 'ENFILE':
-        // Too many open files - treat as timeout/resource exhaustion
-        return ErrorCode.E_TIMEOUT;
-      case 'EBUSY':
-        return ErrorCode.E_PERMISSION_DENIED;
-      case 'ENOTEMPTY':
-        return ErrorCode.E_NOT_DIRECTORY;
-    }
+  // 2. Node.js ErrnoException code mapping
+  if (isNodeError(error) && error.code) {
+    const mapped = NODE_ERROR_CODE_MAP[error.code];
+    if (mapped) return mapped;
   }
 
+  // 3. Message pattern matching (fallback for non-Node errors)
+  return classifyByMessage(error);
+}
+
+function classifyByMessage(error: unknown): ErrorCode {
   const message = error instanceof Error ? error.message : String(error);
   const lowerMessage = message.toLowerCase();
 
+  // Access/security related
   if (
     lowerMessage.includes('not within allowed') ||
     lowerMessage.includes('access denied') ||
@@ -128,66 +128,72 @@ export function classifyError(error: unknown): ErrorCode {
   ) {
     return ErrorCode.E_ACCESS_DENIED;
   }
+
+  // Not found (including ENOENT message patterns)
   if (
-    lowerMessage.includes('enoent') ||
     lowerMessage.includes('not found') ||
     lowerMessage.includes('does not exist') ||
-    lowerMessage.includes('no such file')
+    lowerMessage.includes('enoent')
   ) {
     return ErrorCode.E_NOT_FOUND;
   }
+
+  // Type mismatches
   if (
     lowerMessage.includes('not a file') ||
-    lowerMessage.includes('is a directory') ||
-    lowerMessage.includes('eisdir')
+    lowerMessage.includes('is a directory')
   ) {
     return ErrorCode.E_NOT_FILE;
   }
-  if (
-    lowerMessage.includes('not a directory') ||
-    lowerMessage.includes('enotdir')
-  ) {
+  if (lowerMessage.includes('not a directory')) {
     return ErrorCode.E_NOT_DIRECTORY;
   }
-  if (
-    lowerMessage.includes('too large') ||
-    lowerMessage.includes('exceeds') ||
-    lowerMessage.includes('file size')
-  ) {
+
+  // Size limits
+  if (lowerMessage.includes('too large') || lowerMessage.includes('exceeds')) {
     return ErrorCode.E_TOO_LARGE;
   }
+
+  // Binary file
   if (lowerMessage.includes('binary')) {
     return ErrorCode.E_BINARY_FILE;
   }
-  if (lowerMessage.includes('timeout') || lowerMessage.includes('etimedout')) {
+
+  // Timeout
+  if (lowerMessage.includes('timeout') || lowerMessage.includes('timed out')) {
     return ErrorCode.E_TIMEOUT;
   }
-  if (
-    lowerMessage.includes('invalid') &&
-    (lowerMessage.includes('pattern') ||
-      lowerMessage.includes('regex') ||
-      lowerMessage.includes('regexp') ||
-      lowerMessage.includes('glob'))
-  ) {
+
+  // Invalid pattern
+  if (lowerMessage.includes('invalid') && lowerMessage.includes('pattern')) {
     return ErrorCode.E_INVALID_PATTERN;
   }
+  if (lowerMessage.includes('regex') || lowerMessage.includes('regexp')) {
+    return ErrorCode.E_INVALID_PATTERN;
+  }
+
+  // Invalid input
   if (
     lowerMessage.includes('invalid') ||
-    lowerMessage.includes('cannot specify multiple') ||
-    lowerMessage.includes('must be')
+    lowerMessage.includes('cannot specify')
   ) {
     return ErrorCode.E_INVALID_INPUT;
   }
+
+  // Permission (when no error code available)
   if (
-    lowerMessage.includes('eacces') ||
-    lowerMessage.includes('eperm') ||
+    lowerMessage.includes('permission denied') ||
     lowerMessage.includes('permission')
   ) {
     return ErrorCode.E_PERMISSION_DENIED;
   }
-  if (lowerMessage.includes('symlink') || lowerMessage.includes('eloop')) {
+
+  // Symlink
+  if (lowerMessage.includes('symlink')) {
     return ErrorCode.E_SYMLINK_NOT_ALLOWED;
   }
+
+  // Path traversal
   if (lowerMessage.includes('traversal')) {
     return ErrorCode.E_PATH_TRAVERSAL;
   }

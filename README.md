@@ -39,28 +39,39 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 
 ## 🚀 Quick Start
 
-### NPX (Recommended)
+### NPX (Recommended - Zero Config)
+
+```bash
+# Works in current directory automatically!
+npx -y @j0hanz/filesystem-context-mcp@latest
+```
+
+Or specify directories explicitly:
 
 ```bash
 npx -y @j0hanz/filesystem-context-mcp@latest /path/to/your/project
 ```
 
-### VS Code
+### VS Code (with workspace folder)
 
-Add to your VS Code settings (`.vscode/settings.json` or User Settings):
+Add to your VS Code settings (`.vscode/mcp.json`):
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "filesystem-context": {
-        "command": "npx",
-        "args": ["-y", "@j0hanz/filesystem-context-mcp@latest"]
-      }
+  "servers": {
+    "filesystem-context": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@j0hanz/filesystem-context-mcp@latest",
+        "${workspaceFolder}"
+      ]
     }
   }
 }
 ```
+
+> **Tip:** `${workspaceFolder}` automatically uses your current VS Code workspace. You can also omit it and the server will use its current working directory.
 
 ### Claude Desktop
 
@@ -76,6 +87,8 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
   }
 }
 ```
+
+> **Note:** Claude Desktop will use the current working directory automatically. No path arguments needed!
 
 ## 📦 Installation
 
@@ -104,9 +117,19 @@ node dist/index.js /path/to/your/project
 
 ## ⚙️ Configuration
 
+### Directory Resolution (Priority Order)
+
+The server determines which directories to access in this order:
+
+1. **CLI Arguments** - Explicitly passed paths take highest priority
+2. **MCP Roots Protocol** - Directories provided by the MCP client
+3. **Current Working Directory** - Automatic fallback for plug-and-play experience
+
+This means you can run the server with zero configuration and it will work!
+
 ### Command Line Arguments
 
-The server accepts one or more directory paths as arguments. Only these directories (and their contents) will be accessible:
+Optionally specify one or more directory paths as arguments:
 
 ```bash
 filesystem-context-mcp /home/user/project /home/user/docs
@@ -114,7 +137,11 @@ filesystem-context-mcp /home/user/project /home/user/docs
 
 ### MCP Roots Protocol
 
-If no CLI arguments are provided, the server will use the MCP Roots protocol to receive allowed directories from the client. This is useful for dynamic directory configuration.
+If no CLI arguments are provided, the server will use the MCP Roots protocol to receive allowed directories from the client (if supported).
+
+### Zero-Config Mode
+
+If neither CLI arguments nor MCP Roots provide directories, the server automatically uses the current working directory. This makes it truly plug-and-play!
 
 ### Environment Variables
 
@@ -315,20 +342,24 @@ Read a binary/media file and return it as base64-encoded data.
 <details>
 <summary><b>VS Code</b></summary>
 
-Add to `.vscode/settings.json`:
+Add to `.vscode/mcp.json` (recommended) or `.vscode/settings.json`:
 
 ```json
 {
-  "mcp": {
-    "servers": {
-      "filesystem-context": {
-        "command": "npx",
-        "args": ["-y", "@j0hanz/filesystem-context-mcp@latest"]
-      }
+  "servers": {
+    "filesystem-context": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@j0hanz/filesystem-context-mcp@latest",
+        "${workspaceFolder}"
+      ]
     }
   }
 }
 ```
+
+> **Note:** `${workspaceFolder}` is expanded by VS Code to the current workspace path.
 
 </details>
 
@@ -509,7 +540,7 @@ This launches the MCP Inspector for interactive testing of all tools.
 | "Path does not exist" error | Verify the path exists. Use `list_directory` to explore available files.                 |
 | "File too large" error      | Use `head` or `tail` parameters for partial reading, or increase `maxSize`.              |
 | "Binary file" warning       | Use `read_media_file` for binary files, or set `skipBinary=false` in content search.     |
-| No directories configured   | Pass directories as CLI arguments or ensure client provides roots via MCP protocol.      |
+| Unexpected directory access | Server defaults to CWD if no args/roots provided. Pass explicit paths to restrict.       |
 | Symlink blocked             | Symlinks that resolve outside allowed directories are blocked for security.              |
 | Regex timeout               | Simplify the regex pattern or use `isLiteral=true` for literal string search.            |
 

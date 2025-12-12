@@ -11,6 +11,7 @@
  *
  * Usage:
  *   filesystem-context-mcp /path/to/dir1 /path/to/dir2
+ *   filesystem-context-mcp --allow-cwd  # Use current working directory
  *
  * Or with MCP Roots protocol (no CLI args needed).
  */
@@ -18,23 +19,23 @@ import { setAllowedDirectories } from './lib/path-validation.js';
 import { createServer, parseArgs, startServer } from './server.js';
 
 async function main(): Promise<void> {
-  const allowedDirs = await parseArgs();
+  const { allowedDirs, allowCwd } = await parseArgs();
+
+  console.error('Filesystem Context MCP Server starting...');
 
   if (allowedDirs.length > 0) {
     setAllowedDirectories(allowedDirs);
-    console.error('Filesystem Context MCP Server starting...');
     console.error('Allowed directories (from CLI):');
     for (const dir of allowedDirs) {
       console.error(`  - ${dir}`);
     }
   } else {
-    console.error('Filesystem Context MCP Server starting...');
     console.error(
-      'No directories specified via CLI. Will use MCP Roots protocol if available.'
+      `No directories specified via CLI. Will use MCP Roots${allowCwd ? ' or current working directory' : ''}.`
     );
   }
 
-  const server = createServer();
+  const server = createServer({ allowCwd });
   await startServer(server);
 }
 

@@ -27,11 +27,11 @@ import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_TOP_N,
   DIR_TRAVERSAL_CONCURRENCY,
+  getMimeType,
   MAX_LINE_CONTENT_LENGTH,
   MAX_MEDIA_FILE_SIZE,
   MAX_SEARCHABLE_FILE_SIZE,
   MAX_TEXT_FILE_SIZE,
-  MIME_TYPES,
   PARALLEL_CONCURRENCY,
   REGEX_MATCH_TIMEOUT_MS,
 } from './constants.js';
@@ -50,6 +50,18 @@ import {
 
 function shouldStopBecauseOfTimeout(deadlineMs: number | undefined): boolean {
   return deadlineMs !== undefined && Date.now() > deadlineMs;
+}
+
+// Create a matcher function from exclude patterns
+function createExcludeMatcher(
+  excludePatterns: string[]
+): (name: string, relativePath: string) => boolean {
+  if (excludePatterns.length === 0) {
+    return () => false;
+  }
+  const matchers = excludePatterns.map((pattern) => new Minimatch(pattern));
+  return (name: string, relativePath: string): boolean =>
+    matchers.some((m) => m.match(name) || m.match(relativePath));
 }
 
 /**
@@ -166,7 +178,7 @@ export async function getFileInfo(filePath: string): Promise<FileInfo> {
 
   const name = path.basename(requestedPath);
   const ext = path.extname(name).toLowerCase();
-  const mimeType = MIME_TYPES[ext] ?? undefined;
+  const mimeType = ext ? getMimeType(ext) : undefined;
 
   // If it is a symlink, try to read the link target without following.
   let symlinkTarget: string | undefined;
@@ -640,6 +652,7 @@ export async function searchContent(
   let skippedTooLarge = 0;
   let skippedBinary = 0;
   let skippedInaccessible = 0;
+  let linesSkippedDueToRegexTimeout = 0;
   let truncated = false;
   let stoppedReason: SearchContentResult['summary']['stoppedReason'];
 
@@ -749,6 +762,7 @@ export async function searchContent(
 
           const matchCount = countRegexMatches(line, regex);
           if (matchCount < 0) {
+            linesSkippedDueToRegexTimeout++;
             console.error(
               `[searchContent] Skipping line ${lineNumber} in ${validFile} due to regex timeout`
             );
@@ -826,6 +840,7 @@ export async function searchContent(
       skippedTooLarge,
       skippedBinary,
       skippedInaccessible,
+      linesSkippedDueToRegexTimeout,
       stoppedReason,
     },
   };
@@ -858,15 +873,7 @@ export async function analyzeDirectory(
   const largestFiles: { path: string; size: number }[] = [];
   const recentlyModified: { path: string; modified: Date }[] = [];
 
-  const excludeMatchers =
-    excludePatterns.length > 0
-      ? excludePatterns.map((pattern) => new Minimatch(pattern))
-      : [];
-
-  const shouldExclude = (name: string, relativePath: string): boolean => {
-    if (excludeMatchers.length === 0) return false;
-    return excludeMatchers.some((m) => m.match(name) || m.match(relativePath));
-  };
+  const shouldExclude = createExcludeMatcher(excludePatterns);
 
   const insertSorted = <T>(
     arr: T[],
@@ -1034,18 +1041,10 @@ export async function getDirectoryTree(
   let skippedSymlinks = 0;
   let truncated = false;
 
-  const excludeMatchers =
-    excludePatterns.length > 0
-      ? excludePatterns.map((pattern) => new Minimatch(pattern))
-      : [];
+  const shouldExclude = createExcludeMatcher(excludePatterns);
 
   const hitMaxFiles = (): boolean => {
     return maxFiles !== undefined && totalFiles >= maxFiles;
-  };
-
-  const shouldExclude = (name: string, relativePath: string): boolean => {
-    if (excludeMatchers.length === 0) return false;
-    return excludeMatchers.some((m) => m.match(name) || m.match(relativePath));
   };
 
   const buildTree = async (
@@ -1226,7 +1225,7 @@ export async function readMediaFile(
   }
 
   const ext = path.extname(validPath).toLowerCase();
-  const mimeType = MIME_TYPES[ext] ?? 'application/octet-stream';
+  const mimeType = getMimeType(ext);
 
   const buffer = await fs.readFile(validPath);
   const data = buffer.toString('base64');

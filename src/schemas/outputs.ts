@@ -139,6 +139,12 @@ export const SearchContentOutputSchema = {
       skippedTooLarge: z.number().optional(),
       skippedBinary: z.number().optional(),
       skippedInaccessible: z.number().optional(),
+      linesSkippedDueToRegexTimeout: z
+        .number()
+        .optional()
+        .describe(
+          'Number of lines skipped due to regex matching timeout (potential incomplete results)'
+        ),
       stoppedReason: z.enum(['maxResults', 'maxFiles', 'timeout']).optional(),
     })
     .optional(),

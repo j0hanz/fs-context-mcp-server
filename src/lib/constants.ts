@@ -271,6 +271,17 @@ export const KNOWN_BINARY_EXTENSIONS = new Set([
   '.map',
 ]);
 
+/**
+ * Get the MIME type for a file extension.
+ * Returns 'application/octet-stream' for unknown extensions.
+ *
+ * @param ext - File extension including the dot (e.g., '.png')
+ * @returns The MIME type string
+ */
+export function getMimeType(ext: string): string {
+  return MIME_TYPES[ext.toLowerCase()] ?? 'application/octet-stream';
+}
+
 // MIME type mappings for media files
 export const MIME_TYPES: Record<string, string> = {
   // Images

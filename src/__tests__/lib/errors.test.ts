@@ -6,10 +6,53 @@ import {
   ErrorCode,
   formatDetailedError,
   getSuggestion,
+  isNodeError,
   McpError,
+  NODE_ERROR_CODE_MAP,
 } from '../../lib/errors.js';
 
 describe('Error Utilities', () => {
+  describe('isNodeError', () => {
+    it('should return true for Node.js ErrnoException', () => {
+      const error = Object.assign(new Error('test'), { code: 'ENOENT' });
+      expect(isNodeError(error)).toBe(true);
+    });
+
+    it('should return false for regular Error without code', () => {
+      const error = new Error('test');
+      expect(isNodeError(error)).toBe(false);
+    });
+
+    it('should return false for non-Error objects', () => {
+      expect(isNodeError('string')).toBe(false);
+      expect(isNodeError({ code: 'ENOENT' })).toBe(false);
+      expect(isNodeError(null)).toBe(false);
+      expect(isNodeError(undefined)).toBe(false);
+    });
+
+    it('should return false for Error with non-string code', () => {
+      const error = Object.assign(new Error('test'), { code: 123 });
+      expect(isNodeError(error)).toBe(false);
+    });
+  });
+
+  describe('NODE_ERROR_CODE_MAP', () => {
+    it('should map common Node.js error codes', () => {
+      expect(NODE_ERROR_CODE_MAP.ENOENT).toBe(ErrorCode.E_NOT_FOUND);
+      expect(NODE_ERROR_CODE_MAP.EACCES).toBe(ErrorCode.E_PERMISSION_DENIED);
+      expect(NODE_ERROR_CODE_MAP.EPERM).toBe(ErrorCode.E_PERMISSION_DENIED);
+      expect(NODE_ERROR_CODE_MAP.EISDIR).toBe(ErrorCode.E_NOT_FILE);
+      expect(NODE_ERROR_CODE_MAP.ENOTDIR).toBe(ErrorCode.E_NOT_DIRECTORY);
+      expect(NODE_ERROR_CODE_MAP.ELOOP).toBe(ErrorCode.E_SYMLINK_NOT_ALLOWED);
+      expect(NODE_ERROR_CODE_MAP.ETIMEDOUT).toBe(ErrorCode.E_TIMEOUT);
+    });
+
+    it('should handle resource exhaustion errors as timeout', () => {
+      expect(NODE_ERROR_CODE_MAP.EMFILE).toBe(ErrorCode.E_TIMEOUT);
+      expect(NODE_ERROR_CODE_MAP.ENFILE).toBe(ErrorCode.E_TIMEOUT);
+    });
+  });
+
   describe('classifyError', () => {
     it('should classify access denied errors', () => {
       const error = new Error('Path not within allowed directories');
