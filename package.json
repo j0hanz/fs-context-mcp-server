@@ -1,20 +1,23 @@
 {
   "name": "@j0hanz/filesystem-context-mcp",
   "version": "1.0.8",
-  "description": "MCP server for filesystem scanning, searching, and analysis with security validation",
+  "description": "A Model Context Protocol (MCP) server that provides context from the filesystem by scanning and analyzing files and directories.",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "sideEffects": false,
   "bin": {
     "filesystem-context-mcp": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/j0hanz/filesystem-context-mcp-server.git"
-  },
   "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
     "build": "tsc && npm run copy:assets",
     "copy:assets": "node -e \"require('fs').copyFileSync('src/instructions.md', 'dist/instructions.md')\"",
     "dev": "tsx watch src/index.ts",
@@ -25,34 +28,42 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
-    "inspector": "npx @modelcontextprotocol/inspector"
+    "inspector": "npx @modelcontextprotocol/inspector",
+    "prepublishOnly": "npm run lint && npm run type-check && npm run build"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
     "filesystem",
-    "scanner"
+    "scanner",
+    "search",
+    "analysis"
   ],
-  "author": "",
+  "author": "j0hanz",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/j0hanz/filesystem-context-mcp-server.git"
+  },
+  "homepage": "https://github.com/j0hanz/filesystem-context-mcp-server#readme",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.24.3",
     "fast-glob": "^3.3.3",
     "minimatch": "^10.1.1",
     "safe-regex2": "^5.0.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.23.0",
+    "@eslint/js": "^9.39.1",
     "@trivago/prettier-plugin-sort-imports": "^6.0.0",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "^4.0.15",
     "eslint": "^9.23.0",
-    "eslint-config-prettier": "^10.1.1",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-unused-imports": "^4.3.0",
-    "prettier": "^3",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
+    "prettier": "^3.7.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8.49.0",
     "vitest": "^4.0.15"
   },
