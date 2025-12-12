@@ -1,5 +1,9 @@
 # Filesystem Context MCP Server
 
+
+  <img src="docs/logo.png" alt="Filesystem Context MCP Server Logo" width="175">
+
+
 A secure, read-only MCP server for filesystem scanning, searching, and analysis with comprehensive security validation.
 
 [![npm version](https://img.shields.io/npm/v/@j0hanz/filesystem-context-mcp.svg)](https://www.npmjs.com/package/@j0hanz/filesystem-context-mcp)
