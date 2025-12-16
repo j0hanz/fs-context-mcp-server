@@ -59,6 +59,7 @@ export function registerSearchFilesTool(server: McpServer): void {
             matched: result.summary.matched,
             truncated: result.summary.truncated,
             skippedInaccessible: result.summary.skippedInaccessible,
+            filesScanned: result.summary.filesScanned,
           },
         };
 

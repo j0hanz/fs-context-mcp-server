@@ -55,6 +55,7 @@ export interface SearchFilesResult {
     matched: number;
     truncated: boolean;
     skippedInaccessible: number;
+    filesScanned: number;
   };
 }
 

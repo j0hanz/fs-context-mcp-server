@@ -51,6 +51,8 @@ export function registerReadFileTool(server: McpServer): void {
           } else if (tail !== undefined) {
             text += `\n\n[Showing last ${String(tail)} lines]`;
           }
+        } else if (result.totalLines) {
+          text += `\n\n[Total lines: ${result.totalLines}]`;
         }
 
         const structured = {

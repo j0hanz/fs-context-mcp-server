@@ -300,6 +300,7 @@ export async function searchFiles(
   const results: SearchResult[] = [];
   let skippedInaccessible = 0;
   let truncated = false;
+  let filesScanned = 0;
 
   const batch: string[] = [];
 
@@ -309,8 +310,6 @@ export async function searchFiles(
 
     const settled = await Promise.allSettled(
       toProcess.map(async (match) => {
-        // fast-glob operates within validated cwd with followSymbolicLinks:false,
-        // so paths are already bounded - skip redundant validateExistingPath
         const stats = await fs.stat(match);
         const { size, mtime: modified } = stats;
         return {
@@ -348,6 +347,7 @@ export async function searchFiles(
 
   for await (const entry of stream) {
     const matchPath = typeof entry === 'string' ? entry : String(entry);
+    filesScanned++;
 
     if (maxResults !== undefined && results.length >= maxResults) {
       truncated = true;
@@ -376,6 +376,7 @@ export async function searchFiles(
       matched: results.length,
       truncated,
       skippedInaccessible,
+      filesScanned,
     },
   };
 }

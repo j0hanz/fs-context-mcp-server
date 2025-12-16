@@ -466,7 +466,10 @@ export async function readFile(
 
   const content = await fs.readFile(validPath, { encoding });
 
-  return { path: validPath, content, truncated: false };
+  // Count total lines for full reads
+  const totalLines = content.split('\n').length;
+
+  return { path: validPath, content, truncated: false, totalLines };
 }
 
 // Process items in parallel using the shared work queue

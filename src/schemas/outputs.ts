@@ -6,6 +6,16 @@ export const ListAllowedDirectoriesOutputSchema = {
   ok: z.boolean(),
   allowedDirectories: z.array(z.string()).optional(),
   count: z.number().optional().describe('Number of allowed directories'),
+  accessStatus: z
+    .array(
+      z.object({
+        path: z.string(),
+        accessible: z.boolean().describe('Whether the directory exists'),
+        readable: z.boolean().describe('Whether the directory is readable'),
+      })
+    )
+    .optional()
+    .describe('Access status for each allowed directory'),
   hint: z.string().optional().describe('Usage hint based on configuration'),
   error: ErrorSchema.optional(),
 };
@@ -18,6 +28,10 @@ export const ListDirectoryOutputSchema = {
       z.object({
         name: z.string(),
         type: FileTypeSchema,
+        extension: z
+          .string()
+          .optional()
+          .describe('File extension without dot (e.g., "ts", "json")'),
         size: z.number().optional(),
         modified: z.string().optional(),
         symlinkTarget: z
@@ -65,6 +79,10 @@ export const SearchFilesOutputSchema = {
       matched: z.number(),
       truncated: z.boolean(),
       skippedInaccessible: z.number().optional(),
+      filesScanned: z
+        .number()
+        .optional()
+        .describe('Total number of files scanned by the glob pattern'),
     })
     .optional(),
   error: ErrorSchema.optional(),

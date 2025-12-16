@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
@@ -10,6 +12,12 @@ import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
 } from '../schemas/index.js';
+
+function getExtension(name: string, isFile: boolean): string | undefined {
+  if (!isFile) return undefined;
+  const ext = path.extname(name);
+  return ext ? ext.slice(1) : undefined;
+}
 
 export function registerListDirectoryTool(server: McpServer): void {
   server.registerTool(
@@ -53,6 +61,7 @@ export function registerListDirectoryTool(server: McpServer): void {
           entries: result.entries.map((e) => ({
             name: e.relativePath,
             type: e.type,
+            extension: getExtension(e.relativePath, e.type === 'file'),
             size: e.size,
             modified: e.modified?.toISOString(),
             symlinkTarget: e.symlinkTarget,
