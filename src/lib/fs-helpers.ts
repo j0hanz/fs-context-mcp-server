@@ -469,7 +469,7 @@ export async function readFile(
   return { path: validPath, content, truncated: false };
 }
 
-// Process items in parallel with controlled concurrency
+// Process items in parallel using the shared work queue
 export async function processInParallel<T, R>(
   items: T[],
   processor: (item: T) => Promise<R>,
@@ -478,24 +478,24 @@ export async function processInParallel<T, R>(
   const results: R[] = [];
   const errors: { index: number; error: Error }[] = [];
 
-  for (let i = 0; i < items.length; i += concurrency) {
-    const batch = items.slice(i, i + concurrency);
-    const batchResults = await Promise.allSettled(batch.map(processor));
-
-    for (let j = 0; j < batchResults.length; j++) {
-      const result = batchResults[j];
-      if (result?.status === 'fulfilled') {
-        results.push(result.value);
-      } else if (result?.status === 'rejected') {
-        const globalIndex = i + j;
-        const error =
-          result.reason instanceof Error
-            ? result.reason
-            : new Error(String(result.reason));
-        errors.push({ index: globalIndex, error });
-      }
-    }
+  if (items.length === 0) {
+    return { results, errors };
   }
+
+  await runWorkQueue(
+    items.map((item, index) => ({ item, index })),
+    async ({ item, index }) => {
+      try {
+        const result = await processor(item);
+        results.push(result);
+      } catch (reason) {
+        const error =
+          reason instanceof Error ? reason : new Error(String(reason));
+        errors.push({ index, error });
+      }
+    },
+    concurrency
+  );
 
   return { results, errors };
 }

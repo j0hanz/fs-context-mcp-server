@@ -33,11 +33,17 @@ class CircularLineBuffer {
     if (this.count < this.capacity) {
       return this.buffer.slice(0, this.count);
     }
-    // Buffer is full - return in correct order starting from writeIndex
-    return [
-      ...this.buffer.slice(this.writeIndex),
-      ...this.buffer.slice(0, this.writeIndex),
-    ];
+    // Buffer is full - return in correct order with single allocation
+    // Avoids multiple spread/slice allocations for better GC performance
+    const result = new Array<string>(this.capacity);
+    let writeIdx = 0;
+    for (let i = this.writeIndex; i < this.capacity; i++) {
+      result[writeIdx++] = this.buffer[i] ?? '';
+    }
+    for (let i = 0; i < this.writeIndex; i++) {
+      result[writeIdx++] = this.buffer[i] ?? '';
+    }
+    return result;
   }
 
   clear(): void {

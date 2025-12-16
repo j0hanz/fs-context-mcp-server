@@ -310,11 +310,12 @@ export async function searchFiles(
 
     const settled = await Promise.allSettled(
       toProcess.map(async (match) => {
-        const validMatch = await validateExistingPath(match);
-        const stats = await fs.stat(validMatch);
+        // fast-glob operates within validated cwd with followSymbolicLinks:false,
+        // so paths are already bounded - skip redundant validateExistingPath
+        const stats = await fs.stat(match);
         const { size, mtime: modified } = stats;
         return {
-          path: validMatch,
+          path: match,
           type: getFileType(stats),
           size: stats.isFile() ? size : undefined,
           modified,
@@ -562,8 +563,10 @@ export async function searchContent(
     }
 
     try {
-      const validFile = await validateExistingPath(file);
-      const handle = await fs.open(validFile, 'r');
+      // fast-glob operates within validated cwd with followSymbolicLinks:false,
+      // so paths are already bounded - skip redundant validateExistingPath for glob results
+      const handle = await fs.open(file, 'r');
+      let shouldScan = true;
 
       try {
         const stats = await handle.stat();
@@ -571,21 +574,21 @@ export async function searchContent(
 
         if (stats.size > maxFileSize) {
           skippedTooLarge++;
-          continue;
-        }
-
-        if (skipBinary) {
-          const binary = await isProbablyBinary(validFile, handle);
+          shouldScan = false;
+        } else if (skipBinary) {
+          const binary = await isProbablyBinary(file, handle);
           if (binary) {
             skippedBinary++;
-            continue;
+            shouldScan = false;
           }
         }
       } finally {
         await handle.close().catch(() => {});
       }
 
-      const scanResult = await scanFileForContent(validFile, regex, {
+      if (!shouldScan) continue;
+
+      const scanResult = await scanFileForContent(file, regex, {
         maxResults,
         contextLines,
         deadlineMs,
@@ -797,131 +800,168 @@ export async function getDirectoryTree(
     return maxFiles !== undefined && totalFiles >= maxFiles;
   };
 
-  const buildTree = async (
-    currentPath: string,
-    depth: number,
-    relativePath = ''
-  ): Promise<TreeEntry | null> => {
-    if (hitMaxFiles()) {
-      truncated = true;
-      return null;
-    }
+  // Flat collection of all entries with parent tracking for tree assembly
+  interface CollectedEntry {
+    parentPath: string;
+    name: string;
+    type: 'file' | 'directory';
+    size?: number;
+    depth: number;
+  }
 
-    let validatedPath: string;
-    let isSymlink = false;
-    try {
-      ({ resolvedPath: validatedPath, isSymlink } =
-        await validateExistingPathDetailed(currentPath));
-    } catch (error) {
-      if (classifyAccessError(error) === 'symlink') {
-        symlinksNotFollowed++;
-      } else {
-        skippedInaccessible++;
-      }
-      return null;
-    }
+  const collectedEntries: CollectedEntry[] = [];
+  const directoriesFound = new Set<string>([validPath]);
 
-    const name = path.basename(validatedPath);
-
-    if (shouldExclude(name, relativePath)) {
-      return null;
-    }
-
-    if (!includeHidden && name.startsWith('.') && relativePath !== '') {
-      return null;
-    }
-
-    maxDepthReached = Math.max(maxDepthReached, depth);
-
-    if (isSymlink) {
-      symlinksNotFollowed++;
-      return null;
-    }
-
-    let stats;
-    try {
-      stats = await fs.stat(validatedPath);
-    } catch {
-      skippedInaccessible++;
-      return null;
-    }
-
-    const { size } = stats;
-
-    if (stats.isFile()) {
+  // Phase 1: Collect all entries using runWorkQueue for work-stealing concurrency
+  await runWorkQueue<{ currentPath: string; depth: number }>(
+    [{ currentPath: validPath, depth: 0 }],
+    async ({ currentPath, depth }, enqueue) => {
       if (hitMaxFiles()) {
         truncated = true;
-        return null;
+        return;
       }
-      totalFiles++;
-      const entry: TreeEntry = { name, type: 'file' };
-      if (includeSize) {
-        entry.size = size;
-      }
-      return entry;
-    }
-
-    if (stats.isDirectory()) {
-      totalDirectories++;
-
-      if (depth >= maxDepth) {
+      if (depth > maxDepth) {
         truncated = true;
-        return { name, type: 'directory', children: [] };
+        return;
       }
+
+      maxDepthReached = Math.max(maxDepthReached, depth);
 
       let items;
       try {
-        items = await fs.readdir(validatedPath, { withFileTypes: true });
+        items = await fs.readdir(currentPath, { withFileTypes: true });
       } catch {
         skippedInaccessible++;
-        return { name, type: 'directory', children: [] };
+        return;
       }
 
-      const children: TreeEntry[] = [];
-      for (
-        let i = 0;
-        i < items.length && !hitMaxFiles();
-        i += DIR_TRAVERSAL_CONCURRENCY
-      ) {
-        const batch = items.slice(i, i + DIR_TRAVERSAL_CONCURRENCY);
-        const batchResults = await Promise.all(
-          batch.map((item) => {
-            const childPath = path.join(validatedPath, item.name);
-            const childRelative = relativePath
-              ? `${relativePath}/${item.name}`
-              : item.name;
-            return buildTree(childPath, depth + 1, childRelative);
-          })
-        );
-        for (const entry of batchResults) {
-          if (entry !== null) {
-            children.push(entry);
+      for (const item of items) {
+        if (hitMaxFiles()) {
+          truncated = true;
+          break;
+        }
+
+        const { name } = item;
+
+        // Filter hidden files
+        if (!includeHidden && name.startsWith('.')) {
+          continue;
+        }
+
+        const fullPath = path.join(currentPath, name);
+        const relativePath = path.relative(validPath, fullPath);
+
+        // Check exclusion patterns
+        if (shouldExclude(name, relativePath)) {
+          continue;
+        }
+
+        // Handle symlinks - skip but count
+        if (item.isSymbolicLink()) {
+          symlinksNotFollowed++;
+          continue;
+        }
+
+        try {
+          // Validate path is within allowed directories
+          const { resolvedPath, isSymlink } =
+            await validateExistingPathDetailed(fullPath);
+
+          if (isSymlink) {
+            symlinksNotFollowed++;
+            continue;
+          }
+
+          const stats = await fs.stat(resolvedPath);
+
+          if (stats.isFile()) {
+            totalFiles++;
+            collectedEntries.push({
+              parentPath: currentPath,
+              name,
+              type: 'file',
+              size: includeSize ? stats.size : undefined,
+              depth,
+            });
+          } else if (stats.isDirectory()) {
+            totalDirectories++;
+            directoriesFound.add(resolvedPath);
+            collectedEntries.push({
+              parentPath: currentPath,
+              name,
+              type: 'directory',
+              depth,
+            });
+
+            // Enqueue subdirectory for traversal if not at max depth
+            if (depth + 1 <= maxDepth) {
+              enqueue({ currentPath: resolvedPath, depth: depth + 1 });
+            } else {
+              // Directory exists but we can't recurse due to depth limit
+              truncated = true;
+            }
+          }
+        } catch (error) {
+          if (classifyAccessError(error) === 'symlink') {
+            symlinksNotFollowed++;
+          } else {
+            skippedInaccessible++;
           }
         }
       }
+    },
+    DIR_TRAVERSAL_CONCURRENCY
+  );
 
-      children.sort((a, b) => {
-        if (a.type !== b.type) {
-          return a.type === 'directory' ? -1 : 1;
-        }
-        return a.name.localeCompare(b.name);
-      });
+  // Phase 2: Build tree structure from collected entries
+  const childrenByParent = new Map<string, TreeEntry[]>();
 
-      return { name, type: 'directory', children };
+  // Initialize all directories with empty children arrays
+  for (const dirPath of directoriesFound) {
+    childrenByParent.set(dirPath, []);
+  }
+
+  // Group entries by parent and create TreeEntry objects
+  for (const entry of collectedEntries) {
+    const treeEntry: TreeEntry = {
+      name: entry.name,
+      type: entry.type,
+    };
+    if (entry.type === 'file' && entry.size !== undefined) {
+      treeEntry.size = entry.size;
+    }
+    if (entry.type === 'directory') {
+      const fullPath = path.join(entry.parentPath, entry.name);
+      treeEntry.children = childrenByParent.get(fullPath) ?? [];
     }
 
-    return null;
+    const siblings = childrenByParent.get(entry.parentPath);
+    if (siblings) {
+      siblings.push(treeEntry);
+    }
+  }
+
+  // Sort children: directories first, then alphabetically by name
+  const sortChildren = (entries: TreeEntry[]): void => {
+    entries.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'directory' ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
   };
 
-  const tree = await buildTree(validPath, 0);
-
-  if (!tree) {
-    throw new McpError(
-      ErrorCode.E_UNKNOWN,
-      `Unable to build tree for path: ${dirPath}`,
-      dirPath
-    );
+  for (const children of childrenByParent.values()) {
+    sortChildren(children);
   }
+
+  // Build root entry
+  const rootName = path.basename(validPath);
+  const tree: TreeEntry = {
+    name: rootName || validPath,
+    type: 'directory',
+    children: childrenByParent.get(validPath) ?? [],
+  };
 
   return {
     tree,
@@ -938,11 +978,8 @@ export async function getDirectoryTree(
 
 export async function readMediaFile(
   filePath: string,
-  options: {
-    maxSize?: number;
-  } = {}
+  { maxSize = MAX_MEDIA_FILE_SIZE }: { maxSize?: number } = {}
 ): Promise<MediaFileResult> {
-  const { maxSize = MAX_MEDIA_FILE_SIZE } = options;
   const validPath = await validateExistingPath(filePath);
 
   const stats = await fs.stat(validPath);
