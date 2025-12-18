@@ -1,4 +1,4 @@
-import * as path from 'node:path';
+import * as pathModule from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -32,7 +32,7 @@ export function registerSearchFilesTool(server: McpServer): void {
       },
     },
     async ({
-      path: basePath,
+      path: searchBasePath,
       pattern,
       excludePatterns,
       maxResults,
@@ -40,17 +40,22 @@ export function registerSearchFilesTool(server: McpServer): void {
       maxDepth,
     }) => {
       try {
-        const result = await searchFiles(basePath, pattern, excludePatterns, {
-          maxResults,
-          sortBy,
-          maxDepth,
-        });
+        const result = await searchFiles(
+          searchBasePath,
+          pattern,
+          excludePatterns,
+          {
+            maxResults,
+            sortBy,
+            maxDepth,
+          }
+        );
         const structured = {
           ok: true,
           basePath: result.basePath,
           pattern: result.pattern,
           results: result.results.map((r) => ({
-            path: path.relative(result.basePath, r.path),
+            path: pathModule.relative(result.basePath, r.path),
             type: r.type,
             size: r.size,
             modified: r.modified?.toISOString(),
@@ -80,7 +85,7 @@ export function registerSearchFilesTool(server: McpServer): void {
         return createErrorResponse(
           error,
           ErrorCode.E_INVALID_PATTERN,
-          basePath
+          searchBasePath
         );
       }
     }

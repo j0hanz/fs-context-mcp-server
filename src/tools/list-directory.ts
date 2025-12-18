@@ -1,4 +1,4 @@
-import * as path from 'node:path';
+import * as pathModule from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -15,7 +15,7 @@ import {
 
 function getExtension(name: string, isFile: boolean): string | undefined {
   if (!isFile) return undefined;
-  const ext = path.extname(name);
+  const ext = pathModule.extname(name);
   return ext ? ext.slice(1) : undefined;
 }
 
@@ -38,7 +38,7 @@ export function registerListDirectoryTool(server: McpServer): void {
       },
     },
     async ({
-      path,
+      path: dirPath,
       recursive,
       includeHidden,
       maxDepth,
@@ -47,7 +47,7 @@ export function registerListDirectoryTool(server: McpServer): void {
       includeSymlinkTargets,
     }) => {
       try {
-        const result = await listDirectory(path, {
+        const result = await listDirectory(dirPath, {
           recursive,
           includeHidden,
           maxDepth,
@@ -92,7 +92,7 @@ export function registerListDirectoryTool(server: McpServer): void {
           structuredContent: structured,
         };
       } catch (error) {
-        return createErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, path);
+        return createErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, dirPath);
       }
     }
   );

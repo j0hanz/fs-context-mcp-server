@@ -1,43 +1,13 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createErrorResponse, ErrorCode, McpError } from '../lib/errors.js';
+import {
+  createErrorResponse,
+  ErrorCode,
+  validateMutuallyExclusive,
+  validateOptionPair,
+} from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
-
-// Inline validation for line range parameters
-function validateLineRange(params: {
-  lineStart?: number;
-  lineEnd?: number;
-  head?: number;
-  tail?: number;
-  path: string;
-}): void {
-  const { lineStart, lineEnd, head, tail, path } = params;
-
-  // Validate that both or neither of lineStart and lineEnd are provided
-  if ((lineStart !== undefined) !== (lineEnd !== undefined)) {
-    throw new McpError(
-      ErrorCode.E_INVALID_INPUT,
-      'lineStart and lineEnd must be specified together',
-      path
-    );
-  }
-
-  // Validate mutual exclusivity of line range options
-  const optionsCount = [
-    lineStart !== undefined,
-    head !== undefined,
-    tail !== undefined,
-  ].filter(Boolean).length;
-
-  if (optionsCount > 1) {
-    throw new McpError(
-      ErrorCode.E_INVALID_INPUT,
-      'Cannot specify multiple of lineRange, head, or tail',
-      path
-    );
-  }
-}
 
 export function registerReadFileTool(server: McpServer): void {
   server.registerTool(
@@ -60,8 +30,18 @@ export function registerReadFileTool(server: McpServer): void {
     },
     async ({ path, encoding, maxSize, lineStart, lineEnd, head, tail }) => {
       try {
-        // Validate lineRange parameters early (before file I/O)
-        validateLineRange({ lineStart, lineEnd, head, tail, path });
+        // Validate option constraints early (before file I/O)
+        validateOptionPair(
+          { lineStart, lineEnd },
+          'lineStart',
+          'lineEnd',
+          path
+        );
+        validateMutuallyExclusive(
+          { lineRange: lineStart, head, tail },
+          ['lineRange', 'head', 'tail'],
+          path
+        );
 
         const lineRange =
           lineStart !== undefined && lineEnd !== undefined

@@ -94,9 +94,11 @@ function insertSorted<T>(
   }
 }
 
-// === Inline sorting comparators (eliminated sorting.ts module) ===
+// === Unified sorting comparators with type-safe builder ===
 
-interface SortableEntry {
+type SortField = 'name' | 'size' | 'modified' | 'type' | 'path';
+
+interface Sortable {
   name?: string;
   size?: number;
   modified?: Date;
@@ -104,51 +106,38 @@ interface SortableEntry {
   path?: string;
 }
 
-function sortEntries(
-  entries: SortableEntry[],
-  sortBy: 'name' | 'size' | 'modified' | 'type' | 'path'
-): void {
-  entries.sort((a, b) => {
-    switch (sortBy) {
-      case 'size':
-        return (b.size ?? 0) - (a.size ?? 0);
-      case 'modified':
-        return (b.modified?.getTime() ?? 0) - (a.modified?.getTime() ?? 0);
-      case 'type':
-        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
-        return (a.name ?? '').localeCompare(b.name ?? '');
-      case 'path':
-        return (a.path ?? '').localeCompare(b.path ?? '');
-      default:
-        return (a.name ?? '').localeCompare(b.name ?? '');
-    }
-  });
+// Comparator functions for each sort field (descending for size/modified, ascending for strings)
+const SORT_COMPARATORS: Readonly<
+  Record<SortField, (a: Sortable, b: Sortable) => number>
+> = {
+  size: (a, b) => (b.size ?? 0) - (a.size ?? 0),
+  modified: (a, b) =>
+    (b.modified?.getTime() ?? 0) - (a.modified?.getTime() ?? 0),
+  type: (a, b) => {
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+    return (a.name ?? '').localeCompare(b.name ?? '');
+  },
+  path: (a, b) => (a.path ?? '').localeCompare(b.path ?? ''),
+  name: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),
+};
+
+function sortByField(items: Sortable[], sortBy: SortField): void {
+  const comparator = SORT_COMPARATORS[sortBy];
+  items.sort(comparator);
 }
 
-interface SortableSearchResult {
-  path?: string;
-  size?: number;
-  modified?: Date;
-}
-
+// Search results use basename for 'name' sort
 function sortSearchResults(
-  results: SortableSearchResult[],
+  results: Sortable[],
   sortBy: 'name' | 'size' | 'modified' | 'path'
 ): void {
-  results.sort((a, b) => {
-    switch (sortBy) {
-      case 'size':
-        return (b.size ?? 0) - (a.size ?? 0);
-      case 'modified':
-        return (b.modified?.getTime() ?? 0) - (a.modified?.getTime() ?? 0);
-      case 'name':
-        return path
-          .basename(a.path ?? '')
-          .localeCompare(path.basename(b.path ?? ''));
-      default:
-        return (a.path ?? '').localeCompare(b.path ?? '');
-    }
-  });
+  if (sortBy === 'name') {
+    results.sort((a, b) =>
+      path.basename(a.path ?? '').localeCompare(path.basename(b.path ?? ''))
+    );
+  } else {
+    sortByField(results, sortBy);
+  }
 }
 
 // Convert file mode to permission string (e.g., 'rwxr-xr-x')
@@ -361,7 +350,7 @@ export async function listDirectory(
     DIR_TRAVERSAL_CONCURRENCY
   );
 
-  sortEntries(entries, sortBy);
+  sortByField(entries, sortBy);
 
   return {
     path: validPath,

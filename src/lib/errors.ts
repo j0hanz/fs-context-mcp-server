@@ -309,3 +309,39 @@ export function createErrorResponse(
     isError: true,
   };
 }
+
+// Utility to validate mutually exclusive options
+export function validateMutuallyExclusive(
+  options: Record<string, unknown>,
+  optionNames: string[],
+  context?: string
+): void {
+  const definedOptions = optionNames.filter(
+    (name) => options[name] !== undefined
+  );
+  if (definedOptions.length > 1) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Cannot specify multiple of: ${definedOptions.join(', ')}`,
+      context
+    );
+  }
+}
+
+// Utility to validate option pairs (both must be present or both absent)
+export function validateOptionPair(
+  options: Record<string, unknown>,
+  optionA: string,
+  optionB: string,
+  context?: string
+): void {
+  const hasA = options[optionA] !== undefined;
+  const hasB = options[optionB] !== undefined;
+  if (hasA !== hasB) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `${optionA} and ${optionB} must be specified together`,
+      context
+    );
+  }
+}

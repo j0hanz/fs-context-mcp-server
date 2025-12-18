@@ -7,16 +7,19 @@ import type {
   TreeEntry,
 } from '../config/types.js';
 
-const BYTES_PER_KB = 1024;
-const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
-const SEPARATOR_LENGTH = 50;
+// === Formatting Constants ===
+const BYTES_PER_KILOBYTE = 1024;
+const BYTE_UNIT_LABELS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+const ANALYSIS_SEPARATOR_WIDTH = 50;
+const LINE_NUMBER_PAD_WIDTH = 4;
 
+// === Byte Formatting ===
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
 
-  const unitIndex = Math.floor(Math.log(bytes) / Math.log(BYTES_PER_KB));
-  const unit = BYTE_UNITS[unitIndex] ?? 'B';
-  const value = bytes / Math.pow(BYTES_PER_KB, unitIndex);
+  const unitIndex = Math.floor(Math.log(bytes) / Math.log(BYTES_PER_KILOBYTE));
+  const unit = BYTE_UNIT_LABELS[unitIndex] ?? 'B';
+  const value = bytes / Math.pow(BYTES_PER_KILOBYTE, unitIndex);
 
   return `${parseFloat(value.toFixed(2))} ${unit}`;
 }
@@ -111,19 +114,21 @@ export function formatContentMatches(matches: ContentMatch[]): string {
           const contextLine = match.contextBefore[i];
           const lineNum = match.line - match.contextBefore.length + i;
           lines.push(
-            `    ${String(lineNum).padStart(4)}: ${contextLine ?? ''}`
+            `    ${String(lineNum).padStart(LINE_NUMBER_PAD_WIDTH)}: ${contextLine ?? ''}`
           );
         }
       }
       // Show the match line (highlighted)
-      lines.push(`  > ${String(match.line).padStart(4)}: ${match.content}`);
+      lines.push(
+        `  > ${String(match.line).padStart(LINE_NUMBER_PAD_WIDTH)}: ${match.content}`
+      );
       // Show context after if available
       if (match.contextAfter && match.contextAfter.length > 0) {
         for (let i = 0; i < match.contextAfter.length; i++) {
           const contextLine = match.contextAfter[i];
           const lineNum = match.line + 1 + i;
           lines.push(
-            `    ${String(lineNum).padStart(4)}: ${contextLine ?? ''}`
+            `    ${String(lineNum).padStart(LINE_NUMBER_PAD_WIDTH)}: ${contextLine ?? ''}`
           );
         }
       }
@@ -168,7 +173,7 @@ export function formatFileInfo(info: FileInfo): string {
 export function formatDirectoryAnalysis(analysis: DirectoryAnalysis): string {
   const lines = [
     `Directory Analysis: ${analysis.path}`,
-    '='.repeat(SEPARATOR_LENGTH),
+    '='.repeat(ANALYSIS_SEPARATOR_WIDTH),
     '',
     'Summary:',
     `  Total Files: ${analysis.totalFiles}`,

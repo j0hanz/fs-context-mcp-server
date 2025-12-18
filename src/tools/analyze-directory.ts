@@ -1,4 +1,4 @@
-import * as nodePath from 'node:path';
+import * as pathModule from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -31,9 +31,15 @@ export function registerAnalyzeDirectoryTool(server: McpServer): void {
         openWorldHint: true,
       },
     },
-    async ({ path, maxDepth, topN, excludePatterns, includeHidden }) => {
+    async ({
+      path: dirPath,
+      maxDepth,
+      topN,
+      excludePatterns,
+      includeHidden,
+    }) => {
       try {
-        const result = await analyzeDirectory(path, {
+        const result = await analyzeDirectory(dirPath, {
           maxDepth,
           topN,
           excludePatterns,
@@ -47,11 +53,11 @@ export function registerAnalyzeDirectoryTool(server: McpServer): void {
           totalSize: result.analysis.totalSize,
           fileTypes: result.analysis.fileTypes,
           largestFiles: result.analysis.largestFiles.map((f) => ({
-            path: nodePath.relative(result.analysis.path, f.path),
+            path: pathModule.relative(result.analysis.path, f.path),
             size: f.size,
           })),
           recentlyModified: result.analysis.recentlyModified.map((f) => ({
-            path: nodePath.relative(result.analysis.path, f.path),
+            path: pathModule.relative(result.analysis.path, f.path),
             modified: f.modified.toISOString(),
           })),
           summary: {
@@ -73,7 +79,7 @@ export function registerAnalyzeDirectoryTool(server: McpServer): void {
           structuredContent: structured,
         };
       } catch (error) {
-        return createErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, path);
+        return createErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, dirPath);
       }
     }
   );

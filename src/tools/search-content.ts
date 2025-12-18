@@ -1,4 +1,4 @@
-import * as nodePath from 'node:path';
+import * as pathModule from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -33,7 +33,7 @@ export function registerSearchContentTool(server: McpServer): void {
       },
     },
     async ({
-      path,
+      path: searchBasePath,
       pattern,
       filePattern,
       excludePatterns,
@@ -48,7 +48,7 @@ export function registerSearchContentTool(server: McpServer): void {
       isLiteral,
     }) => {
       try {
-        const result = await searchContent(path, pattern, {
+        const result = await searchContent(searchBasePath, pattern, {
           filePattern,
           excludePatterns,
           caseSensitive,
@@ -67,7 +67,7 @@ export function registerSearchContentTool(server: McpServer): void {
           pattern: result.pattern,
           filePattern: result.filePattern,
           matches: result.matches.map((m) => ({
-            file: nodePath.relative(result.basePath, m.file),
+            file: pathModule.relative(result.basePath, m.file),
             line: m.line,
             content: m.content,
             contextBefore: m.contextBefore,
@@ -128,7 +128,7 @@ export function registerSearchContentTool(server: McpServer): void {
           structuredContent: structured,
         };
       } catch (error) {
-        return createErrorResponse(error, ErrorCode.E_UNKNOWN, path);
+        return createErrorResponse(error, ErrorCode.E_UNKNOWN, searchBasePath);
       }
     }
   );
