@@ -3,10 +3,20 @@ import type {
   DirectoryAnalysis,
   DirectoryEntry,
   FileInfo,
-  OperationSummary,
   SearchResult,
   TreeEntry,
 } from '../config/types.js';
+
+interface OperationSummary {
+  truncated?: boolean;
+  truncatedReason?: string;
+  tip?: string;
+  skippedInaccessible?: number;
+  symlinksNotFollowed?: number;
+  skippedTooLarge?: number;
+  skippedBinary?: number;
+  linesSkippedDueToRegexTimeout?: number;
+}
 
 const BYTES_PER_KILOBYTE = 1024;
 const BYTE_UNIT_LABELS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;

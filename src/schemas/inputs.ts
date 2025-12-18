@@ -147,11 +147,6 @@ const ReadFileBaseSchema = z.object({
     .enum(['utf-8', 'utf8', 'ascii', 'base64', 'hex', 'latin1'])
     .optional()
     .default('utf-8')
-    .refine(
-      (val) =>
-        ['utf-8', 'utf8', 'ascii', 'base64', 'hex', 'latin1'].includes(val),
-      { message: 'Invalid encoding specified' }
-    )
     .describe('File encoding'),
   maxSize: z
     .number()

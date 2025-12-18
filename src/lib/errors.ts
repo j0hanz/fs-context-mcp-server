@@ -1,10 +1,29 @@
-import {
-  type DetailedError,
-  ErrorCode,
-  type ErrorResponse,
-} from '../config/types.js';
+import { ErrorCode } from '../config/types.js';
 
 export { ErrorCode };
+
+interface DetailedError {
+  code: ErrorCode;
+  message: string;
+  path?: string;
+  suggestion?: string;
+  details?: Record<string, unknown>;
+}
+
+interface ErrorResponse {
+  [key: string]: unknown;
+  content: { type: 'text'; text: string }[];
+  structuredContent: {
+    ok: false;
+    error: {
+      code: string;
+      message: string;
+      path?: string;
+      suggestion?: string;
+    };
+  };
+  isError: true;
+}
 
 export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return (
@@ -98,114 +117,13 @@ export function classifyError(error: unknown): ErrorCode {
   }
 
   const message = error instanceof Error ? error.message : String(error);
-  if (message.toLowerCase().includes('enoent')) {
-    return validateErrorCode(ErrorCode.E_NOT_FOUND);
-  }
-
-  return classifyByMessage(error);
-}
-
-function assertNever(value: never): never {
-  throw new Error(
-    `Unhandled discriminated union member: ${JSON.stringify(value)}`
-  );
-}
-
-function validateErrorCode(code: ErrorCode): ErrorCode {
-  switch (code) {
-    case ErrorCode.E_ACCESS_DENIED:
-    case ErrorCode.E_NOT_FOUND:
-    case ErrorCode.E_NOT_FILE:
-    case ErrorCode.E_NOT_DIRECTORY:
-    case ErrorCode.E_TOO_LARGE:
-    case ErrorCode.E_BINARY_FILE:
-    case ErrorCode.E_TIMEOUT:
-    case ErrorCode.E_INVALID_PATTERN:
-    case ErrorCode.E_INVALID_INPUT:
-    case ErrorCode.E_PERMISSION_DENIED:
-    case ErrorCode.E_SYMLINK_NOT_ALLOWED:
-    case ErrorCode.E_PATH_TRAVERSAL:
-    case ErrorCode.E_UNKNOWN:
-      return code;
-    default:
-      return assertNever(code);
-  }
-}
-
-function classifyByMessage(error: unknown): ErrorCode {
-  const message = error instanceof Error ? error.message : String(error);
   const lowerMessage = message.toLowerCase();
 
-  if (
-    lowerMessage.includes('not within allowed') ||
-    lowerMessage.includes('access denied') ||
-    lowerMessage.includes('outside allowed')
-  ) {
-    return validateErrorCode(ErrorCode.E_ACCESS_DENIED);
+  if (lowerMessage.includes('enoent')) {
+    return ErrorCode.E_NOT_FOUND;
   }
 
-  if (
-    (lowerMessage.includes('path') ||
-      lowerMessage.includes('file') ||
-      lowerMessage.includes('directory')) &&
-    (lowerMessage.includes('not found') ||
-      lowerMessage.includes('does not exist'))
-  ) {
-    return validateErrorCode(ErrorCode.E_NOT_FOUND);
-  }
-
-  if (
-    lowerMessage.includes('not a file') ||
-    lowerMessage.includes('is a directory')
-  ) {
-    return validateErrorCode(ErrorCode.E_NOT_FILE);
-  }
-  if (lowerMessage.includes('not a directory')) {
-    return validateErrorCode(ErrorCode.E_NOT_DIRECTORY);
-  }
-
-  if (lowerMessage.includes('too large') || lowerMessage.includes('exceeds')) {
-    return validateErrorCode(ErrorCode.E_TOO_LARGE);
-  }
-
-  if (lowerMessage.includes('binary')) {
-    return validateErrorCode(ErrorCode.E_BINARY_FILE);
-  }
-
-  if (lowerMessage.includes('timeout') || lowerMessage.includes('timed out')) {
-    return validateErrorCode(ErrorCode.E_TIMEOUT);
-  }
-
-  if (lowerMessage.includes('invalid') && lowerMessage.includes('pattern')) {
-    return validateErrorCode(ErrorCode.E_INVALID_PATTERN);
-  }
-  if (lowerMessage.includes('regex') || lowerMessage.includes('regexp')) {
-    return validateErrorCode(ErrorCode.E_INVALID_PATTERN);
-  }
-
-  if (
-    lowerMessage.includes('invalid') ||
-    lowerMessage.includes('cannot specify')
-  ) {
-    return validateErrorCode(ErrorCode.E_INVALID_INPUT);
-  }
-
-  if (
-    lowerMessage.includes('permission denied') ||
-    lowerMessage.includes('permission')
-  ) {
-    return validateErrorCode(ErrorCode.E_PERMISSION_DENIED);
-  }
-
-  if (lowerMessage.includes('symlink')) {
-    return validateErrorCode(ErrorCode.E_SYMLINK_NOT_ALLOWED);
-  }
-
-  if (lowerMessage.includes('traversal')) {
-    return validateErrorCode(ErrorCode.E_PATH_TRAVERSAL);
-  }
-
-  return validateErrorCode(ErrorCode.E_UNKNOWN);
+  return ErrorCode.E_UNKNOWN;
 }
 
 export function createDetailedError(

@@ -8,7 +8,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { RootsListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Root } from '@modelcontextprotocol/sdk/types.js';
 
-import type { ParseArgsResult, ServerOptions } from './config/types.js';
 import { normalizePath } from './lib/path-utils.js';
 import {
   getAllowedDirectories,
@@ -86,6 +85,15 @@ export async function parseArgs(): Promise<ParseArgsResult> {
 }
 
 let serverOptions: ServerOptions = {};
+
+interface ParseArgsResult {
+  allowedDirs: string[];
+  allowCwd: boolean;
+}
+
+interface ServerOptions {
+  allowCwd?: boolean;
+}
 
 async function updateRootsFromClient(server: McpServer): Promise<void> {
   try {

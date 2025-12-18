@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import type { Dirent } from 'node:fs';
 
 import fg from 'fast-glob';
 import { Minimatch } from 'minimatch';
@@ -18,14 +19,13 @@ import type {
   SearchContentResult,
   SearchFilesResult,
   SearchResult,
-  Sortable,
-  SortField,
   TreeEntry,
 } from '../config/types.js';
 import {
   DEFAULT_MAX_DEPTH,
   DEFAULT_MAX_RESULTS,
   DEFAULT_TOP_N,
+  DEFAULT_TREE_DEPTH,
   DEFAULT_TREE_MAX_FILES,
   DIR_TRAVERSAL_CONCURRENCY,
   getMimeType,
@@ -76,20 +76,73 @@ function classifyAccessError(error: unknown): 'symlink' | 'inaccessible' {
   return 'inaccessible';
 }
 
-function insertSorted<T>(
+interface DirectoryIterationEntry {
+  item: Dirent;
+  name: string;
+  fullPath: string;
+  relativePath: string;
+}
+
+interface DirectoryIterationOptions {
+  includeHidden: boolean;
+  shouldExclude: (name: string, relativePath: string) => boolean;
+  onInaccessible: () => void;
+  shouldStop?: () => boolean;
+}
+
+async function forEachDirectoryEntry(
+  currentPath: string,
+  basePath: string,
+  options: DirectoryIterationOptions,
+  handler: (entry: DirectoryIterationEntry) => Promise<void>
+): Promise<void> {
+  let items: Dirent[];
+  try {
+    items = await fs.readdir(currentPath, { withFileTypes: true });
+  } catch {
+    options.onInaccessible();
+    return;
+  }
+
+  for (const item of items) {
+    if (options.shouldStop?.()) break;
+    const { name } = item;
+    if (!options.includeHidden && isHidden(name)) {
+      continue;
+    }
+
+    const fullPath = path.join(currentPath, name);
+    const relativePath = path.relative(basePath, fullPath);
+    if (options.shouldExclude(name, relativePath)) {
+      continue;
+    }
+
+    await handler({ item, name, fullPath, relativePath });
+  }
+}
+
+function pushTopN<T>(
   arr: T[],
   item: T,
   compare: (a: T, b: T) => number,
   maxLen: number
 ): void {
   if (maxLen <= 0) return;
-  const idx = arr.findIndex((el) => compare(item, el) < 0);
-  if (idx === -1) {
-    if (arr.length < maxLen) arr.push(item);
-  } else {
-    arr.splice(idx, 0, item);
-    if (arr.length > maxLen) arr.pop();
+  arr.push(item);
+  if (arr.length > maxLen) {
+    arr.sort(compare);
+    arr.length = maxLen;
   }
+}
+
+type SortField = 'name' | 'size' | 'modified' | 'type' | 'path';
+
+interface Sortable {
+  name?: string;
+  size?: number;
+  modified?: Date;
+  type?: FileType;
+  path?: string;
 }
 
 const SORT_COMPARATORS: Readonly<
@@ -414,11 +467,14 @@ export async function listDirectory(
 
               const stats = await fs.stat(fullPath);
               const isDir = item.isDirectory();
-              const type: FileType = isDir
-                ? 'directory'
-                : item.isFile()
-                  ? 'file'
-                  : getFileType(stats);
+              let type: FileType;
+              if (isDir) {
+                type = 'directory';
+              } else if (item.isFile()) {
+                type = 'file';
+              } else {
+                type = getFileType(stats);
+              }
 
               const entry: DirectoryEntry = {
                 name: item.name,
@@ -440,15 +496,19 @@ export async function listDirectory(
               return { entry, enqueueDir };
             } catch {
               skippedInaccessible++;
+              let type: FileType;
+              if (item.isDirectory()) {
+                type = 'directory';
+              } else if (item.isFile()) {
+                type = 'file';
+              } else {
+                type = 'other';
+              }
               const entry: DirectoryEntry = {
                 name: item.name,
                 path: fullPath,
                 relativePath,
-                type: item.isDirectory()
-                  ? 'directory'
-                  : item.isFile()
-                    ? 'file'
-                    : 'other',
+                type,
               };
               return { entry };
             }
@@ -882,75 +942,69 @@ export async function analyzeDirectory(
       if (depth > maxDepth) return;
       currentMaxDepth = Math.max(currentMaxDepth, depth);
 
-      let items;
-      try {
-        items = await fs.readdir(currentPath, { withFileTypes: true });
-      } catch {
-        skippedInaccessible++;
-        return;
-      }
-
-      for (const item of items) {
-        const fullPath = path.join(currentPath, item.name);
-        const relativePath = path.relative(validPath, fullPath);
-
-        if (!includeHidden && isHidden(item.name)) {
-          continue;
-        }
-
-        if (shouldExclude(item.name, relativePath)) {
-          continue;
-        }
-
-        try {
-          const validated = await validateExistingPathDetailed(fullPath);
-          if (validated.isSymlink || item.isSymbolicLink()) {
-            symlinksNotFollowed++;
-            continue;
-          }
-
-          const stats = await fs.stat(validated.resolvedPath);
-
-          if (stats.isDirectory()) {
-            totalDirectories++;
-            if (depth + 1 <= maxDepth) {
-              enqueue({
-                currentPath: validated.resolvedPath,
-                depth: depth + 1,
-              });
-            }
-          } else if (stats.isFile()) {
-            totalFiles++;
-            totalSize += stats.size;
-
-            const ext =
-              path.extname(item.name).toLowerCase() || '(no extension)';
-            fileTypes[ext] = (fileTypes[ext] ?? 0) + 1;
-
-            insertSorted(
-              largestFiles,
-              { path: validated.resolvedPath, size: stats.size },
-              (a, b) => b.size - a.size,
-              topN
-            );
-            insertSorted(
-              recentlyModified,
-              { path: validated.resolvedPath, modified: stats.mtime },
-              (a, b) => b.modified.getTime() - a.modified.getTime(),
-              topN
-            );
-          }
-        } catch (error) {
-          if (classifyAccessError(error) === 'symlink') {
-            symlinksNotFollowed++;
-          } else {
+      await forEachDirectoryEntry(
+        currentPath,
+        validPath,
+        {
+          includeHidden,
+          shouldExclude,
+          onInaccessible: () => {
             skippedInaccessible++;
+          },
+        },
+        async ({ item, name, fullPath }) => {
+          try {
+            const validated = await validateExistingPathDetailed(fullPath);
+            if (validated.isSymlink || item.isSymbolicLink()) {
+              symlinksNotFollowed++;
+              return;
+            }
+
+            const stats = await fs.stat(validated.resolvedPath);
+
+            if (stats.isDirectory()) {
+              totalDirectories++;
+              if (depth + 1 <= maxDepth) {
+                enqueue({
+                  currentPath: validated.resolvedPath,
+                  depth: depth + 1,
+                });
+              }
+            } else if (stats.isFile()) {
+              totalFiles++;
+              totalSize += stats.size;
+
+              const ext = path.extname(name).toLowerCase() || '(no extension)';
+              fileTypes[ext] = (fileTypes[ext] ?? 0) + 1;
+
+              pushTopN(
+                largestFiles,
+                { path: validated.resolvedPath, size: stats.size },
+                (a, b) => b.size - a.size,
+                topN
+              );
+              pushTopN(
+                recentlyModified,
+                { path: validated.resolvedPath, modified: stats.mtime },
+                (a, b) => b.modified.getTime() - a.modified.getTime(),
+                topN
+              );
+            }
+          } catch (error) {
+            if (classifyAccessError(error) === 'symlink') {
+              symlinksNotFollowed++;
+            } else {
+              skippedInaccessible++;
+            }
           }
         }
-      }
+      );
     },
     DIR_TRAVERSAL_CONCURRENCY
   );
+
+  largestFiles.sort((a, b) => b.size - a.size);
+  recentlyModified.sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
   const analysis: DirectoryAnalysis = {
     path: validPath,
@@ -984,7 +1038,7 @@ export async function getDirectoryTree(
   } = {}
 ): Promise<DirectoryTreeResult> {
   const {
-    maxDepth = DEFAULT_MAX_DEPTH,
+    maxDepth = DEFAULT_TREE_DEPTH,
     excludePatterns = [],
     includeHidden = false,
     includeSize = false,
@@ -1014,6 +1068,11 @@ export async function getDirectoryTree(
   const hitMaxFiles = (): boolean => {
     return totalFiles >= effectiveMaxFiles;
   };
+  const shouldStop = (): boolean => {
+    if (!hitMaxFiles()) return false;
+    truncated = true;
+    return true;
+  };
 
   // Flat collection of all entries with parent tracking for tree assembly
   interface CollectedEntry {
@@ -1041,82 +1100,68 @@ export async function getDirectoryTree(
 
       maxDepthReached = Math.max(maxDepthReached, depth);
 
-      let items;
-      try {
-        items = await fs.readdir(currentPath, { withFileTypes: true });
-      } catch {
-        skippedInaccessible++;
-        return;
-      }
-
-      for (const item of items) {
-        if (hitMaxFiles()) {
-          truncated = true;
-          break;
-        }
-
-        const { name } = item;
-
-        if (!includeHidden && name.startsWith('.')) {
-          continue;
-        }
-
-        const fullPath = path.join(currentPath, name);
-        const relativePath = path.relative(validPath, fullPath);
-
-        if (shouldExclude(name, relativePath)) {
-          continue;
-        }
-
-        if (item.isSymbolicLink()) {
-          symlinksNotFollowed++;
-          continue;
-        }
-
-        try {
-          const { resolvedPath, isSymlink } =
-            await validateExistingPathDetailed(fullPath);
-
-          if (isSymlink) {
+      await forEachDirectoryEntry(
+        currentPath,
+        validPath,
+        {
+          includeHidden,
+          shouldExclude,
+          onInaccessible: () => {
+            skippedInaccessible++;
+          },
+          shouldStop,
+        },
+        async ({ item, name, fullPath }) => {
+          if (item.isSymbolicLink()) {
             symlinksNotFollowed++;
-            continue;
+            return;
           }
 
-          const stats = await fs.stat(resolvedPath);
+          try {
+            const { resolvedPath, isSymlink } =
+              await validateExistingPathDetailed(fullPath);
 
-          if (stats.isFile()) {
-            totalFiles++;
-            collectedEntries.push({
-              parentPath: currentPath,
-              name,
-              type: 'file',
-              size: includeSize ? stats.size : undefined,
-              depth,
-            });
-          } else if (stats.isDirectory()) {
-            totalDirectories++;
-            directoriesFound.add(resolvedPath);
-            collectedEntries.push({
-              parentPath: currentPath,
-              name,
-              type: 'directory',
-              depth,
-            });
+            if (isSymlink) {
+              symlinksNotFollowed++;
+              return;
+            }
 
-            if (depth + 1 <= maxDepth) {
-              enqueue({ currentPath: resolvedPath, depth: depth + 1 });
+            const stats = await fs.stat(resolvedPath);
+
+            if (stats.isFile()) {
+              totalFiles++;
+              collectedEntries.push({
+                parentPath: currentPath,
+                name,
+                type: 'file',
+                size: includeSize ? stats.size : undefined,
+                depth,
+              });
+            } else if (stats.isDirectory()) {
+              totalDirectories++;
+              directoriesFound.add(resolvedPath);
+              collectedEntries.push({
+                parentPath: currentPath,
+                name,
+                type: 'directory',
+                depth,
+              });
+
+              if (depth + 1 <= maxDepth) {
+                enqueue({ currentPath: resolvedPath, depth: depth + 1 });
+              } else {
+                truncated = true;
+              }
+            }
+          } catch (error) {
+            if (classifyAccessError(error) === 'symlink') {
+              symlinksNotFollowed++;
             } else {
-              truncated = true;
+              skippedInaccessible++;
             }
           }
-        } catch (error) {
-          if (classifyAccessError(error) === 'symlink') {
-            symlinksNotFollowed++;
-          } else {
-            skippedInaccessible++;
-          }
         }
-      }
+      );
     },
     DIR_TRAVERSAL_CONCURRENCY
   );

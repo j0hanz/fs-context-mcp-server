@@ -3,9 +3,14 @@ import { fileURLToPath } from 'node:url';
 
 import type { Root } from '@modelcontextprotocol/sdk/types.js';
 
-import type { ValidatedPathDetails } from '../config/types.js';
 import { ErrorCode, McpError } from './errors.js';
 import { normalizePath } from './path-utils.js';
+
+interface ValidatedPathDetails {
+  requestedPath: string;
+  resolvedPath: string;
+  isSymlink: boolean;
+}
 
 let allowedDirectories: string[] = [];
 

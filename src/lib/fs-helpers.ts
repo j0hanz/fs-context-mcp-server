@@ -5,7 +5,7 @@ import type { Stats } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { StringDecoder } from 'node:string_decoder';
 
-import type { FileType, ParallelResult } from '../config/types.js';
+import type { FileType } from '../config/types.js';
 import {
   BINARY_CHECK_BUFFER_SIZE,
   KNOWN_BINARY_EXTENSIONS,
@@ -15,6 +15,11 @@ import {
 } from './constants.js';
 import { ErrorCode, McpError } from './errors.js';
 import { validateExistingPath } from './path-validation.js';
+
+interface ParallelResult<R> {
+  results: R[];
+  errors: { index: number; error: Error }[];
+}
 
 export async function runWorkQueue<T>(
   initialItems: T[],

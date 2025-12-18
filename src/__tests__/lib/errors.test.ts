@@ -54,37 +54,12 @@ describe('Error Utilities', () => {
   });
 
   describe('classifyError', () => {
-    it('should classify access denied errors', () => {
-      const error = new Error('Path not within allowed directories');
-      expect(classifyError(error)).toBe(ErrorCode.E_ACCESS_DENIED);
-    });
-
-    it('should classify not found errors', () => {
+    it('should classify ENOENT messages as not found', () => {
       const error = new Error('ENOENT: no such file or directory');
       expect(classifyError(error)).toBe(ErrorCode.E_NOT_FOUND);
     });
 
-    it('should classify not a file errors', () => {
-      const error = new Error('Not a file: /some/path');
-      expect(classifyError(error)).toBe(ErrorCode.E_NOT_FILE);
-    });
-
-    it('should classify file too large errors', () => {
-      const error = new Error('File too large: 100MB');
-      expect(classifyError(error)).toBe(ErrorCode.E_TOO_LARGE);
-    });
-
-    it('should classify permission errors', () => {
-      const error = new Error('EACCES: permission denied');
-      expect(classifyError(error)).toBe(ErrorCode.E_PERMISSION_DENIED);
-    });
-
-    it('should classify timeout errors', () => {
-      const error = new Error('Operation timeout');
-      expect(classifyError(error)).toBe(ErrorCode.E_TIMEOUT);
-    });
-
-    it('should return unknown for unrecognized errors', () => {
+    it('should return unknown for unrecognized message-only errors', () => {
       const error = new Error('Some random error');
       expect(classifyError(error)).toBe(ErrorCode.E_UNKNOWN);
     });
@@ -202,7 +177,11 @@ describe('Error Utilities', () => {
 
   describe('createDetailedError', () => {
     it('should create detailed error object', () => {
-      const error = new Error('File not found');
+      const error = new McpError(
+        ErrorCode.E_NOT_FOUND,
+        'File not found',
+        '/some/path'
+      );
       const detailed = createDetailedError(error, '/some/path');
 
       expect(detailed.code).toBe(ErrorCode.E_NOT_FOUND);

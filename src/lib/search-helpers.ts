@@ -2,15 +2,22 @@ import * as readline from 'node:readline';
 import { createReadStream } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 
-import type {
-  ContentMatch,
-  PendingMatch,
-  ScanFileResult,
-} from '../config/types.js';
+import type { ContentMatch } from '../config/types.js';
 import {
   MAX_LINE_CONTENT_LENGTH,
   REGEX_MATCH_TIMEOUT_MS,
 } from './constants.js';
+
+interface PendingMatch {
+  match: ContentMatch;
+  afterNeeded: number;
+}
+
+interface ScanFileResult {
+  matches: ContentMatch[];
+  linesSkippedDueToRegexTimeout: number;
+  fileHadMatches: boolean;
+}
 
 function countLiteralMatches(
   line: string,
