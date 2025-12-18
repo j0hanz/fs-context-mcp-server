@@ -26,6 +26,7 @@ import {
   DEFAULT_MAX_DEPTH,
   DEFAULT_MAX_RESULTS,
   DEFAULT_TOP_N,
+  DEFAULT_TREE_MAX_FILES,
   DIR_TRAVERSAL_CONCURRENCY,
   getMimeType,
   MAX_MEDIA_FILE_SIZE,
@@ -665,41 +666,42 @@ export async function searchContent(
               shouldScan = false;
             }
           }
+
+          if (!shouldScan) continue;
+
+          const scanResult = await scanFileForContent(openPath, regex, {
+            maxResults,
+            contextLines,
+            deadlineMs,
+            currentMatchCount: matches.length,
+            isLiteral,
+            searchString: isLiteral ? searchPattern : undefined,
+            caseSensitive,
+            fileHandle: handle,
+          });
+
+          for (const match of scanResult.matches) {
+            match.file = displayPath;
+          }
+
+          matches.push(...scanResult.matches);
+          linesSkippedDueToRegexTimeout +=
+            scanResult.linesSkippedDueToRegexTimeout;
+          if (scanResult.fileHadMatches) filesMatched++;
+
+          if (deadlineMs !== undefined && Date.now() > deadlineMs) {
+            stopNow('timeout');
+            break;
+          }
+          if (matches.length >= maxResults) {
+            stopNow('maxResults');
+            break;
+          }
+
+          if (stoppedReason !== undefined) break;
         } finally {
           await handle.close().catch(() => {});
         }
-
-        if (!shouldScan) continue;
-
-        const scanResult = await scanFileForContent(openPath, regex, {
-          maxResults,
-          contextLines,
-          deadlineMs,
-          currentMatchCount: matches.length,
-          isLiteral,
-          searchString: isLiteral ? searchPattern : undefined,
-          caseSensitive,
-        });
-
-        for (const match of scanResult.matches) {
-          match.file = displayPath;
-        }
-
-        matches.push(...scanResult.matches);
-        linesSkippedDueToRegexTimeout +=
-          scanResult.linesSkippedDueToRegexTimeout;
-        if (scanResult.fileHadMatches) filesMatched++;
-
-        if (deadlineMs !== undefined && Date.now() > deadlineMs) {
-          stopNow('timeout');
-          break;
-        }
-        if (matches.length >= maxResults) {
-          stopNow('maxResults');
-          break;
-        }
-
-        if (stoppedReason !== undefined) break;
       } catch {
         skippedInaccessible++;
       }
@@ -889,9 +891,10 @@ export async function getDirectoryTree(
   let truncated = false;
 
   const shouldExclude = createExcludeMatcher(excludePatterns);
+  const effectiveMaxFiles = maxFiles ?? DEFAULT_TREE_MAX_FILES;
 
   const hitMaxFiles = (): boolean => {
-    return maxFiles !== undefined && totalFiles >= maxFiles;
+    return totalFiles >= effectiveMaxFiles;
   };
 
   // Flat collection of all entries with parent tracking for tree assembly

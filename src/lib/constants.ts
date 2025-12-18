@@ -76,6 +76,12 @@ export const DEFAULT_MAX_RESULTS = parseEnvInt(
 );
 export const DEFAULT_TOP_N = parseEnvInt('DEFAULT_TOP', 10, 1, 1000);
 export const DEFAULT_TREE_DEPTH = parseEnvInt('DEFAULT_TREE', 5, 1, 50);
+export const DEFAULT_TREE_MAX_FILES = parseEnvInt(
+  'DEFAULT_TREE_MAX_FILES',
+  5000,
+  100,
+  200000
+);
 export const KNOWN_TEXT_EXTENSIONS = new Set([
   '.ts',
   '.tsx',

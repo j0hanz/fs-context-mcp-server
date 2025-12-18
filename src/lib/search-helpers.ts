@@ -1,5 +1,6 @@
 import * as readline from 'node:readline';
 import { createReadStream } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
 
 import type {
   ContentMatch,
@@ -154,6 +155,7 @@ export async function scanFileForContent(
     isLiteral?: boolean;
     searchString?: string;
     caseSensitive?: boolean;
+    fileHandle?: FileHandle;
   }
 ): Promise<ScanFileResult> {
   const {
@@ -164,12 +166,15 @@ export async function scanFileForContent(
     isLiteral,
     searchString,
     caseSensitive,
+    fileHandle,
   } = options;
   const matches: ContentMatch[] = [];
   let linesSkippedDueToRegexTimeout = 0;
   let fileHadMatches = false;
 
-  const fileStream = createReadStream(filePath, { encoding: 'utf-8' });
+  const fileStream =
+    fileHandle?.createReadStream({ encoding: 'utf-8', autoClose: false }) ??
+    createReadStream(filePath, { encoding: 'utf-8' });
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity,
