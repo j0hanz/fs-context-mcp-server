@@ -7,8 +7,8 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 [![npm version](https://img.shields.io/npm/v/@j0hanz/filesystem-context-mcp.svg)](https://www.npmjs.com/package/@j0hanz/filesystem-context-mcp)
 [![License](https://img.shields.io/npm/l/@j0hanz/filesystem-context-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.7.2-blue)](https://www.typescriptlang.org/)
-[![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.12.0-purple)](https://modelcontextprotocol.io)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-blue)](https://www.typescriptlang.org/)
+[![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.25.1-purple)](https://modelcontextprotocol.io)
 
 ## One-Click Install
 
@@ -153,9 +153,22 @@ If neither CLI arguments nor MCP Roots provide directories, the server automatic
 
 ### Environment Variables
 
-| Variable   | Description                                   |
-| ---------- | --------------------------------------------- |
-| `NODE_ENV` | Set to `production` for optimized performance |
+All configuration values have sensible defaults and are optional. Only configure if you need to tune performance or resource usage.
+
+| Variable          | Default | Range      | Description                           |
+| ----------------- | ------- | ---------- | ------------------------------------- |
+| `PARALLEL_JOBS`   | 20      | 1-100      | Maximum parallel file operations      |
+| `TRAVERSAL_JOBS`  | 8       | 1-50       | Directory traversal concurrency       |
+| `REGEX_TIMEOUT`   | 100     | 50-1000    | Regex matching timeout (milliseconds) |
+| `MAX_FILE_SIZE`   | 10MB    | 1MB-100MB  | Maximum text file size (bytes)        |
+| `MAX_MEDIA_SIZE`  | 50MB    | 1MB-500MB  | Maximum media file size (bytes)       |
+| `MAX_SEARCH_SIZE` | 1MB     | 100KB-10MB | Maximum file size for content search  |
+| `DEFAULT_DEPTH`   | 10      | 1-100      | Default maximum recursion depth       |
+| `DEFAULT_RESULTS` | 100     | 10-10000   | Default maximum search results        |
+| `DEFAULT_TOP`     | 10      | 1-1000     | Default top N items in analysis       |
+| `DEFAULT_TREE`    | 5       | 1-50       | Default directory tree depth          |
+
+> **💡 Tip:** See [CONFIGURATION.md](CONFIGURATION.md) for detailed environment variable usage examples, configuration profiles, and best practices for different use cases.
 
 ## 🔧 Tools
 

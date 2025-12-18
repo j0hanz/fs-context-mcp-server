@@ -1,27 +1,92 @@
+// Helper function for parsing and validating integer environment variables
+function parseEnvInt(
+  envVar: string,
+  defaultValue: number,
+  min: number,
+  max: number
+): number {
+  const value = process.env[envVar];
+  if (!value) {
+    return defaultValue;
+  }
+
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
+    console.error(
+      `[WARNING] Invalid ${envVar} value: ${value} (must be ${min}-${max}). Using default: ${defaultValue}`
+    );
+    return defaultValue;
+  }
+
+  return parsed;
+}
+
 // Concurrency Limits
-export const PARALLEL_CONCURRENCY = 20;
-export const DIR_TRAVERSAL_CONCURRENCY = 8;
+// Configurable via PARALLEL_JOBS env var (range: 1-100)
+export const PARALLEL_CONCURRENCY = parseEnvInt('PARALLEL_JOBS', 20, 1, 100);
+
+// Configurable via TRAVERSAL_JOBS env var (range: 1-50)
+export const DIR_TRAVERSAL_CONCURRENCY = parseEnvInt(
+  'TRAVERSAL_JOBS',
+  8,
+  1,
+  50
+);
 
 // Timeout Limits (ms)
-// Configurable via REGEX_TIMEOUT_MS env var (range: 50-1000ms)
-const envTimeout = parseInt(process.env.REGEX_TIMEOUT_MS ?? '100', 10);
-export const REGEX_MATCH_TIMEOUT_MS =
-  !Number.isNaN(envTimeout) && envTimeout >= 50 && envTimeout <= 1000
-    ? envTimeout
-    : 100;
+// Configurable via REGEX_TIMEOUT env var (range: 50-1000ms)
+export const REGEX_MATCH_TIMEOUT_MS = parseEnvInt(
+  'REGEX_TIMEOUT',
+  100,
+  50,
+  1000
+);
 
 // Size Limits (bytes)
-export const MAX_SEARCHABLE_FILE_SIZE = 1024 * 1024;
-export const MAX_TEXT_FILE_SIZE = 10 * 1024 * 1024;
-export const MAX_MEDIA_FILE_SIZE = 50 * 1024 * 1024;
+// Configurable via MAX_SEARCH_SIZE env var (range: 100KB-10MB)
+export const MAX_SEARCHABLE_FILE_SIZE = parseEnvInt(
+  'MAX_SEARCH_SIZE',
+  1024 * 1024, // 1MB
+  100 * 1024, // 100KB
+  10 * 1024 * 1024 // 10MB
+);
+
+// Configurable via MAX_FILE_SIZE env var (range: 1MB-100MB)
+export const MAX_TEXT_FILE_SIZE = parseEnvInt(
+  'MAX_FILE_SIZE',
+  10 * 1024 * 1024, // 10MB
+  1024 * 1024, // 1MB
+  100 * 1024 * 1024 // 100MB
+);
+
+// Configurable via MAX_MEDIA_SIZE env var (range: 1MB-500MB)
+export const MAX_MEDIA_FILE_SIZE = parseEnvInt(
+  'MAX_MEDIA_SIZE',
+  50 * 1024 * 1024, // 50MB
+  1024 * 1024, // 1MB
+  500 * 1024 * 1024 // 500MB
+);
+
 export const MAX_LINE_CONTENT_LENGTH = 200;
 export const BINARY_CHECK_BUFFER_SIZE = 512;
 
 // Default Operation Limits
-export const DEFAULT_MAX_DEPTH = 10;
-export const DEFAULT_MAX_RESULTS = 100;
-export const DEFAULT_TOP_N = 10;
-export const DEFAULT_TREE_DEPTH = 5;
+// Configurable via DEFAULT_DEPTH env var (range: 1-100)
+export const DEFAULT_MAX_DEPTH = parseEnvInt('DEFAULT_DEPTH', 10, 1, 100);
+
+// Configurable via DEFAULT_RESULTS env var (range: 10-10000)
+export const DEFAULT_MAX_RESULTS = parseEnvInt(
+  'DEFAULT_RESULTS',
+  100,
+  10,
+  10000
+);
+
+// Configurable via DEFAULT_TOP env var (range: 1-1000)
+export const DEFAULT_TOP_N = parseEnvInt('DEFAULT_TOP', 10, 1, 1000);
+
+// Configurable via DEFAULT_TREE env var (range: 1-50)
+export const DEFAULT_TREE_DEPTH = parseEnvInt('DEFAULT_TREE', 5, 1, 50);
 
 // Known text file extensions for fast-path binary detection
 export const KNOWN_TEXT_EXTENSIONS = new Set([
