@@ -8,7 +8,6 @@ import {
   formatContentMatches,
   formatOperationSummary,
 } from '../lib/formatters.js';
-import { logger } from '../lib/mcp-logger.js';
 import {
   SearchContentInputSchema,
   SearchContentOutputSchema,
@@ -48,13 +47,7 @@ export function registerSearchContentTool(server: McpServer): void {
       wholeWord,
       isLiteral,
     }) => {
-      const toolLogger = 'search_content';
       try {
-        logger.info(
-          `Starting search: pattern="${pattern}" in "${path}"`,
-          toolLogger
-        );
-
         const result = await searchContent(path, pattern, {
           filePattern,
           excludePatterns,
@@ -96,11 +89,6 @@ export function registerSearchContentTool(server: McpServer): void {
           },
         };
 
-        logger.info(
-          `Search complete: ${result.summary.matches} matches in ${result.summary.filesMatched} files (${result.summary.filesScanned} scanned)`,
-          toolLogger
-        );
-
         // Build text output with truncation notice for better error recovery feedback
         let textOutput = formatContentMatches(result.matches);
 
@@ -140,7 +128,6 @@ export function registerSearchContentTool(server: McpServer): void {
           structuredContent: structured,
         };
       } catch (error) {
-        logger.error(`Search failed: ${String(error)}`, toolLogger);
         return createErrorResponse(error, ErrorCode.E_UNKNOWN, path);
       }
     }

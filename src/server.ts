@@ -9,7 +9,6 @@ import { RootsListChangedNotificationSchema } from '@modelcontextprotocol/sdk/ty
 import type { Root } from '@modelcontextprotocol/sdk/types.js';
 
 import type { ParseArgsResult, ServerOptions } from './config/types.js';
-import { setMcpServerInstance } from './lib/mcp-logger.js';
 import { normalizePath } from './lib/path-utils.js';
 import {
   getAllowedDirectories,
@@ -171,9 +170,6 @@ export async function startServer(server: McpServer): Promise<void> {
   );
 
   await server.connect(transport);
-
-  // Set server instance for MCP logging support
-  setMcpServerInstance(server);
 
   // Update allowed directories from roots protocol
   await updateRootsFromClient(server);

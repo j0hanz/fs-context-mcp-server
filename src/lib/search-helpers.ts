@@ -7,51 +7,6 @@ import {
   REGEX_MATCH_TIMEOUT_MS,
 } from './constants.js';
 
-// Circular buffer to hold context lines before a match
-class CircularLineBuffer {
-  private buffer: string[];
-  private writeIndex = 0;
-  private count = 0;
-
-  constructor(private capacity: number) {
-    this.buffer = new Array<string>(capacity);
-  }
-
-  push(line: string): void {
-    // Defensive truncation (should already be handled by caller)
-    const truncatedLine =
-      line.length > MAX_LINE_CONTENT_LENGTH
-        ? line.substring(0, MAX_LINE_CONTENT_LENGTH)
-        : line;
-    this.buffer[this.writeIndex] = truncatedLine;
-    this.writeIndex = (this.writeIndex + 1) % this.capacity;
-    if (this.count < this.capacity) this.count++;
-  }
-
-  toArray(): string[] {
-    if (this.count === 0) return [];
-    if (this.count < this.capacity) {
-      return this.buffer.slice(0, this.count);
-    }
-    // Buffer is full - return in correct order with single allocation
-    // Avoids multiple spread/slice allocations for better GC performance
-    const result = new Array<string>(this.capacity);
-    let writeIdx = 0;
-    for (let i = this.writeIndex; i < this.capacity; i++) {
-      result[writeIdx++] = this.buffer[i] ?? '';
-    }
-    for (let i = 0; i < this.writeIndex; i++) {
-      result[writeIdx++] = this.buffer[i] ?? '';
-    }
-    return result;
-  }
-
-  clear(): void {
-    this.count = 0;
-    this.writeIndex = 0;
-  }
-}
-
 // Pending match tracker for context-after lines
 interface PendingMatch {
   match: ContentMatch;
@@ -206,8 +161,8 @@ export async function scanFileForContent(
   });
 
   let lineNumber = 0;
-  const lineBuffer =
-    contextLines > 0 ? new CircularLineBuffer(contextLines) : null;
+  // Simple array for context lines (contextLines is capped at 0-10)
+  const contextBuffer: string[] = [];
   const pendingMatches: PendingMatch[] = [];
 
   try {
@@ -223,7 +178,10 @@ export async function scanFileForContent(
       const matchCount = countRegexMatches(line, regex);
       if (matchCount < 0) {
         linesSkippedDueToRegexTimeout++;
-        lineBuffer?.push(trimmedLine);
+        if (contextLines > 0) {
+          contextBuffer.push(trimmedLine);
+          if (contextBuffer.length > contextLines) contextBuffer.shift();
+        }
         continue;
       }
 
@@ -236,9 +194,8 @@ export async function scanFileForContent(
           matchCount,
         };
 
-        const contextBefore = lineBuffer?.toArray();
-        if (contextBefore?.length) {
-          newMatch.contextBefore = contextBefore;
+        if (contextBuffer.length > 0) {
+          newMatch.contextBefore = [...contextBuffer];
         }
 
         matches.push(newMatch);
@@ -251,7 +208,11 @@ export async function scanFileForContent(
         }
       }
 
-      lineBuffer?.push(trimmedLine);
+      // Update context buffer
+      if (contextLines > 0) {
+        contextBuffer.push(trimmedLine);
+        if (contextBuffer.length > contextLines) contextBuffer.shift();
+      }
     }
   } finally {
     rl.close();

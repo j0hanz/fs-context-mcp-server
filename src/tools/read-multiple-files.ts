@@ -1,12 +1,21 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createErrorResponse, ErrorCode } from '../lib/errors.js';
+import { createErrorResponse, ErrorCode, McpError } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations.js';
 import {
   ReadMultipleFilesInputSchema,
   ReadMultipleFilesOutputSchema,
 } from '../schemas/index.js';
-import { validateHeadTail } from '../schemas/validators.js';
+
+// Inline validation for head/tail mutual exclusivity
+function validateHeadTail(head?: number, tail?: number): void {
+  if (head !== undefined && tail !== undefined) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Cannot specify both head and tail simultaneously'
+    );
+  }
+}
 
 export function registerReadMultipleFilesTool(server: McpServer): void {
   server.registerTool(
@@ -29,7 +38,7 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
     async ({ paths, encoding, maxSize, maxTotalSize, head, tail }) => {
       try {
         // Validate head/tail mutual exclusivity early
-        validateHeadTail({ head, tail });
+        validateHeadTail(head, tail);
 
         // Read multiple files in parallel
         const results = await readMultipleFiles(paths, {

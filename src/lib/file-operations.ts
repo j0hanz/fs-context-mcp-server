@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 import fg from 'fast-glob';
+import { Minimatch } from 'minimatch';
 import safeRegex from 'safe-regex2';
 
 import type {
@@ -30,11 +31,6 @@ import {
   MAX_TEXT_FILE_SIZE,
   PARALLEL_CONCURRENCY,
 } from './constants.js';
-import {
-  classifyAccessError,
-  createExcludeMatcher,
-  insertSorted,
-} from './directory-helpers.js';
 import { ErrorCode, McpError } from './errors.js';
 import {
   getFileType,
@@ -54,7 +50,106 @@ import {
   prepareSearchPattern,
   scanFileForContent,
 } from './search-helpers.js';
-import { createSearchResultSorter, createSorter } from './sorting.js';
+
+// === Inlined from directory-helpers.ts ===
+
+// Create matcher from exclude patterns
+function createExcludeMatcher(
+  excludePatterns: string[]
+): (name: string, relativePath: string) => boolean {
+  if (excludePatterns.length === 0) {
+    return () => false;
+  }
+  const matchers = excludePatterns.map((pattern) => new Minimatch(pattern));
+  return (name: string, relativePath: string): boolean =>
+    matchers.some((m) => m.match(name) || m.match(relativePath));
+}
+
+// Classify symlink/access errors for summary tracking
+function classifyAccessError(error: unknown): 'symlink' | 'inaccessible' {
+  if (
+    error instanceof McpError &&
+    (error.code === ErrorCode.E_ACCESS_DENIED ||
+      error.code === ErrorCode.E_SYMLINK_NOT_ALLOWED)
+  ) {
+    return 'symlink';
+  }
+  return 'inaccessible';
+}
+
+// Insert item into sorted array maintaining sort order (descending by comparator)
+function insertSorted<T>(
+  arr: T[],
+  item: T,
+  compare: (a: T, b: T) => number,
+  maxLen: number
+): void {
+  if (maxLen <= 0) return;
+  const idx = arr.findIndex((el) => compare(item, el) < 0);
+  if (idx === -1) {
+    if (arr.length < maxLen) arr.push(item);
+  } else {
+    arr.splice(idx, 0, item);
+    if (arr.length > maxLen) arr.pop();
+  }
+}
+
+// === Inline sorting comparators (eliminated sorting.ts module) ===
+
+interface SortableEntry {
+  name?: string;
+  size?: number;
+  modified?: Date;
+  type?: FileType;
+  path?: string;
+}
+
+function sortEntries(
+  entries: SortableEntry[],
+  sortBy: 'name' | 'size' | 'modified' | 'type' | 'path'
+): void {
+  entries.sort((a, b) => {
+    switch (sortBy) {
+      case 'size':
+        return (b.size ?? 0) - (a.size ?? 0);
+      case 'modified':
+        return (b.modified?.getTime() ?? 0) - (a.modified?.getTime() ?? 0);
+      case 'type':
+        if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+        return (a.name ?? '').localeCompare(b.name ?? '');
+      case 'path':
+        return (a.path ?? '').localeCompare(b.path ?? '');
+      default:
+        return (a.name ?? '').localeCompare(b.name ?? '');
+    }
+  });
+}
+
+interface SortableSearchResult {
+  path?: string;
+  size?: number;
+  modified?: Date;
+}
+
+function sortSearchResults(
+  results: SortableSearchResult[],
+  sortBy: 'name' | 'size' | 'modified' | 'path'
+): void {
+  results.sort((a, b) => {
+    switch (sortBy) {
+      case 'size':
+        return (b.size ?? 0) - (a.size ?? 0);
+      case 'modified':
+        return (b.modified?.getTime() ?? 0) - (a.modified?.getTime() ?? 0);
+      case 'name':
+        return path
+          .basename(a.path ?? '')
+          .localeCompare(path.basename(b.path ?? ''));
+      default:
+        return (a.path ?? '').localeCompare(b.path ?? '');
+    }
+  });
+}
 
 // Convert file mode to permission string (e.g., 'rwxr-xr-x')
 function getPermissions(mode: number): string {
@@ -266,7 +361,7 @@ export async function listDirectory(
     DIR_TRAVERSAL_CONCURRENCY
   );
 
-  entries.sort(createSorter(sortBy));
+  sortEntries(entries, sortBy);
 
   return {
     path: validPath,
@@ -366,7 +461,7 @@ export async function searchFiles(
 
   await flushBatch();
 
-  results.sort(createSearchResultSorter(sortBy));
+  sortSearchResults(results, sortBy);
 
   return {
     basePath: validPath,

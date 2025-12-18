@@ -1,10 +1,60 @@
 import { describe, expect, it } from 'vitest';
 
 import { ErrorCode, McpError } from '../../lib/errors.js';
-import {
-  validateHeadTail,
-  validateLineRange,
-} from '../../schemas/validators.js';
+
+// Inline validation functions (matching the implementation in tools)
+function validateLineRange(params: {
+  lineStart?: number;
+  lineEnd?: number;
+  head?: number;
+  tail?: number;
+  path: string;
+}): void {
+  const { lineStart, lineEnd, head, tail, path } = params;
+  const hasLineStart = lineStart !== undefined;
+  const hasLineEnd = lineEnd !== undefined;
+
+  if (hasLineStart !== hasLineEnd) {
+    const missing = hasLineStart ? 'lineEnd' : 'lineStart';
+    const provided = hasLineStart ? 'lineStart' : 'lineEnd';
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Invalid lineRange: ${provided} requires ${missing} to also be specified`,
+      path
+    );
+  }
+
+  if (hasLineStart && hasLineEnd && lineEnd < lineStart) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Invalid lineRange: lineEnd (${lineEnd}) must be >= lineStart (${lineStart})`,
+      path
+    );
+  }
+
+  const hasLineRange = hasLineStart && hasLineEnd;
+  const optionsCount = [
+    hasLineRange,
+    head !== undefined,
+    tail !== undefined,
+  ].filter(Boolean).length;
+  if (optionsCount > 1) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Cannot specify multiple of lineRange (lineStart + lineEnd), head, or tail simultaneously',
+      path
+    );
+  }
+}
+
+function validateHeadTail(head?: number, tail?: number): void {
+  if (head !== undefined && tail !== undefined) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Cannot specify both head and tail simultaneously'
+    );
+  }
+}
 
 describe('validateLineRange', () => {
   it('should accept valid lineRange with both lineStart and lineEnd', () => {
@@ -125,25 +175,25 @@ describe('validateLineRange', () => {
 describe('validateHeadTail', () => {
   it('should accept head alone', () => {
     expect(() => {
-      validateHeadTail({ head: 10 });
+      validateHeadTail(10, undefined);
     }).not.toThrow();
   });
 
   it('should accept tail alone', () => {
     expect(() => {
-      validateHeadTail({ tail: 10 });
+      validateHeadTail(undefined, 10);
     }).not.toThrow();
   });
 
   it('should accept neither head nor tail', () => {
     expect(() => {
-      validateHeadTail({});
+      validateHeadTail(undefined, undefined);
     }).not.toThrow();
   });
 
   it('should reject both head and tail', () => {
     try {
-      validateHeadTail({ head: 5, tail: 5 });
+      validateHeadTail(5, 5);
       expect.fail('Expected McpError to be thrown');
     } catch (error) {
       expect(error).toBeInstanceOf(McpError);

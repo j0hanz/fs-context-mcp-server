@@ -1,9 +1,53 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createErrorResponse, ErrorCode } from '../lib/errors.js';
+import { createErrorResponse, ErrorCode, McpError } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
-import { validateLineRange } from '../schemas/validators.js';
+
+// Inline validation for line range parameters
+function validateLineRange(params: {
+  lineStart?: number;
+  lineEnd?: number;
+  head?: number;
+  tail?: number;
+  path: string;
+}): void {
+  const { lineStart, lineEnd, head, tail, path } = params;
+  const hasLineStart = lineStart !== undefined;
+  const hasLineEnd = lineEnd !== undefined;
+
+  if (hasLineStart !== hasLineEnd) {
+    const missing = hasLineStart ? 'lineEnd' : 'lineStart';
+    const provided = hasLineStart ? 'lineStart' : 'lineEnd';
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Invalid lineRange: ${provided} requires ${missing} to also be specified`,
+      path
+    );
+  }
+
+  if (hasLineStart && hasLineEnd && lineEnd < lineStart) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Invalid lineRange: lineEnd (${lineEnd}) must be >= lineStart (${lineStart})`,
+      path
+    );
+  }
+
+  const hasLineRange = hasLineStart && hasLineEnd;
+  const optionsCount = [
+    hasLineRange,
+    head !== undefined,
+    tail !== undefined,
+  ].filter(Boolean).length;
+  if (optionsCount > 1) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Cannot specify multiple of lineRange (lineStart + lineEnd), head, or tail simultaneously',
+      path
+    );
+  }
+}
 
 export function registerReadFileTool(server: McpServer): void {
   server.registerTool(
