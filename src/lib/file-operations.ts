@@ -124,6 +124,143 @@ function sortSearchResults(
   }
 }
 
+function buildSearchRegex(
+  searchPattern: string,
+  options: {
+    isLiteral: boolean;
+    wholeWord: boolean;
+    caseSensitive: boolean;
+    basePath: string;
+  }
+): { regex: RegExp; finalPattern: string } {
+  const { isLiteral, wholeWord, caseSensitive, basePath } = options;
+
+  const finalPattern = prepareSearchPattern(searchPattern, {
+    isLiteral,
+    wholeWord,
+  });
+
+  const needsReDoSCheck = !isLiteral && !isSimpleSafePattern(finalPattern);
+
+  if (needsReDoSCheck && !safeRegex(finalPattern)) {
+    throw new McpError(
+      ErrorCode.E_INVALID_PATTERN,
+      `Potentially unsafe regular expression (ReDoS risk): ${searchPattern}. ` +
+        'Avoid patterns with nested quantifiers, overlapping alternations, or exponential backtracking.',
+      basePath,
+      { reason: 'ReDoS risk detected' }
+    );
+  }
+
+  try {
+    const regex = new RegExp(finalPattern, caseSensitive ? 'g' : 'gi');
+    return { regex, finalPattern };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new McpError(
+      ErrorCode.E_INVALID_PATTERN,
+      `Invalid regular expression: ${finalPattern} (${message})`,
+      basePath,
+      { searchPattern: finalPattern }
+    );
+  }
+}
+
+async function scanCandidateFile(
+  openPath: string,
+  displayPath: string,
+  regex: RegExp,
+  options: {
+    maxResults: number;
+    currentMatchCount: number;
+    maxFileSize: number;
+    skipBinary: boolean;
+    isLiteral: boolean;
+    searchPattern: string;
+    caseSensitive: boolean;
+    contextLines: number;
+    wholeWord: boolean;
+    deadlineMs?: number;
+  }
+): Promise<{
+  matches: ContentMatch[];
+  fileHadMatches: boolean;
+  linesSkippedDueToRegexTimeout: number;
+  skippedTooLarge: boolean;
+  skippedBinary: boolean;
+  scanned: boolean;
+}> {
+  const {
+    maxResults,
+    currentMatchCount,
+    maxFileSize,
+    skipBinary,
+    isLiteral,
+    searchPattern,
+    caseSensitive,
+    contextLines,
+    wholeWord,
+    deadlineMs,
+  } = options;
+
+  const handle = await fs.open(openPath, 'r');
+
+  try {
+    const stats = await handle.stat();
+    if (stats.size > maxFileSize) {
+      return {
+        matches: [],
+        fileHadMatches: false,
+        linesSkippedDueToRegexTimeout: 0,
+        skippedTooLarge: true,
+        skippedBinary: false,
+        scanned: true,
+      };
+    }
+
+    if (skipBinary) {
+      const binary = await isProbablyBinary(openPath, handle);
+      if (binary) {
+        return {
+          matches: [],
+          fileHadMatches: false,
+          linesSkippedDueToRegexTimeout: 0,
+          skippedTooLarge: false,
+          skippedBinary: true,
+          scanned: true,
+        };
+      }
+    }
+
+    const scanResult = await scanFileForContent(openPath, regex, {
+      maxResults,
+      contextLines,
+      deadlineMs,
+      currentMatchCount,
+      isLiteral,
+      searchString: isLiteral ? searchPattern : undefined,
+      caseSensitive,
+      wholeWord,
+      fileHandle: handle,
+    });
+
+    for (const match of scanResult.matches) {
+      match.file = displayPath;
+    }
+
+    return {
+      matches: scanResult.matches,
+      fileHadMatches: scanResult.fileHadMatches,
+      linesSkippedDueToRegexTimeout: scanResult.linesSkippedDueToRegexTimeout,
+      skippedTooLarge: false,
+      skippedBinary: false,
+      scanned: true,
+    };
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
 function getPermissions(mode: number): string {
   const PERM_STRINGS = [
     '---',
@@ -574,36 +711,12 @@ export async function searchContent(
   const deadlineMs =
     timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
 
-  // Prepare the search pattern with optional literal escaping and word boundaries
-  const finalPattern = prepareSearchPattern(searchPattern, {
+  const { regex } = buildSearchRegex(searchPattern, {
     isLiteral,
     wholeWord,
+    caseSensitive,
+    basePath,
   });
-
-  const needsReDoSCheck = !isLiteral && !isSimpleSafePattern(finalPattern);
-
-  if (needsReDoSCheck && !safeRegex(finalPattern)) {
-    throw new McpError(
-      ErrorCode.E_INVALID_PATTERN,
-      `Potentially unsafe regular expression (ReDoS risk): ${searchPattern}. ` +
-        'Avoid patterns with nested quantifiers, overlapping alternations, or exponential backtracking.',
-      basePath,
-      { reason: 'ReDoS risk detected' }
-    );
-  }
-
-  let regex: RegExp;
-  try {
-    regex = new RegExp(finalPattern, caseSensitive ? 'g' : 'gi');
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new McpError(
-      ErrorCode.E_INVALID_PATTERN,
-      `Invalid regular expression: ${finalPattern} (${message})`,
-      basePath,
-      { searchPattern: finalPattern }
-    );
-  }
 
   const matches: ContentMatch[] = [];
   let filesScanned = 0;
@@ -660,60 +773,51 @@ export async function searchContent(
       }
 
       try {
-        const handle = await fs.open(openPath, 'r');
-        let shouldScan = true;
-
-        try {
-          const stats = await handle.stat();
-          filesScanned++;
-
-          if (stats.size > maxFileSize) {
-            skippedTooLarge++;
-            shouldScan = false;
-          } else if (skipBinary) {
-            const binary = await isProbablyBinary(openPath, handle);
-            if (binary) {
-              skippedBinary++;
-              shouldScan = false;
-            }
-          }
-
-          if (!shouldScan) continue;
-
-          const scanResult = await scanFileForContent(openPath, regex, {
+        const scanResult = await scanCandidateFile(
+          openPath,
+          displayPath,
+          regex,
+          {
             maxResults,
-            contextLines,
-            deadlineMs,
             currentMatchCount: matches.length,
+            maxFileSize,
+            skipBinary,
             isLiteral,
-            searchString: isLiteral ? searchPattern : undefined,
+            searchPattern,
             caseSensitive,
+            contextLines,
             wholeWord,
-            fileHandle: handle,
-          });
-
-          for (const match of scanResult.matches) {
-            match.file = displayPath;
+            deadlineMs,
           }
+        );
 
-          matches.push(...scanResult.matches);
-          linesSkippedDueToRegexTimeout +=
-            scanResult.linesSkippedDueToRegexTimeout;
-          if (scanResult.fileHadMatches) filesMatched++;
-
-          if (deadlineMs !== undefined && Date.now() > deadlineMs) {
-            stopNow('timeout');
-            break;
-          }
-          if (matches.length >= maxResults) {
-            stopNow('maxResults');
-            break;
-          }
-
-          if (stoppedReason !== undefined) break;
-        } finally {
-          await handle.close().catch(() => {});
+        if (scanResult.scanned) {
+          filesScanned++;
         }
+        if (scanResult.skippedTooLarge) {
+          skippedTooLarge++;
+          continue;
+        }
+        if (scanResult.skippedBinary) {
+          skippedBinary++;
+          continue;
+        }
+
+        matches.push(...scanResult.matches);
+        linesSkippedDueToRegexTimeout +=
+          scanResult.linesSkippedDueToRegexTimeout;
+        if (scanResult.fileHadMatches) filesMatched++;
+
+        if (deadlineMs !== undefined && Date.now() > deadlineMs) {
+          stopNow('timeout');
+          break;
+        }
+        if (matches.length >= maxResults) {
+          stopNow('maxResults');
+          break;
+        }
+
+        if (stoppedReason !== undefined) break;
       } catch {
         skippedInaccessible++;
       }

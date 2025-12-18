@@ -13,6 +13,7 @@ import { normalizePath } from './lib/path-utils.js';
 import {
   getAllowedDirectories,
   getValidRootDirectories,
+  RESERVED_DEVICE_NAMES,
   setAllowedDirectories,
 } from './lib/path-validation.js';
 import { registerAllTools } from './tools/index.js';
@@ -34,31 +35,6 @@ try {
     error instanceof Error ? error.message : String(error)
   );
 }
-
-const RESERVED_DEVICE_NAMES = new Set([
-  'CON',
-  'PRN',
-  'AUX',
-  'NUL',
-  'COM1',
-  'COM2',
-  'COM3',
-  'COM4',
-  'COM5',
-  'COM6',
-  'COM7',
-  'COM8',
-  'COM9',
-  'LPT1',
-  'LPT2',
-  'LPT3',
-  'LPT4',
-  'LPT5',
-  'LPT6',
-  'LPT7',
-  'LPT8',
-  'LPT9',
-]);
 
 function validateCliPath(inputPath: string): void {
   if (inputPath.includes('\0')) {

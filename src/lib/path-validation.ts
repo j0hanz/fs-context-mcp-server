@@ -34,7 +34,7 @@ function isPathWithinAllowedDirectories(normalizedPath: string): boolean {
   });
 }
 
-const RESERVED_DEVICE_NAMES = new Set([
+export const RESERVED_DEVICE_NAMES = new Set([
   'CON',
   'PRN',
   'AUX',
