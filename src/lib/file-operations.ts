@@ -374,11 +374,13 @@ export async function searchFiles(
 
     const settled = await Promise.allSettled(
       toProcess.map(async (match) => {
-        const stats = await fs.stat(match);
+        const { requestedPath, resolvedPath, isSymlink } =
+          await validateExistingPathDetailed(match);
+        const stats = await fs.stat(resolvedPath);
         const { size, mtime: modified } = stats;
         return {
-          path: match,
-          type: getFileType(stats),
+          path: requestedPath,
+          type: isSymlink ? 'symlink' : getFileType(stats),
           size: stats.isFile() ? size : undefined,
           modified,
         } satisfies SearchResult;
@@ -600,7 +602,6 @@ export async function searchContent(
   let linesSkippedDueToRegexTimeout = 0;
   let truncated = false;
   let stoppedReason: SearchContentResult['summary']['stoppedReason'];
-  let firstPathValidated = false;
 
   const stopNow = (reason: typeof stoppedReason): boolean => {
     truncated = true;
@@ -620,18 +621,18 @@ export async function searchContent(
 
   try {
     for await (const entry of stream) {
-      const file = typeof entry === 'string' ? entry : String(entry);
-
-      if (!firstPathValidated) {
-        try {
-          await validateExistingPath(file);
-          firstPathValidated = true;
-        } catch {
-          console.error('[SECURITY] fast-glob returned invalid path:', file);
-          stopNow('maxFiles');
-          break;
-        }
+      const rawPath = typeof entry === 'string' ? entry : String(entry);
+      let validatedPath: Awaited<
+        ReturnType<typeof validateExistingPathDetailed>
+      >;
+      try {
+        validatedPath = await validateExistingPathDetailed(rawPath);
+      } catch {
+        skippedInaccessible++;
+        continue;
       }
+      const openPath = validatedPath.resolvedPath;
+      const displayPath = validatedPath.requestedPath;
 
       if (deadlineMs !== undefined && Date.now() > deadlineMs) {
         stopNow('timeout');
@@ -647,7 +648,7 @@ export async function searchContent(
       }
 
       try {
-        const handle = await fs.open(file, 'r');
+        const handle = await fs.open(openPath, 'r');
         let shouldScan = true;
 
         try {
@@ -658,7 +659,7 @@ export async function searchContent(
             skippedTooLarge++;
             shouldScan = false;
           } else if (skipBinary) {
-            const binary = await isProbablyBinary(file, handle);
+            const binary = await isProbablyBinary(openPath, handle);
             if (binary) {
               skippedBinary++;
               shouldScan = false;
@@ -670,7 +671,7 @@ export async function searchContent(
 
         if (!shouldScan) continue;
 
-        const scanResult = await scanFileForContent(file, regex, {
+        const scanResult = await scanFileForContent(openPath, regex, {
           maxResults,
           contextLines,
           deadlineMs,
@@ -679,6 +680,10 @@ export async function searchContent(
           searchString: isLiteral ? searchPattern : undefined,
           caseSensitive,
         });
+
+        for (const match of scanResult.matches) {
+          match.file = displayPath;
+        }
 
         matches.push(...scanResult.matches);
         linesSkippedDueToRegexTimeout +=

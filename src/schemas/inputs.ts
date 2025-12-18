@@ -9,6 +9,22 @@ import {
   MAX_TEXT_FILE_SIZE,
 } from '../lib/constants.js';
 
+function isSafeGlobPattern(value: string): boolean {
+  if (value.length === 0) return false;
+
+  // Disallow absolute paths (POSIX and Windows) and traversal segments
+  const absolutePattern = /^([/\\]|[A-Za-z]:[/\\]|\\\\)/u;
+  if (absolutePattern.test(value)) {
+    return false;
+  }
+
+  if (/[\\/]\.\.(?:[/\\]|$)/u.test(value) || value.startsWith('..')) {
+    return false;
+  }
+
+  return true;
+}
+
 export const ListDirectoryInputSchema = {
   path: z
     .string()
@@ -72,12 +88,15 @@ export const SearchFilesInputSchema = {
           if (val.includes('**/**/**')) {
             return false; // Excessive nesting
           }
-          return true;
+          return isSafeGlobPattern(val);
         } catch {
           return false;
         }
       },
-      { message: 'Invalid glob pattern syntax' }
+      {
+        message:
+          'Invalid glob pattern syntax or unsafe path (absolute/.. segments not allowed)',
+      }
     )
     .describe(
       'Glob pattern to match files. Examples: "**/*.ts" (all TypeScript files), "src/**/*.js" (JS files in src), "*.json" (JSON files in current dir)'
@@ -252,6 +271,10 @@ export const SearchContentInputSchema = {
     .max(500, 'File pattern is too long')
     .optional()
     .default('**/*')
+    .refine(isSafeGlobPattern, {
+      message:
+        'File pattern must be relative to the base path (no absolute or ".." segments)',
+    })
     .describe('Glob pattern to filter files'),
   excludePatterns: z
     .array(

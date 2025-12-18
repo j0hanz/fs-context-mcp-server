@@ -210,7 +210,7 @@ export function formatDirectoryAnalysis(analysis: DirectoryAnalysis): string {
 
 export function formatTreeEntry(entry: TreeEntry, indent = ''): string {
   const lines: string[] = [];
-  const icon = entry.type === 'directory' ? '📁' : '📄';
+  const icon = entry.type === 'directory' ? '[DIR]' : '[FILE]';
   const sizeStr =
     entry.size !== undefined ? ` (${formatBytes(entry.size)})` : '';
   lines.push(`${indent}${icon} ${entry.name}${sizeStr}`);
@@ -240,7 +240,7 @@ export function formatOperationSummary(summary: OperationSummary): string {
 
   if (summary.truncated) {
     lines.push(
-      `\n\n⚠️ PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
+      `\n\n!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
     );
     if (summary.tip) {
       lines.push(`Tip: ${summary.tip}`);
