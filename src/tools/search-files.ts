@@ -87,18 +87,48 @@ function buildStructuredResult(
       truncated: result.summary.truncated,
       skippedInaccessible: result.summary.skippedInaccessible,
       filesScanned: result.summary.filesScanned,
+      stoppedReason: result.summary.stoppedReason,
     },
   };
+}
+
+function buildTruncationInfo(result: Awaited<ReturnType<typeof searchFiles>>): {
+  truncatedReason?: string;
+  tip?: string;
+} {
+  if (!result.summary.truncated) return {};
+  if (result.summary.stoppedReason === 'timeout') {
+    return {
+      truncatedReason: 'search timed out',
+      tip: 'Increase timeoutMs, use a more specific pattern, or add excludePatterns to narrow scope.',
+    };
+  }
+  if (result.summary.stoppedReason === 'maxResults') {
+    return {
+      truncatedReason: `reached max results limit (${result.summary.matched} returned)`,
+    };
+  }
+  if (result.summary.stoppedReason === 'maxFiles') {
+    return {
+      truncatedReason: `reached max files limit (${result.summary.filesScanned} scanned)`,
+    };
+  }
+  return {};
 }
 
 function buildTextResult(
   result: Awaited<ReturnType<typeof searchFiles>>
 ): string {
+  const { truncatedReason, tip } = buildTruncationInfo(result);
   let textOutput = formatSearchResults(result.results);
   textOutput += formatOperationSummary({
     truncated: result.summary.truncated,
-    truncatedReason: `reached max results limit (${result.summary.matched} returned)`,
-    tip: 'Increase maxResults, use more specific pattern, or add excludePatterns to narrow scope.',
+    truncatedReason,
+    tip:
+      tip ??
+      (result.summary.truncated
+        ? 'Increase maxResults, use more specific pattern, or add excludePatterns to narrow scope.'
+        : undefined),
     skippedInaccessible: result.summary.skippedInaccessible,
   });
   return textOutput;
@@ -111,6 +141,8 @@ async function handleSearchFiles({
   maxResults,
   sortBy,
   maxDepth,
+  maxFilesScanned,
+  timeoutMs,
 }: {
   path: string;
   pattern: string;
@@ -118,11 +150,15 @@ async function handleSearchFiles({
   maxResults?: number;
   sortBy?: 'name' | 'size' | 'modified' | 'path';
   maxDepth?: number;
+  maxFilesScanned?: number;
+  timeoutMs?: number;
 }): Promise<ToolResponse<SearchFilesStructuredResult>> {
   const result = await searchFiles(searchBasePath, pattern, excludePatterns, {
     maxResults,
     sortBy,
     maxDepth,
+    maxFilesScanned,
+    timeoutMs,
   });
   return buildToolResponse(
     buildTextResult(result),

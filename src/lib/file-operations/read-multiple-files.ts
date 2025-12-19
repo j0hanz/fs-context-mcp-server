@@ -33,7 +33,8 @@ function createOutputSkeleton(filePaths: string[]): ReadMultipleResult[] {
 async function collectFileBudget(
   filePaths: string[],
   isPartialRead: boolean,
-  maxTotalSize: number
+  maxTotalSize: number,
+  maxSize: number
 ): Promise<{ skippedBudget: Set<string> }> {
   const skippedBudget = new Set<string>();
   let totalSize = 0;
@@ -43,13 +44,14 @@ async function collectFileBudget(
       const validPath = await validateExistingPath(filePath);
       const stats = await fs.stat(validPath);
 
-      if (!isPartialRead) {
-        if (totalSize + stats.size > maxTotalSize) {
-          skippedBudget.add(filePath);
-          continue;
-        }
-        totalSize += stats.size;
+      const estimatedSize = isPartialRead
+        ? Math.min(stats.size, maxSize)
+        : stats.size;
+      if (totalSize + estimatedSize > maxTotalSize) {
+        skippedBudget.add(filePath);
+        continue;
       }
+      totalSize += estimatedSize;
     } catch {
       // Ignore per-file size errors; handled during read.
     }
@@ -98,7 +100,7 @@ function applySkippedBudgetErrors(
 
     output[index] = {
       path: filePath,
-      error: `Skipped: combined total would exceed maxTotalSize (${maxTotalSize} bytes)`,
+      error: `Skipped: combined estimated read would exceed maxTotalSize (${maxTotalSize} bytes)`,
     };
   }
 }
@@ -130,7 +132,8 @@ export async function readMultipleFiles(
   const { skippedBudget } = await collectFileBudget(
     filePaths,
     isPartialRead,
-    maxTotalSize
+    maxTotalSize,
+    maxSize
   );
 
   const filesToProcess = buildProcessTargets(filePaths, skippedBudget);
@@ -158,7 +161,12 @@ export async function readMultipleFiles(
     PARALLEL_CONCURRENCY
   );
 
-  applyParallelResults(output, results, errors, filePaths);
+  const mappedErrors = errors.map((failure) => ({
+    index: filesToProcess[failure.index]?.index ?? failure.index,
+    error: failure.error,
+  }));
+
+  applyParallelResults(output, results, mappedErrors, filePaths);
   applySkippedBudgetErrors(output, skippedBudget, filePaths, maxTotalSize);
 
   return output;

@@ -74,6 +74,7 @@ export const SearchFilesOutputSchema = z.object({
         .number()
         .optional()
         .describe('Total number of files scanned by the glob pattern'),
+      stoppedReason: z.enum(['maxResults', 'maxFiles', 'timeout']).optional(),
     })
     .optional(),
   error: ErrorSchema.optional(),

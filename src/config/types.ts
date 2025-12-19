@@ -54,6 +54,7 @@ export interface SearchFilesResult {
     truncated: boolean;
     skippedInaccessible: number;
     filesScanned: number;
+    stoppedReason?: 'maxResults' | 'maxFiles' | 'timeout';
   };
 }
 

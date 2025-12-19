@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   DEFAULT_MAX_DEPTH,
   DEFAULT_MAX_RESULTS,
+  DEFAULT_SEARCH_MAX_FILES,
+  DEFAULT_SEARCH_TIMEOUT_MS,
   DEFAULT_TOP_N,
   DEFAULT_TREE_DEPTH,
   MAX_MEDIA_FILE_SIZE,
@@ -115,6 +117,22 @@ export const SearchFilesInputSchema = {
     .describe(
       'Maximum directory depth to search (lower values improve performance)'
     ),
+  maxFilesScanned: z
+    .number()
+    .int('maxFilesScanned must be an integer')
+    .min(1, 'maxFilesScanned must be at least 1')
+    .max(100000, 'maxFilesScanned cannot exceed 100,000')
+    .optional()
+    .default(DEFAULT_SEARCH_MAX_FILES)
+    .describe('Maximum number of files to scan before stopping'),
+  timeoutMs: z
+    .number()
+    .int('timeoutMs must be an integer')
+    .min(100, 'timeoutMs must be at least 100ms')
+    .max(3600000, 'timeoutMs cannot exceed 1 hour')
+    .optional()
+    .default(DEFAULT_SEARCH_TIMEOUT_MS)
+    .describe('Timeout in milliseconds for the search operation'),
 };
 
 // Base schema for reading a file with various options.
@@ -258,6 +276,7 @@ export const SearchContentInputSchema = {
     .min(1, 'maxFilesScanned must be at least 1')
     .max(100000, 'maxFilesScanned cannot exceed 100,000')
     .optional()
+    .default(DEFAULT_SEARCH_MAX_FILES)
     .describe('Maximum number of files to scan before stopping'),
   timeoutMs: z
     .number()
@@ -265,6 +284,7 @@ export const SearchContentInputSchema = {
     .min(100, 'timeoutMs must be at least 100ms')
     .max(3600000, 'timeoutMs cannot exceed 1 hour')
     .optional()
+    .default(DEFAULT_SEARCH_TIMEOUT_MS)
     .describe('Timeout in milliseconds for the search operation'),
   skipBinary: z
     .boolean()

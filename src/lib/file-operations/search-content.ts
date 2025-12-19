@@ -8,6 +8,8 @@ import safeRegex from 'safe-regex2';
 import type { ContentMatch, SearchContentResult } from '../../config/types.js';
 import {
   DEFAULT_MAX_RESULTS,
+  DEFAULT_SEARCH_MAX_FILES,
+  DEFAULT_SEARCH_TIMEOUT_MS,
   MAX_LINE_CONTENT_LENGTH,
   MAX_SEARCHABLE_FILE_SIZE,
   REGEX_MATCH_TIMEOUT_MS,
@@ -656,8 +658,8 @@ export async function searchContent(
     caseSensitive = false,
     maxResults = DEFAULT_MAX_RESULTS,
     maxFileSize = MAX_SEARCHABLE_FILE_SIZE,
-    maxFilesScanned,
-    timeoutMs,
+    maxFilesScanned = DEFAULT_SEARCH_MAX_FILES,
+    timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS,
     skipBinary = true,
     contextLines = 0,
     wholeWord = false,
@@ -666,8 +668,7 @@ export async function searchContent(
   } = options;
 
   const validPath = await validateExistingPath(basePath);
-  const deadlineMs =
-    timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
+  const deadlineMs = timeoutMs ? Date.now() + timeoutMs : undefined;
   const { regex } = buildSearchRegex(searchPattern, {
     isLiteral,
     wholeWord,

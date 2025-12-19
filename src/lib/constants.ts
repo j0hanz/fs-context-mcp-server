@@ -63,6 +63,18 @@ export const DEFAULT_MAX_RESULTS = parseEnvInt(
   10,
   10000
 );
+export const DEFAULT_SEARCH_MAX_FILES = parseEnvInt(
+  'DEFAULT_SEARCH_MAX_FILES',
+  20000,
+  100,
+  100000
+);
+export const DEFAULT_SEARCH_TIMEOUT_MS = parseEnvInt(
+  'DEFAULT_SEARCH_TIMEOUT',
+  30000,
+  100,
+  3600000
+);
 export const DEFAULT_TOP_N = parseEnvInt('DEFAULT_TOP', 10, 1, 1000);
 export const DEFAULT_TREE_DEPTH = parseEnvInt('DEFAULT_TREE', 5, 1, 50);
 export const DEFAULT_TREE_MAX_FILES = parseEnvInt(

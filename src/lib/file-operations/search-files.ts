@@ -3,7 +3,12 @@ import * as fs from 'node:fs/promises';
 import fg from 'fast-glob';
 
 import type { SearchFilesResult, SearchResult } from '../../config/types.js';
-import { DEFAULT_MAX_RESULTS, PARALLEL_CONCURRENCY } from '../constants.js';
+import {
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_SEARCH_MAX_FILES,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+  PARALLEL_CONCURRENCY,
+} from '../constants.js';
 import { getFileType } from '../fs-helpers.js';
 import {
   validateExistingPath,
@@ -16,6 +21,7 @@ interface SearchFilesState {
   skippedInaccessible: number;
   truncated: boolean;
   filesScanned: number;
+  stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
 }
 
 function initSearchFilesState(): SearchFilesState {
@@ -24,11 +30,50 @@ function initSearchFilesState(): SearchFilesState {
     skippedInaccessible: 0,
     truncated: false,
     filesScanned: 0,
+    stoppedReason: undefined,
   };
 }
 
-function markTruncated(state: SearchFilesState): void {
+type SearchStopReason = SearchFilesResult['summary']['stoppedReason'];
+
+function markTruncated(
+  state: SearchFilesState,
+  reason: SearchStopReason
+): void {
   state.truncated = true;
+  state.stoppedReason = reason;
+}
+
+function getStopReason(
+  state: SearchFilesState,
+  options: {
+    deadlineMs?: number;
+    maxFilesScanned?: number;
+    maxResults: number;
+  }
+): SearchStopReason | undefined {
+  if (options.deadlineMs !== undefined && Date.now() > options.deadlineMs) {
+    return 'timeout';
+  }
+  if (
+    options.maxFilesScanned !== undefined &&
+    state.filesScanned >= options.maxFilesScanned
+  ) {
+    return 'maxFiles';
+  }
+  if (state.results.length >= options.maxResults) {
+    return 'maxResults';
+  }
+  return undefined;
+}
+
+function applyStopIfNeeded(
+  state: SearchFilesState,
+  reason: SearchStopReason | undefined
+): boolean {
+  if (!reason) return false;
+  markTruncated(state, reason);
+  return true;
 }
 
 async function toSearchResult(
@@ -49,18 +94,17 @@ async function toSearchResult(
   }
 }
 
-function shouldStop(state: SearchFilesState, maxResults: number): boolean {
-  if (state.results.length < maxResults) return false;
-  markTruncated(state);
-  return true;
-}
-
 async function processBatch(
   batch: string[],
   state: SearchFilesState,
-  maxResults: number
+  options: {
+    deadlineMs?: number;
+    maxFilesScanned?: number;
+    maxResults: number;
+  }
 ): Promise<void> {
-  if (batch.length === 0 || shouldStop(state, maxResults)) return;
+  if (batch.length === 0) return;
+  if (applyStopIfNeeded(state, getStopReason(state, options))) return;
 
   const toProcess = batch.splice(0, batch.length);
   const settled = await Promise.allSettled(
@@ -68,7 +112,7 @@ async function processBatch(
   );
 
   for (const result of settled) {
-    if (shouldStop(state, maxResults)) break;
+    if (applyStopIfNeeded(state, getStopReason(state, options))) break;
     if (result.status === 'fulfilled') {
       if ('error' in result.value) {
         state.skippedInaccessible++;
@@ -84,23 +128,28 @@ async function processBatch(
 async function scanStream(
   stream: AsyncIterable<string | Buffer>,
   state: SearchFilesState,
-  maxResults: number
+  options: {
+    deadlineMs?: number;
+    maxFilesScanned?: number;
+    maxResults: number;
+  }
 ): Promise<void> {
   const batch: string[] = [];
 
   for await (const entry of stream) {
-    if (shouldStop(state, maxResults)) break;
+    if (applyStopIfNeeded(state, getStopReason(state, options))) break;
     const matchPath = typeof entry === 'string' ? entry : String(entry);
     state.filesScanned++;
+    if (applyStopIfNeeded(state, getStopReason(state, options))) break;
 
     batch.push(matchPath);
     if (batch.length >= PARALLEL_CONCURRENCY) {
-      await processBatch(batch, state, maxResults);
+      await processBatch(batch, state, options);
     }
   }
 
   if (!state.truncated) {
-    await processBatch(batch, state, maxResults);
+    await processBatch(batch, state, options);
   }
 }
 
@@ -130,11 +179,20 @@ export async function searchFiles(
     maxResults?: number;
     sortBy?: 'name' | 'size' | 'modified' | 'path';
     maxDepth?: number;
+    maxFilesScanned?: number;
+    timeoutMs?: number;
   } = {}
 ): Promise<SearchFilesResult> {
   const validPath = await validateExistingPath(basePath);
-  const { maxResults, sortBy = 'path', maxDepth } = options;
+  const {
+    maxResults,
+    sortBy = 'path',
+    maxDepth,
+    maxFilesScanned = DEFAULT_SEARCH_MAX_FILES,
+    timeoutMs = DEFAULT_SEARCH_TIMEOUT_MS,
+  } = options;
   const effectiveMaxResults = maxResults ?? DEFAULT_MAX_RESULTS;
+  const deadlineMs = timeoutMs ? Date.now() + timeoutMs : undefined;
 
   const state = initSearchFilesState();
   const stream = createSearchStream(
@@ -145,7 +203,11 @@ export async function searchFiles(
   );
 
   try {
-    await scanStream(stream, state, effectiveMaxResults);
+    await scanStream(stream, state, {
+      deadlineMs,
+      maxFilesScanned,
+      maxResults: effectiveMaxResults,
+    });
   } finally {
     const { destroy } = stream as { destroy?: () => void };
     if (typeof destroy === 'function') destroy.call(stream);
@@ -162,6 +224,7 @@ export async function searchFiles(
       truncated: state.truncated,
       skippedInaccessible: state.skippedInaccessible,
       filesScanned: state.filesScanned,
+      stoppedReason: state.stoppedReason,
     },
   };
 }
