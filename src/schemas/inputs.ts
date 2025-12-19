@@ -1,21 +1,32 @@
 import { z } from 'zod';
 
-import {
-  DEFAULT_MAX_DEPTH,
-  DEFAULT_MAX_RESULTS,
-  DEFAULT_SEARCH_MAX_FILES,
-  DEFAULT_SEARCH_TIMEOUT_MS,
-  DEFAULT_TOP_N,
-  DEFAULT_TREE_DEPTH,
-  MAX_MEDIA_FILE_SIZE,
-} from '../lib/constants.js';
+import { MAX_MEDIA_FILE_SIZE } from '../lib/constants.js';
 import {
   BasicExcludePatternsSchema,
+  BaseNameMatchSchema,
+  CaseSensitiveSchema,
+  ContextLinesSchema,
   EncodingSchema,
   ExcludePatternsSchema,
+  HeadLinesSchema,
+  IncludeHiddenSchema,
   isSafeGlobPattern,
+  LineEndSchema,
+  LineStartSchema,
+  MaxDepthSchema,
+  MaxEntriesSchema,
+  MaxFilesScannedSchema,
+  MaxFileSizeSearchSchema,
+  MaxResultsSchema,
   ReadFileMaxSizeSchema,
   ReadMultipleFilesMaxSizeSchema,
+  SkipBinarySchema,
+  SortByDirectorySchema,
+  SortByFileSchema,
+  TailLinesSchema,
+  TimeoutMsSchema,
+  TopNSchema,
+  TreeMaxDepthSchema,
 } from './input-helpers.js';
 
 export const ListDirectoryInputSchema = {
@@ -30,33 +41,12 @@ export const ListDirectoryInputSchema = {
     .describe(
       'If true, list contents of subdirectories recursively up to maxDepth'
     ),
-  includeHidden: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Include hidden files'),
-  maxDepth: z
-    .number()
-    .int('maxDepth must be an integer')
-    .min(0, 'maxDepth must be non-negative')
-    .max(100, 'maxDepth cannot exceed 100')
-    .optional()
-    .default(DEFAULT_MAX_DEPTH)
-    .describe(
-      'Maximum depth for recursive listing (higher values may impact performance)'
-    ),
-  maxEntries: z
-    .number()
-    .int('maxEntries must be an integer')
-    .min(1, 'maxEntries must be at least 1')
-    .max(100000, 'maxEntries cannot exceed 100,000')
-    .optional()
-    .describe('Maximum number of entries to return (prevents huge responses)'),
-  sortBy: z
-    .enum(['name', 'size', 'modified', 'type'])
-    .optional()
-    .default('name')
-    .describe('Sort entries by: name, size, modified, or type'),
+  includeHidden: IncludeHiddenSchema,
+  maxDepth: MaxDepthSchema.describe(
+    'Maximum depth for recursive listing (higher values may impact performance)'
+  ),
+  maxEntries: MaxEntriesSchema,
+  sortBy: SortByDirectorySchema,
   includeSymlinkTargets: z
     .boolean()
     .optional()
@@ -95,51 +85,20 @@ export const SearchFilesInputSchema = {
       'Glob pattern to match files. Examples: "**/*.ts" (all TypeScript files), "src/**/*.js" (JS files in src), "*.json" (JSON files in current dir)'
     ),
   excludePatterns: ExcludePatternsSchema.describe('Patterns to exclude'),
-  maxResults: z
-    .number()
-    .int('maxResults must be an integer')
-    .min(1, 'maxResults must be at least 1')
-    .max(10000, 'maxResults cannot exceed 10,000')
-    .optional()
-    .default(DEFAULT_MAX_RESULTS)
-    .describe('Maximum number of matches to return (prevents huge responses)'),
-  sortBy: z
-    .enum(['name', 'size', 'modified', 'path'])
-    .optional()
-    .default('path')
-    .describe('Sort results by: name, size, modified, or path'),
-  maxDepth: z
-    .number()
-    .int('maxDepth must be an integer')
-    .min(1, 'maxDepth must be at least 1')
-    .max(100, 'maxDepth cannot exceed 100')
-    .optional()
-    .describe(
-      'Maximum directory depth to search (lower values improve performance)'
-    ),
-  maxFilesScanned: z
-    .number()
-    .int('maxFilesScanned must be an integer')
-    .min(1, 'maxFilesScanned must be at least 1')
-    .max(100000, 'maxFilesScanned cannot exceed 100,000')
-    .optional()
-    .default(DEFAULT_SEARCH_MAX_FILES)
-    .describe('Maximum number of files to scan before stopping'),
-  timeoutMs: z
-    .number()
-    .int('timeoutMs must be an integer')
-    .min(100, 'timeoutMs must be at least 100ms')
-    .max(3600000, 'timeoutMs cannot exceed 1 hour')
-    .optional()
-    .default(DEFAULT_SEARCH_TIMEOUT_MS)
-    .describe('Timeout in milliseconds for the search operation'),
-  baseNameMatch: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe(
-      'If true, patterns without slashes match against basename of paths. Useful for finding config files like "*.json" in nested directories'
-    ),
+  maxResults: MaxResultsSchema.describe(
+    'Maximum number of matches to return (prevents huge responses)'
+  ),
+  sortBy: SortByFileSchema,
+  maxDepth: MaxDepthSchema.describe(
+    'Maximum directory depth to search (lower values improve performance)'
+  ),
+  maxFilesScanned: MaxFilesScannedSchema,
+  timeoutMs: TimeoutMsSchema.describe(
+    'Timeout in milliseconds for the search operation'
+  ),
+  baseNameMatch: BaseNameMatchSchema.describe(
+    'If true, patterns without slashes match against basename of paths. Useful for finding config files like "*.json" in nested directories'
+  ),
   skipSymlinks: z
     .boolean()
     .optional()
@@ -155,36 +114,14 @@ const ReadFileBaseSchema = z.object({
     .describe('Path to the file to read'),
   encoding: EncodingSchema,
   maxSize: ReadFileMaxSizeSchema,
-  lineStart: z
-    .number()
-    .int('lineStart must be an integer')
-    .min(1, 'lineStart must be at least 1 (1-indexed)')
-    .optional()
-    .describe('Start line (1-indexed) for reading a range'),
-  lineEnd: z
-    .number()
-    .int('lineEnd must be an integer')
-    .min(1, 'lineEnd must be at least 1')
-    .optional()
-    .describe('End line (inclusive) for reading a range'),
-  head: z
-    .number()
-    .int('head must be an integer')
-    .min(1, 'head must be at least 1')
-    .max(100000, 'head cannot exceed 100,000 lines')
-    .optional()
-    .describe(
-      'Read only the first N lines of the file (memory efficient for large files)'
-    ),
-  tail: z
-    .number()
-    .int('tail must be an integer')
-    .min(1, 'tail must be at least 1')
-    .max(100000, 'tail cannot exceed 100,000 lines')
-    .optional()
-    .describe(
-      'Read only the last N lines of the file (memory efficient for large files)'
-    ),
+  lineStart: LineStartSchema,
+  lineEnd: LineEndSchema,
+  head: HeadLinesSchema.describe(
+    'Read only the first N lines of the file (memory efficient for large files)'
+  ),
+  tail: TailLinesSchema.describe(
+    'Read only the last N lines of the file (memory efficient for large files)'
+  ),
 });
 
 // Schema for reading a single file.
@@ -209,20 +146,8 @@ const ReadMultipleFilesBaseSchema = z.object({
     .describe(
       'Maximum total size in bytes for all files combined (default 100MB)'
     ),
-  head: z
-    .number()
-    .int('head must be an integer')
-    .min(1, 'head must be at least 1')
-    .max(100000, 'head cannot exceed 100,000 lines')
-    .optional()
-    .describe('Read only the first N lines of each file'),
-  tail: z
-    .number()
-    .int('tail must be an integer')
-    .min(1, 'tail must be at least 1')
-    .max(100000, 'tail cannot exceed 100,000 lines')
-    .optional()
-    .describe('Read only the last N lines of each file'),
+  head: HeadLinesSchema.describe('Read only the first N lines of each file'),
+  tail: TailLinesSchema.describe('Read only the last N lines of each file'),
 });
 
 export const ReadMultipleFilesInputSchema = ReadMultipleFilesBaseSchema.shape;
@@ -262,60 +187,18 @@ export const SearchContentInputSchema = {
   excludePatterns: ExcludePatternsSchema.describe(
     'Glob patterns to exclude (e.g., "node_modules/**")'
   ),
-  caseSensitive: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Case sensitive search'),
-  maxResults: z
-    .number()
-    .int('maxResults must be an integer')
-    .min(1, 'maxResults must be at least 1')
-    .max(10000, 'maxResults cannot exceed 10,000')
-    .optional()
-    .default(DEFAULT_MAX_RESULTS)
-    .describe('Maximum number of results'),
-  maxFileSize: z
-    .number()
-    .int('maxFileSize must be an integer')
-    .min(1, 'maxFileSize must be at least 1 byte')
-    .max(100 * 1024 * 1024, 'maxFileSize cannot exceed 100MB')
-    .optional()
-    .describe('Maximum file size in bytes to scan (defaults to 1MB)'),
-  maxFilesScanned: z
-    .number()
-    .int('maxFilesScanned must be an integer')
-    .min(1, 'maxFilesScanned must be at least 1')
-    .max(100000, 'maxFilesScanned cannot exceed 100,000')
-    .optional()
-    .default(DEFAULT_SEARCH_MAX_FILES)
-    .describe('Maximum number of files to scan before stopping'),
-  timeoutMs: z
-    .number()
-    .int('timeoutMs must be an integer')
-    .min(100, 'timeoutMs must be at least 100ms')
-    .max(3600000, 'timeoutMs cannot exceed 1 hour')
-    .optional()
-    .default(DEFAULT_SEARCH_TIMEOUT_MS)
-    .describe('Timeout in milliseconds for the search operation'),
-  skipBinary: z
-    .boolean()
-    .optional()
-    .default(true)
-    .describe('Skip likely-binary files (recommended)'),
-  includeHidden: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Include hidden files and directories (dotfiles) in the search'),
-  contextLines: z
-    .number()
-    .int('contextLines must be an integer')
-    .min(0, 'contextLines must be non-negative')
-    .max(10, 'contextLines cannot exceed 10')
-    .optional()
-    .default(0)
-    .describe('Number of lines to include before and after each match (0-10)'),
+  caseSensitive: CaseSensitiveSchema,
+  maxResults: MaxResultsSchema.describe('Maximum number of results'),
+  maxFileSize: MaxFileSizeSearchSchema,
+  maxFilesScanned: MaxFilesScannedSchema,
+  timeoutMs: TimeoutMsSchema.describe(
+    'Timeout in milliseconds for the search operation'
+  ),
+  skipBinary: SkipBinarySchema,
+  includeHidden: IncludeHiddenSchema.describe(
+    'Include hidden files and directories (dotfiles) in the search'
+  ),
+  contextLines: ContextLinesSchema,
   wholeWord: z
     .boolean()
     .optional()
@@ -330,13 +213,7 @@ export const SearchContentInputSchema = {
     .describe(
       'Treat pattern as a literal string instead of regex. Special characters like ., *, ? will be escaped automatically. Use this when searching for exact text containing regex metacharacters.'
     ),
-  baseNameMatch: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe(
-      'If true, file patterns without slashes match against basename only. Useful for finding files by name regardless of directory depth'
-    ),
+  baseNameMatch: BaseNameMatchSchema,
   caseSensitiveFileMatch: z
     .boolean()
     .optional()
@@ -351,30 +228,12 @@ export const AnalyzeDirectoryInputSchema = {
     .string()
     .min(1, 'Path cannot be empty')
     .describe('Directory to analyze'),
-  maxDepth: z
-    .number()
-    .int('maxDepth must be an integer')
-    .min(0, 'maxDepth must be non-negative')
-    .max(100, 'maxDepth cannot exceed 100')
-    .optional()
-    .default(DEFAULT_MAX_DEPTH)
-    .describe('Maximum depth to analyze'),
-  topN: z
-    .number()
-    .int('topN must be an integer')
-    .min(1, 'topN must be at least 1')
-    .max(1000, 'topN cannot exceed 1000')
-    .optional()
-    .default(DEFAULT_TOP_N)
-    .describe('Number of top items to return'),
+  maxDepth: MaxDepthSchema.describe('Maximum depth to analyze'),
+  topN: TopNSchema,
   excludePatterns: BasicExcludePatternsSchema.describe(
     'Glob patterns to exclude (e.g., "node_modules", "*.log")'
   ),
-  includeHidden: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Include hidden files and directories'),
+  includeHidden: IncludeHiddenSchema,
 };
 
 export const DirectoryTreeInputSchema = {
@@ -382,22 +241,11 @@ export const DirectoryTreeInputSchema = {
     .string()
     .min(1, 'Path cannot be empty')
     .describe('Directory path to build tree from'),
-  maxDepth: z
-    .number()
-    .int('maxDepth must be an integer')
-    .min(0, 'maxDepth must be non-negative')
-    .max(50, 'maxDepth cannot exceed 50')
-    .optional()
-    .default(DEFAULT_TREE_DEPTH)
-    .describe('Maximum depth to traverse (default 5)'),
+  maxDepth: TreeMaxDepthSchema,
   excludePatterns: BasicExcludePatternsSchema.describe(
     'Glob patterns to exclude (e.g., "node_modules", "*.log")'
   ),
-  includeHidden: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('Include hidden files and directories'),
+  includeHidden: IncludeHiddenSchema,
   includeSize: z
     .boolean()
     .optional()
