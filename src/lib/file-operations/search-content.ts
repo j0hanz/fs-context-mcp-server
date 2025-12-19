@@ -20,10 +20,6 @@ import {
   validateExistingPath,
   validateExistingPathDetailed,
 } from '../path-validation.js';
-import {
-  analyzePatternComplexity,
-  getComplexityWarning,
-} from './pattern-complexity.js';
 import { validateGlobPatternOrThrow } from './pattern-validator.js';
 
 interface SearchContentState {
@@ -684,13 +680,6 @@ export async function searchContent(
 
   // Validate file pattern
   validateGlobPatternOrThrow(filePattern, validPath);
-
-  // Analyze pattern complexity
-  const complexity = analyzePatternComplexity(filePattern);
-  const warning = getComplexityWarning(complexity);
-  if (warning) {
-    console.warn(warning);
-  }
 
   const deadlineMs = timeoutMs ? Date.now() + timeoutMs : undefined;
   const { regex } = buildSearchRegex(searchPattern, {

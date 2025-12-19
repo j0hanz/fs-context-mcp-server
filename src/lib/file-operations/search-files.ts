@@ -14,11 +14,6 @@ import {
   validateExistingPath,
   validateExistingPathDetailed,
 } from '../path-validation.js';
-import { perfMonitor } from '../performance/monitor.js';
-import {
-  analyzePatternComplexity,
-  getComplexityWarning,
-} from './pattern-complexity.js';
 import { validateGlobPatternOrThrow } from './pattern-validator.js';
 import { sortSearchResults } from './sorting.js';
 
@@ -199,13 +194,6 @@ export async function searchFiles(
   // Validate pattern
   validateGlobPatternOrThrow(pattern, validPath);
 
-  // Analyze pattern complexity
-  const complexity = analyzePatternComplexity(pattern);
-  const warning = getComplexityWarning(complexity);
-  if (warning) {
-    console.warn(warning);
-  }
-
   const {
     maxResults,
     sortBy = 'path',
@@ -217,8 +205,6 @@ export async function searchFiles(
   } = options;
   const effectiveMaxResults = maxResults ?? DEFAULT_MAX_RESULTS;
   const deadlineMs = timeoutMs ? Date.now() + timeoutMs : undefined;
-
-  perfMonitor.startOperation('search-files');
 
   const state = initSearchFilesState();
   const stream = createSearchStream(
@@ -237,7 +223,6 @@ export async function searchFiles(
       maxResults: effectiveMaxResults,
     });
   } finally {
-    perfMonitor.endOperation('search-files');
     const { destroy } = stream as { destroy?: () => void };
     if (typeof destroy === 'function') destroy.call(stream);
   }
