@@ -1,0 +1,123 @@
+import * as fs from 'node:fs/promises';
+
+import { ErrorCode, McpError } from '../errors.js';
+import { normalizePath } from '../path-utils.js';
+import {
+  isPathWithinAllowedDirectories,
+  normalizeForComparison,
+  RESERVED_DEVICE_NAMES,
+} from './allowed-directories.js';
+import { toAccessDeniedWithHint, toMcpError } from './errors.js';
+
+interface ValidatedPathDetails {
+  requestedPath: string;
+  resolvedPath: string;
+  isSymlink: boolean;
+}
+
+function ensureNonEmptyPath(requestedPath: string): void {
+  if (!requestedPath || requestedPath.trim().length === 0) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Path cannot be empty or whitespace',
+      requestedPath
+    );
+  }
+}
+
+function ensureNoNullBytes(requestedPath: string): void {
+  if (requestedPath.includes('\0')) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Path contains null bytes',
+      requestedPath
+    );
+  }
+}
+
+function ensureNoReservedWindowsNames(requestedPath: string): void {
+  if (process.platform !== 'win32') return;
+
+  const segments = requestedPath.split(/[\\/]/);
+  for (const segment of segments) {
+    const baseName = segment.split('.')[0]?.toUpperCase();
+    if (baseName && RESERVED_DEVICE_NAMES.has(baseName)) {
+      throw new McpError(
+        ErrorCode.E_INVALID_INPUT,
+        `Windows reserved device name not allowed: ${baseName}`,
+        requestedPath
+      );
+    }
+  }
+}
+
+function ensureWithinAllowedDirectories(
+  normalizedPath: string,
+  requestedPath: string,
+  details?: Record<string, unknown>
+): void {
+  if (isPathWithinAllowedDirectories(normalizedPath)) return;
+
+  throw new McpError(
+    ErrorCode.E_ACCESS_DENIED,
+    `Access denied: Path '${requestedPath}' is outside allowed directories`,
+    requestedPath,
+    details
+  );
+}
+
+function validateRequestedPath(requestedPath: string): string {
+  ensureNonEmptyPath(requestedPath);
+  ensureNoNullBytes(requestedPath);
+  ensureNoReservedWindowsNames(requestedPath);
+  return normalizePath(requestedPath);
+}
+
+async function resolveRealPath(
+  requestedPath: string,
+  normalizedRequested: string
+): Promise<string> {
+  try {
+    return await fs.realpath(normalizedRequested);
+  } catch (error) {
+    throw toMcpError(requestedPath, error);
+  }
+}
+
+async function validateExistingPathDetailsInternal(
+  requestedPath: string
+): Promise<ValidatedPathDetails> {
+  const normalizedRequested = validateRequestedPath(requestedPath);
+
+  ensureWithinAllowedDirectories(normalizedRequested, requestedPath, {
+    normalizedPath: normalizedRequested,
+  });
+
+  const realPath = await resolveRealPath(requestedPath, normalizedRequested);
+  const normalizedReal = normalizePath(realPath);
+
+  if (!isPathWithinAllowedDirectories(normalizedReal)) {
+    throw toAccessDeniedWithHint(requestedPath, realPath, normalizedReal);
+  }
+
+  return {
+    requestedPath: normalizedRequested,
+    resolvedPath: normalizedReal,
+    isSymlink:
+      normalizeForComparison(normalizedRequested) !==
+      normalizeForComparison(normalizedReal),
+  };
+}
+
+export async function validateExistingPathDetailed(
+  requestedPath: string
+): Promise<ValidatedPathDetails> {
+  return validateExistingPathDetailsInternal(requestedPath);
+}
+
+export async function validateExistingPath(
+  requestedPath: string
+): Promise<string> {
+  const details = await validateExistingPathDetailsInternal(requestedPath);
+  return details.resolvedPath;
+}

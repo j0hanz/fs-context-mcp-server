@@ -97,6 +97,20 @@ interface ServerOptions {
   cliAllowedDirs?: string[];
 }
 
+function logMissingDirectories(options: ServerOptions): void {
+  if (options.allowCwd) {
+    console.error('No directories specified. Using current working directory:');
+    return;
+  }
+
+  console.error(
+    'WARNING: No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol.'
+  );
+  console.error(
+    'The server will not be able to access any files until directories are configured.'
+  );
+}
+
 async function recomputeAllowedDirectories(): Promise<void> {
   const cliAllowedDirs = serverOptions.cliAllowedDirs ?? [];
   const allowCwd = serverOptions.allowCwd === true;
@@ -160,17 +174,6 @@ export async function startServer(server: McpServer): Promise<void> {
 
   const dirs = getAllowedDirectories();
   if (dirs.length === 0) {
-    if (serverOptions.allowCwd) {
-      console.error(
-        'No directories specified. Using current working directory:'
-      );
-    } else {
-      console.error(
-        'WARNING: No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol.'
-      );
-      console.error(
-        'The server will not be able to access any files until directories are configured.'
-      );
-    }
+    logMissingDirectories(serverOptions);
   }
 }

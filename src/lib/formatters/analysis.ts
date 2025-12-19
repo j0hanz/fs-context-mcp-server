@@ -4,8 +4,8 @@ import { formatDate } from './date.js';
 
 const ANALYSIS_SEPARATOR_WIDTH = 50;
 
-export function formatDirectoryAnalysis(analysis: DirectoryAnalysis): string {
-  const lines = [
+function formatSummary(analysis: DirectoryAnalysis): string[] {
+  return [
     `Directory Analysis: ${analysis.path}`,
     '='.repeat(ANALYSIS_SEPARATOR_WIDTH),
     '',
@@ -16,33 +16,46 @@ export function formatDirectoryAnalysis(analysis: DirectoryAnalysis): string {
     `  Max Depth: ${analysis.maxDepth}`,
     '',
   ];
+}
 
-  if (Object.keys(analysis.fileTypes).length > 0) {
-    lines.push('File Types:');
-    const sorted = Object.entries(analysis.fileTypes).sort(
-      (a, b) => b[1] - a[1]
-    );
+function formatFileTypesSection(analysis: DirectoryAnalysis): string[] {
+  const entries = Object.entries(analysis.fileTypes);
+  if (entries.length === 0) return [];
 
-    for (const [ext, count] of sorted) {
-      lines.push(`  ${ext}: ${count}`);
-    }
-    lines.push('');
+  const sorted = entries.sort((a, b) => b[1] - a[1]);
+  const lines = ['File Types:'];
+  for (const [ext, count] of sorted) {
+    lines.push(`  ${ext}: ${count}`);
   }
+  lines.push('');
+  return lines;
+}
 
-  if (analysis.largestFiles.length > 0) {
-    lines.push('Largest Files:');
-    for (const file of analysis.largestFiles) {
-      lines.push(`  ${formatBytes(file.size)} - ${file.path}`);
-    }
-    lines.push('');
+function formatLargestFilesSection(analysis: DirectoryAnalysis): string[] {
+  if (analysis.largestFiles.length === 0) return [];
+  const lines = ['Largest Files:'];
+  for (const file of analysis.largestFiles) {
+    lines.push(`  ${formatBytes(file.size)} - ${file.path}`);
   }
+  lines.push('');
+  return lines;
+}
 
-  if (analysis.recentlyModified.length > 0) {
-    lines.push('Recently Modified:');
-    for (const file of analysis.recentlyModified) {
-      lines.push(`  ${formatDate(file.modified)} - ${file.path}`);
-    }
+function formatRecentlyModifiedSection(analysis: DirectoryAnalysis): string[] {
+  if (analysis.recentlyModified.length === 0) return [];
+  const lines = ['Recently Modified:'];
+  for (const file of analysis.recentlyModified) {
+    lines.push(`  ${formatDate(file.modified)} - ${file.path}`);
   }
+  return lines;
+}
 
+export function formatDirectoryAnalysis(analysis: DirectoryAnalysis): string {
+  const lines = [
+    ...formatSummary(analysis),
+    ...formatFileTypesSection(analysis),
+    ...formatLargestFilesSection(analysis),
+    ...formatRecentlyModifiedSection(analysis),
+  ];
   return lines.join('\n');
 }

@@ -5,6 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { formatAllowedDirectories } from '../lib/formatters.js';
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import { ListAllowedDirectoriesOutputSchema } from '../schemas/index.js';
+import { buildToolResponse, type ToolResponse } from './tool-response.js';
 
 interface DirectoryAccess {
   path: string;
@@ -26,47 +27,65 @@ async function checkDirectoryAccess(dirPath: string): Promise<DirectoryAccess> {
   }
 }
 
+function buildHint(count: number): string {
+  if (count === 0) {
+    return 'No directories configured. Server cannot access any files.';
+  }
+  if (count === 1) {
+    return 'Single directory configured. All operations are sandboxed here.';
+  }
+  return `${count} directories configured. Operations work across all of them.`;
+}
+
+interface ListAllowedDirectoriesStructuredResult extends Record<
+  string,
+  unknown
+> {
+  ok: true;
+  allowedDirectories: string[];
+  count: number;
+  accessStatus: DirectoryAccess[];
+  hint: string;
+}
+
+async function handleListAllowedDirectories(): Promise<
+  ToolResponse<ListAllowedDirectoriesStructuredResult>
+> {
+  const dirs = getAllowedDirectories();
+  const count = dirs.length;
+  const hint = buildHint(count);
+  const accessStatus = await Promise.all(dirs.map(checkDirectoryAccess));
+
+  const structured: ListAllowedDirectoriesStructuredResult = {
+    ok: true,
+    allowedDirectories: dirs,
+    count,
+    accessStatus,
+    hint,
+  };
+
+  return buildToolResponse(formatAllowedDirectories(dirs), structured);
+}
+
+const LIST_ALLOWED_DIRECTORIES_TOOL = {
+  title: 'List Allowed Directories',
+  description:
+    'Returns the list of directories this server is permitted to access. ' +
+    'Call this FIRST to understand the scope of available file operations. ' +
+    'All other tools will only work within these directories for security.',
+  inputSchema: {},
+  outputSchema: ListAllowedDirectoriesOutputSchema,
+  annotations: {
+    readOnlyHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+} as const;
+
 export function registerListAllowedDirectoriesTool(server: McpServer): void {
   server.registerTool(
     'list_allowed_directories',
-    {
-      title: 'List Allowed Directories',
-      description:
-        'Returns the list of directories this server is permitted to access. ' +
-        'Call this FIRST to understand the scope of available file operations. ' +
-        'All other tools will only work within these directories for security.',
-      inputSchema: {},
-      outputSchema: ListAllowedDirectoriesOutputSchema,
-      annotations: {
-        readOnlyHint: true,
-        idempotentHint: true,
-        openWorldHint: false,
-      },
-    },
-    async () => {
-      const dirs = getAllowedDirectories();
-      const count = dirs.length;
-      const hint =
-        count === 0
-          ? 'No directories configured. Server cannot access any files.'
-          : count === 1
-            ? 'Single directory configured. All operations are sandboxed here.'
-            : `${count} directories configured. Operations work across all of them.`;
-
-      // Check access status for each directory
-      const accessStatus = await Promise.all(dirs.map(checkDirectoryAccess));
-
-      const structured = {
-        ok: true,
-        allowedDirectories: dirs,
-        count,
-        accessStatus,
-        hint,
-      };
-      return {
-        content: [{ type: 'text', text: formatAllowedDirectories(dirs) }],
-        structuredContent: structured,
-      };
-    }
+    LIST_ALLOWED_DIRECTORIES_TOOL,
+    async () => await handleListAllowedDirectories()
   );
 }

@@ -9,46 +9,46 @@ export interface OperationSummary {
   linesSkippedDueToRegexTimeout?: number;
 }
 
+function appendNote(
+  lines: string[],
+  count: number | undefined,
+  message: string
+): void {
+  if (!count || count <= 0) return;
+  lines.push(`Note: ${count} ${message}`);
+}
+
+function appendTruncation(lines: string[], summary: OperationSummary): void {
+  if (!summary.truncated) return;
+  lines.push(
+    `\n\n!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
+  );
+  if (summary.tip) {
+    lines.push(`Tip: ${summary.tip}`);
+  }
+}
+
 export function formatOperationSummary(summary: OperationSummary): string {
   const lines: string[] = [];
 
-  if (summary.truncated) {
-    lines.push(
-      `\n\n!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
-    );
-    if (summary.tip) {
-      lines.push(`Tip: ${summary.tip}`);
-    }
-  }
-
-  if (summary.skippedTooLarge && summary.skippedTooLarge > 0) {
-    lines.push(`Note: ${summary.skippedTooLarge} file(s) skipped (too large).`);
-  }
-
-  if (summary.skippedBinary && summary.skippedBinary > 0) {
-    lines.push(`Note: ${summary.skippedBinary} file(s) skipped (binary).`);
-  }
-
-  if (summary.skippedInaccessible && summary.skippedInaccessible > 0) {
-    lines.push(
-      `Note: ${summary.skippedInaccessible} item(s) were inaccessible and skipped.`
-    );
-  }
-
-  if (summary.symlinksNotFollowed && summary.symlinksNotFollowed > 0) {
-    lines.push(
-      `Note: ${summary.symlinksNotFollowed} symlink(s) were not followed (security).`
-    );
-  }
-
-  if (
-    summary.linesSkippedDueToRegexTimeout &&
-    summary.linesSkippedDueToRegexTimeout > 0
-  ) {
-    lines.push(
-      `Note: ${summary.linesSkippedDueToRegexTimeout} line(s) skipped (regex timeout).`
-    );
-  }
+  appendTruncation(lines, summary);
+  appendNote(lines, summary.skippedTooLarge, 'file(s) skipped (too large).');
+  appendNote(lines, summary.skippedBinary, 'file(s) skipped (binary).');
+  appendNote(
+    lines,
+    summary.skippedInaccessible,
+    'item(s) were inaccessible and skipped.'
+  );
+  appendNote(
+    lines,
+    summary.symlinksNotFollowed,
+    'symlink(s) were not followed (security).'
+  );
+  appendNote(
+    lines,
+    summary.linesSkippedDueToRegexTimeout,
+    'line(s) skipped (regex timeout).'
+  );
 
   return lines.join('\n');
 }
