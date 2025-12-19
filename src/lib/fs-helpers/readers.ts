@@ -40,7 +40,8 @@ async function findUTF8Boundary(
 export async function tailFile(
   filePath: string,
   numLines: number,
-  encoding: BufferEncoding = 'utf-8'
+  encoding: BufferEncoding = 'utf-8',
+  maxBytesRead?: number
 ): Promise<string> {
   const CHUNK_SIZE = 256 * 1024;
   const validPath = await validateExistingPath(filePath);
@@ -56,21 +57,38 @@ export async function tailFile(
     const chunk = Buffer.alloc(CHUNK_SIZE + 4);
     let linesFound = 0;
     let remainingText = '';
+    let bytesReadTotal = 0;
 
     while (position > 0 && linesFound < numLines) {
       let size = Math.min(CHUNK_SIZE, position);
       let startPos = position - size;
 
+      if (maxBytesRead !== undefined) {
+        const remainingBytes = maxBytesRead - bytesReadTotal;
+        if (remainingBytes <= 0) break;
+        if (size > remainingBytes) {
+          size = remainingBytes;
+          startPos = position - size;
+        }
+      }
+
       if (startPos > 0) {
         const alignedPos = await findUTF8Boundary(handle, startPos);
-        size = position - alignedPos;
-        startPos = alignedPos;
+        const alignedSize = position - alignedPos;
+        if (
+          maxBytesRead === undefined ||
+          alignedSize <= maxBytesRead - bytesReadTotal
+        ) {
+          size = alignedSize;
+          startPos = alignedPos;
+        }
       }
 
       position = startPos;
 
       const { bytesRead } = await handle.read(chunk, 0, size, position);
       if (bytesRead === 0) break;
+      bytesReadTotal += bytesRead;
 
       const readData = chunk.subarray(0, bytesRead).toString(encoding);
       const chunkText = readData + remainingText;
@@ -103,7 +121,8 @@ export async function tailFile(
 export async function headFile(
   filePath: string,
   numLines: number,
-  encoding: BufferEncoding = 'utf-8'
+  encoding: BufferEncoding = 'utf-8',
+  maxBytesRead?: number
 ): Promise<string> {
   const validPath = await validateExistingPath(filePath);
   const handle = await fs.open(validPath, 'r');
@@ -115,7 +134,15 @@ export async function headFile(
     let buffer = '';
 
     while (lines.length < numLines) {
-      const result = await handle.read(chunk, 0, chunk.length, bytesRead);
+      if (maxBytesRead !== undefined && bytesRead >= maxBytesRead) {
+        break;
+      }
+
+      const maxChunk =
+        maxBytesRead !== undefined
+          ? Math.min(chunk.length, maxBytesRead - bytesRead)
+          : chunk.length;
+      const result = await handle.read(chunk, 0, maxChunk, bytesRead);
       if (result.bytesRead === 0) break;
       bytesRead += result.bytesRead;
 
@@ -155,7 +182,8 @@ async function readLineRange(
   filePath: string,
   startLine: number,
   endLine: number,
-  encoding: BufferEncoding
+  encoding: BufferEncoding,
+  maxBytesRead?: number
 ): Promise<{
   content: string;
   linesRead: number;
@@ -181,6 +209,11 @@ async function readLineRange(
       }
 
       if (lineNumber > endLine) {
+        hasMoreLines = true;
+        break;
+      }
+
+      if (maxBytesRead !== undefined && fileStream.bytesRead > maxBytesRead) {
         hasMoreLines = true;
         break;
       }
@@ -259,21 +292,32 @@ export async function readFile(
   }
 
   if (tail !== undefined) {
-    const content = await tailFile(validPath, tail, encoding);
+    const content = await tailFile(validPath, tail, encoding, maxSize);
     return { path: validPath, content, truncated: true, totalLines: undefined };
   }
 
   if (head !== undefined) {
-    const content = await headFile(validPath, head, encoding);
+    const content = await headFile(validPath, head, encoding, maxSize);
     return { path: validPath, content, truncated: true, totalLines: undefined };
   }
 
   if (lineRange) {
+    const maxLineRange = 100000;
+    const requestedLines = lineRange.end - lineRange.start + 1;
+    if (requestedLines > maxLineRange) {
+      throw new McpError(
+        ErrorCode.E_INVALID_INPUT,
+        `Invalid lineRange: range too large (max ${maxLineRange} lines)`,
+        filePath,
+        { requestedLines, maxLineRange }
+      );
+    }
     const result = await readLineRange(
       validPath,
       lineRange.start,
       lineRange.end,
-      encoding
+      encoding,
+      maxSize
     );
     const expectedLines = lineRange.end - lineRange.start + 1;
     const isTruncated =

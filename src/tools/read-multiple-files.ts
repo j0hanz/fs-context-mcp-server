@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createErrorResponse, ErrorCode } from '../lib/errors.js';
+import { createErrorResponse, ErrorCode, McpError } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations.js';
 import {
   ReadMultipleFilesInputSchema,
@@ -27,6 +27,13 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
     },
     async ({ paths, encoding, maxSize, maxTotalSize, head, tail }) => {
       try {
+        if (head !== undefined && tail !== undefined) {
+          throw new McpError(
+            ErrorCode.E_INVALID_INPUT,
+            'Cannot specify both head and tail simultaneously'
+          );
+        }
+
         // Read multiple files in parallel
         const results = await readMultipleFiles(paths, {
           encoding,
@@ -43,7 +50,13 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
         const textParts: string[] = [];
         for (const result of results) {
           if (result.content !== undefined) {
-            textParts.push(`=== ${result.path} ===\n${result.content}`);
+            const note =
+              result.truncated === true
+                ? result.totalLines !== undefined
+                  ? `\n\n[Truncated. Total lines: ${result.totalLines}]`
+                  : '\n\n[Truncated]'
+                : '';
+            textParts.push(`=== ${result.path} ===\n${result.content}${note}`);
           } else {
             textParts.push(
               `=== ${result.path} ===\n[Error: ${result.error ?? 'Unknown error'}]`

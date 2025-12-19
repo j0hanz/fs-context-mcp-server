@@ -99,6 +99,7 @@ export const SearchFilesInputSchema = {
     .min(1, 'maxResults must be at least 1')
     .max(10000, 'maxResults cannot exceed 10,000')
     .optional()
+    .default(DEFAULT_MAX_RESULTS)
     .describe('Maximum number of matches to return (prevents huge responses)'),
   sortBy: z
     .enum(['name', 'size', 'modified', 'path'])

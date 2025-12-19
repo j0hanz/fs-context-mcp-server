@@ -95,6 +95,8 @@ export const ReadMultipleFilesOutputSchema = {
       z.object({
         path: z.string(),
         content: z.string().optional(),
+        truncated: z.boolean().optional(),
+        totalLines: z.number().optional(),
         error: z.string().optional(),
       })
     )

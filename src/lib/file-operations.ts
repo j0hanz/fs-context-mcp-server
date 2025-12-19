@@ -611,6 +611,7 @@ export async function searchFiles(
   const validPath = await validateExistingPath(basePath);
 
   const { maxResults, sortBy = 'path', maxDepth } = options;
+  const effectiveMaxResults = maxResults ?? DEFAULT_MAX_RESULTS;
 
   const results: SearchResult[] = [];
   let skippedInaccessible = 0;
@@ -633,12 +634,12 @@ export async function searchFiles(
           skippedInaccessible++;
           continue;
         }
-        if (maxResults !== undefined && results.length >= maxResults) {
+        if (results.length >= effectiveMaxResults) {
           truncated = true;
           return;
         }
         results.push(r.value);
-        if (maxResults !== undefined && results.length >= maxResults) {
+        if (results.length >= effectiveMaxResults) {
           truncated = true;
           return;
         }
@@ -663,7 +664,7 @@ export async function searchFiles(
     const matchPath = typeof entry === 'string' ? entry : String(entry);
     filesScanned++;
 
-    if (maxResults !== undefined && results.length >= maxResults) {
+    if (results.length >= effectiveMaxResults) {
       truncated = true;
       break;
     }
@@ -671,7 +672,7 @@ export async function searchFiles(
     batch.push(matchPath);
     if (batch.length >= PARALLEL_CONCURRENCY) {
       await flushBatch();
-      if (maxResults !== undefined && results.length >= maxResults) {
+      if (results.length >= effectiveMaxResults) {
         truncated = true;
         break;
       }
@@ -708,7 +709,15 @@ export async function readMultipleFiles(
     head?: number;
     tail?: number;
   } = {}
-): Promise<{ path: string; content?: string; error?: string }[]> {
+): Promise<
+  {
+    path: string;
+    content?: string;
+    truncated?: boolean;
+    totalLines?: number;
+    error?: string;
+  }[]
+> {
   const {
     encoding = 'utf-8',
     maxSize = MAX_TEXT_FILE_SIZE,
@@ -720,8 +729,21 @@ export async function readMultipleFiles(
 
   if (filePaths.length === 0) return [];
 
-  const output: { path: string; content?: string; error?: string }[] =
-    filePaths.map((filePath) => ({ path: filePath }));
+  const output: {
+    path: string;
+    content?: string;
+    truncated?: boolean;
+    totalLines?: number;
+    error?: string;
+  }[] = filePaths.map((filePath) => ({ path: filePath }));
+
+  if (head !== undefined && tail !== undefined) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Cannot specify both head and tail simultaneously',
+      undefined
+    );
+  }
 
   let totalSize = 0;
   const fileSizes = new Map<string, number>();
@@ -760,7 +782,12 @@ export async function readMultipleFiles(
 
       return {
         index,
-        value: { path: result.path, content: result.content },
+        value: {
+          path: result.path,
+          content: result.content,
+          truncated: result.truncated,
+          totalLines: result.totalLines,
+        },
       };
     },
     PARALLEL_CONCURRENCY
