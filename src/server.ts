@@ -13,7 +13,7 @@ import {
   getAllowedDirectories,
   getValidRootDirectories,
   RESERVED_DEVICE_NAMES,
-  setAllowedDirectories,
+  setAllowedDirectoriesResolved,
 } from './lib/path-validation.js';
 import { registerAllTools } from './tools/index.js';
 
@@ -85,6 +85,7 @@ export async function parseArgs(): Promise<ParseArgsResult> {
 }
 
 let serverOptions: ServerOptions = {};
+let rootDirectories: string[] = [];
 
 interface ParseArgsResult {
   allowedDirs: string[];
@@ -93,23 +94,32 @@ interface ParseArgsResult {
 
 interface ServerOptions {
   allowCwd?: boolean;
+  cliAllowedDirs?: string[];
+}
+
+async function recomputeAllowedDirectories(): Promise<void> {
+  const cliAllowedDirs = serverOptions.cliAllowedDirs ?? [];
+  const allowCwd = serverOptions.allowCwd === true;
+  const allowCwdDirs = allowCwd ? [normalizePath(process.cwd())] : [];
+
+  await setAllowedDirectoriesResolved([
+    ...cliAllowedDirs,
+    ...allowCwdDirs,
+    ...rootDirectories,
+  ]);
 }
 
 async function updateRootsFromClient(server: McpServer): Promise<void> {
   try {
     const rootsResult = await server.server.listRoots();
-    if (rootsResult.roots.length > 0) {
-      const validDirs = await getValidRootDirectories(
-        rootsResult.roots as Root[]
-      );
-      if (validDirs.length > 0) {
-        const currentDirs = getAllowedDirectories();
-        const mergedDirs = [...new Set([...currentDirs, ...validDirs])];
-        setAllowedDirectories(mergedDirs);
-      }
-    }
+    rootDirectories =
+      rootsResult.roots.length > 0
+        ? await getValidRootDirectories(rootsResult.roots as Root[])
+        : [];
   } catch {
     // Roots protocol may not be supported
+  } finally {
+    await recomputeAllowedDirectories();
   }
 }
 
@@ -151,8 +161,6 @@ export async function startServer(server: McpServer): Promise<void> {
   const dirs = getAllowedDirectories();
   if (dirs.length === 0) {
     if (serverOptions.allowCwd) {
-      const cwd = normalizePath(process.cwd());
-      setAllowedDirectories([cwd]);
       console.error(
         'No directories specified. Using current working directory:'
       );

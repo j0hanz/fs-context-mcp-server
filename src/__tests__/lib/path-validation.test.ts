@@ -86,6 +86,16 @@ describe('Path Validation', () => {
       const nonExistent = path.join(testDir, 'non-existent-file.txt');
       await expect(validateExistingPath(nonExistent)).rejects.toThrow();
     });
+
+    it('should allow paths when filesystem root is allowed', async () => {
+      const rootDir = path.parse(testDir).root;
+      setAllowedDirectories([normalizePath(rootDir)]);
+      const result = await validateExistingPath(testFile);
+      expect(result).toContain('test.txt');
+
+      // Reset to test directory
+      setAllowedDirectories([normalizePath(testDir)]);
+    });
   });
 
   describe('edge cases', () => {

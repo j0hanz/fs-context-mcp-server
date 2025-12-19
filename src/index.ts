@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import { setAllowedDirectories } from './lib/path-validation.js';
+import { setAllowedDirectoriesResolved } from './lib/path-validation.js';
 import { createServer, parseArgs, startServer } from './server.js';
 
 async function main(): Promise<void> {
   const { allowedDirs, allowCwd } = await parseArgs();
 
   if (allowedDirs.length > 0) {
-    setAllowedDirectories(allowedDirs);
+    await setAllowedDirectoriesResolved(allowedDirs);
     console.error('Allowed directories (from CLI):');
   } else {
     console.error(
@@ -14,7 +14,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const server = createServer({ allowCwd });
+  const server = createServer({ allowCwd, cliAllowedDirs: allowedDirs });
   await startServer(server);
 }
 

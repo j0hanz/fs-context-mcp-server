@@ -39,7 +39,8 @@ async function findUTF8Boundary(
 
 export async function tailFile(
   filePath: string,
-  numLines: number
+  numLines: number,
+  encoding: BufferEncoding = 'utf-8'
 ): Promise<string> {
   const CHUNK_SIZE = 256 * 1024;
   const validPath = await validateExistingPath(filePath);
@@ -71,7 +72,7 @@ export async function tailFile(
       const { bytesRead } = await handle.read(chunk, 0, size, position);
       if (bytesRead === 0) break;
 
-      const readData = chunk.subarray(0, bytesRead).toString('utf-8');
+      const readData = chunk.subarray(0, bytesRead).toString(encoding);
       const chunkText = readData + remainingText;
       const chunkLines = chunkText.replace(/\r\n/g, '\n').split('\n');
 
@@ -101,7 +102,8 @@ export async function tailFile(
 
 export async function headFile(
   filePath: string,
-  numLines: number
+  numLines: number,
+  encoding: BufferEncoding = 'utf-8'
 ): Promise<string> {
   const validPath = await validateExistingPath(filePath);
   const handle = await fs.open(validPath, 'r');
@@ -109,7 +111,7 @@ export async function headFile(
     const lines: string[] = [];
     let bytesRead = 0;
     const chunk = Buffer.alloc(64 * 1024);
-    const decoder = new StringDecoder('utf-8');
+    const decoder = new StringDecoder(encoding);
     let buffer = '';
 
     while (lines.length < numLines) {
@@ -152,14 +154,15 @@ export async function headFile(
 async function readLineRange(
   filePath: string,
   startLine: number,
-  endLine: number
+  endLine: number,
+  encoding: BufferEncoding
 ): Promise<{
   content: string;
   linesRead: number;
   totalLinesScanned: number;
   hasMoreLines: boolean;
 }> {
-  const fileStream = createReadStream(filePath, { encoding: 'utf-8' });
+  const fileStream = createReadStream(filePath, { encoding });
   const rl = readline.createInterface({
     input: fileStream,
     crlfDelay: Infinity,
@@ -256,12 +259,12 @@ export async function readFile(
   }
 
   if (tail !== undefined) {
-    const content = await tailFile(validPath, tail);
+    const content = await tailFile(validPath, tail, encoding);
     return { path: validPath, content, truncated: true, totalLines: undefined };
   }
 
   if (head !== undefined) {
-    const content = await headFile(validPath, head);
+    const content = await headFile(validPath, head, encoding);
     return { path: validPath, content, truncated: true, totalLines: undefined };
   }
 
@@ -269,7 +272,8 @@ export async function readFile(
     const result = await readLineRange(
       validPath,
       lineRange.start,
-      lineRange.end
+      lineRange.end,
+      encoding
     );
     const expectedLines = lineRange.end - lineRange.start + 1;
     const isTruncated =

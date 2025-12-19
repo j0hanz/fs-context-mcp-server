@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { createErrorResponse, ErrorCode } from '../lib/errors.js';
+import { createErrorResponse, ErrorCode, McpError } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
 
@@ -25,6 +25,18 @@ export function registerReadFileTool(server: McpServer): void {
     },
     async ({ path, encoding, maxSize, lineStart, lineEnd, head, tail }) => {
       try {
+        const hasLineStart = lineStart !== undefined;
+        const hasLineEnd = lineEnd !== undefined;
+        if (hasLineStart !== hasLineEnd) {
+          const missing = hasLineStart ? 'lineEnd' : 'lineStart';
+          const provided = hasLineStart ? 'lineStart' : 'lineEnd';
+          throw new McpError(
+            ErrorCode.E_INVALID_INPUT,
+            `Invalid lineRange: ${provided} requires ${missing} to also be specified`,
+            path
+          );
+        }
+
         const lineRange =
           lineStart !== undefined && lineEnd !== undefined
             ? { start: lineStart, end: lineEnd }
