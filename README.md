@@ -155,21 +155,21 @@ If neither CLI arguments nor MCP Roots provide directories, the server automatic
 
 All configuration values have sensible defaults and are optional. Only configure if you need to tune performance or resource usage.
 
-| Variable                   | Default | Range       | Description                           |
-| -------------------------- | ------- | ----------- | ------------------------------------- |
-| `PARALLEL_JOBS`            | 20      | 1-100       | Maximum parallel file operations      |
-| `TRAVERSAL_JOBS`           | 8       | 1-50        | Directory traversal concurrency       |
-| `REGEX_TIMEOUT`            | 100     | 50-1000     | Regex matching timeout (milliseconds) |
-| `MAX_FILE_SIZE`            | 10MB    | 1MB-100MB   | Maximum text file size (bytes)        |
-| `MAX_MEDIA_SIZE`           | 50MB    | 1MB-500MB   | Maximum media file size (bytes)       |
-| `MAX_SEARCH_SIZE`          | 1MB     | 100KB-10MB  | Maximum file size for content search  |
-| `DEFAULT_DEPTH`            | 10      | 1-100       | Default maximum recursion depth       |
-| `DEFAULT_RESULTS`          | 100     | 10-10000    | Default maximum search results        |
-| `DEFAULT_SEARCH_MAX_FILES` | 20000   | 100-100000  | Default max files to scan in searches |
-| `DEFAULT_SEARCH_TIMEOUT`   | 30000   | 100-3600000 | Default search timeout (milliseconds) |
-| `DEFAULT_TOP`              | 10      | 1-1000      | Default top N items in analysis       |
-| `DEFAULT_TREE`             | 5       | 1-50        | Default directory tree depth          |
-| `DEFAULT_TREE_MAX_FILES`   | 5000    | 100-200000  | Default max files in directory tree   |
+| Variable                         | Default         | Range       | Description                           |
+| -------------------------------- | --------------- | ----------- | ------------------------------------- |
+| `FILESYSTEM_CONTEXT_CONCURRENCY` | Auto (2x cores) | 1-100       | Maximum parallel file operations      |
+| `TRAVERSAL_JOBS`                 | 8               | 1-50        | Directory traversal concurrency       |
+| `REGEX_TIMEOUT`                  | 100             | 50-1000     | Regex matching timeout (milliseconds) |
+| `MAX_FILE_SIZE`                  | 10MB            | 1MB-100MB   | Maximum text file size (bytes)        |
+| `MAX_MEDIA_SIZE`                 | 50MB            | 1MB-500MB   | Maximum media file size (bytes)       |
+| `MAX_SEARCH_SIZE`                | 1MB             | 100KB-10MB  | Maximum file size for content search  |
+| `DEFAULT_DEPTH`                  | 10              | 1-100       | Default maximum recursion depth       |
+| `DEFAULT_RESULTS`                | 100             | 10-10000    | Default maximum search results        |
+| `DEFAULT_SEARCH_MAX_FILES`       | 20000           | 100-100000  | Default max files to scan in searches |
+| `DEFAULT_SEARCH_TIMEOUT`         | 30000           | 100-3600000 | Default search timeout (milliseconds) |
+| `DEFAULT_TOP`                    | 10              | 1-1000      | Default top N items in analysis       |
+| `DEFAULT_TREE`                   | 5               | 1-50        | Default directory tree depth          |
+| `DEFAULT_TREE_MAX_FILES`         | 5000            | 100-200000  | Default max files in directory tree   |
 
 > **💡 Tip:** See [CONFIGURATION.md](CONFIGURATION.md) for detailed environment variable usage examples, configuration profiles, and best practices for different use cases.
 
@@ -567,11 +567,11 @@ src/
 │   ├── fs-helpers.ts     # Low-level filesystem helpers (exports)
 │   ├── file-operations/  # Core filesystem operations
 │   │   ├── analyze-directory.ts
-│   │   ├── directory-items.ts
-│   │   ├── directory-iteration.ts
+│   │   ├── directory-helpers.ts
 │   │   ├── directory-tree.ts
 │   │   ├── file-info.ts
 │   │   ├── list-directory.ts
+│   │   ├── pattern-validator.ts
 │   │   ├── read-media-file.ts
 │   │   ├── read-multiple-files.ts
 │   │   ├── search-content.ts
