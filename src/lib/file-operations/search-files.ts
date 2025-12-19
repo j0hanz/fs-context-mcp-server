@@ -14,6 +14,7 @@ import {
   validateExistingPath,
   validateExistingPathDetailed,
 } from '../path-validation.js';
+import { perfMonitor } from '../performance/monitor.js';
 import {
   analyzePatternComplexity,
   getComplexityWarning,
@@ -217,6 +218,8 @@ export async function searchFiles(
   const effectiveMaxResults = maxResults ?? DEFAULT_MAX_RESULTS;
   const deadlineMs = timeoutMs ? Date.now() + timeoutMs : undefined;
 
+  perfMonitor.startOperation('search-files');
+
   const state = initSearchFilesState();
   const stream = createSearchStream(
     validPath,
@@ -234,6 +237,7 @@ export async function searchFiles(
       maxResults: effectiveMaxResults,
     });
   } finally {
+    perfMonitor.endOperation('search-files');
     const { destroy } = stream as { destroy?: () => void };
     if (typeof destroy === 'function') destroy.call(stream);
   }

@@ -1,6 +1,5 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -8,6 +7,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { RootsListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Root } from '@modelcontextprotocol/sdk/types.js';
 
+import packageJson from '../package.json' with { type: 'json' };
 import { normalizePath } from './lib/path-utils.js';
 import {
   getAllowedDirectories,
@@ -17,8 +17,6 @@ import {
 } from './lib/path-validation.js';
 import { registerAllTools } from './tools/index.js';
 
-const require = createRequire(import.meta.url);
-const packageJson = require('../package.json') as { version: string };
 const SERVER_VERSION = packageJson.version;
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));

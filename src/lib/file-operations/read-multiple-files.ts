@@ -37,27 +37,32 @@ async function collectFileBudget(
 ): Promise<{ skippedBudget: Set<string> }> {
   const skippedBudget = new Set<string>();
 
-  // Skip budget checks entirely for partial reads (head/tail)
-  // since we're only reading small portions of files
+  // If performing partial read (head/tail), skip size checks
   if (isPartialRead) {
     return { skippedBudget };
   }
 
-  let totalSize = 0;
-
-  for (const filePath of filePaths) {
-    try {
+  // Gather file sizes
+  const { results } = await processInParallel(
+    filePaths.map((filePath, index) => ({ filePath, index })),
+    async ({ filePath, index }) => {
       const validPath = await validateExistingPath(filePath);
       const stats = await fs.stat(validPath);
+      return { filePath, index, size: stats.size };
+    },
+    PARALLEL_CONCURRENCY
+  );
 
-      if (totalSize + stats.size > maxTotalSize) {
-        skippedBudget.add(filePath);
-        continue;
-      }
-      totalSize += stats.size;
-    } catch {
-      // Ignore per-file size errors; handled during read.
+  // Determine which files to skip based on budget
+  let totalSize = 0;
+  const orderedResults = [...results].sort((a, b) => a.index - b.index);
+
+  for (const result of orderedResults) {
+    if (totalSize + result.size > maxTotalSize) {
+      skippedBudget.add(result.filePath);
+      continue;
     }
+    totalSize += result.size;
   }
 
   return { skippedBudget };

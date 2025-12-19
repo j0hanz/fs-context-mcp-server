@@ -1,3 +1,5 @@
+import { availableParallelism } from 'node:os';
+
 // Helper function for parsing and validating integer environment variables
 function parseEnvInt(
   envVar: string,
@@ -21,7 +23,18 @@ function parseEnvInt(
   return parsed;
 }
 
-export const PARALLEL_CONCURRENCY = parseEnvInt('PARALLEL_JOBS', 20, 1, 100);
+// Determine optimal parallelism based on CPU cores
+function getOptimalParallelism(): number {
+  const cpuCores = availableParallelism();
+  return Math.min(cpuCores * 2, 50);
+}
+
+export const PARALLEL_CONCURRENCY = parseEnvInt(
+  'FILESYSTEM_CONTEXT_CONCURRENCY',
+  getOptimalParallelism(),
+  1,
+  100
+);
 export const DIR_TRAVERSAL_CONCURRENCY = parseEnvInt(
   'TRAVERSAL_JOBS',
   8,

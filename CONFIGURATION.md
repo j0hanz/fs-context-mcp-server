@@ -6,11 +6,11 @@ Environment variables for tuning performance and resource limits. **All variable
 
 ### Performance & Concurrency
 
-| Variable         | Default | Range   | Description                             | Increase For         | Decrease For           |
-| ---------------- | ------- | ------- | --------------------------------------- | -------------------- | ---------------------- |
-| `PARALLEL_JOBS`  | `20`    | 1-100   | Parallel file operations                | SSDs, many CPU cores | HDDs, shared systems   |
-| `TRAVERSAL_JOBS` | `8`     | 1-50    | Directory traversal parallelism         | Fast storage         | Network drives         |
-| `REGEX_TIMEOUT`  | `100`   | 50-1000 | Regex timeout per line (prevents ReDoS) | Complex patterns     | CI/CD, simple searches |
+| Variable                         | Default         | Range   | Description                             | Increase For         | Decrease For           |
+| -------------------------------- | --------------- | ------- | --------------------------------------- | -------------------- | ---------------------- |
+| `FILESYSTEM_CONTEXT_CONCURRENCY` | Auto (2x cores) | 1-100   | Parallel file operations (auto-detects) | SSDs, many CPU cores | HDDs, shared systems   |
+| `TRAVERSAL_JOBS`                 | `8`             | 1-50    | Directory traversal parallelism         | Fast storage         | Network drives         |
+| `REGEX_TIMEOUT`                  | `100`           | 50-1000 | Regex timeout per line (prevents ReDoS) | Complex patterns     | CI/CD, simple searches |
 
 ### File Size Limits
 
