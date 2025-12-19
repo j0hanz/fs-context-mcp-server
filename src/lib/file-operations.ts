@@ -59,9 +59,21 @@ function createExcludeMatcher(
   if (excludePatterns.length === 0) {
     return () => false;
   }
-  const matchers = excludePatterns.map((pattern) => new Minimatch(pattern));
-  return (name: string, relativePath: string): boolean =>
-    matchers.some((m) => m.match(name) || m.match(relativePath));
+  const matcherOptions = {
+    dot: true,
+    nocase: process.platform === 'win32',
+    windowsPathsNoEscape: true,
+  } as const;
+  const matchers = excludePatterns.map(
+    (pattern) => new Minimatch(pattern, matcherOptions)
+  );
+
+  return (name: string, relativePath: string): boolean => {
+    const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+    return matchers.some(
+      (m) => m.match(name) || m.match(normalizedRelativePath)
+    );
+  };
 }
 
 function classifyAccessError(error: unknown): 'symlink' | 'inaccessible' {
@@ -652,7 +664,7 @@ export async function searchFiles(
   const stream = fg.stream(pattern, {
     cwd: validPath,
     absolute: true,
-    onlyFiles: false,
+    onlyFiles: true,
     dot: true,
     ignore: excludePatterns,
     suppressErrors: true,
@@ -660,23 +672,28 @@ export async function searchFiles(
     deep: maxDepth,
   });
 
-  for await (const entry of stream) {
-    const matchPath = typeof entry === 'string' ? entry : String(entry);
-    filesScanned++;
+  try {
+    for await (const entry of stream) {
+      const matchPath = typeof entry === 'string' ? entry : String(entry);
+      filesScanned++;
 
-    if (results.length >= effectiveMaxResults) {
-      truncated = true;
-      break;
-    }
-
-    batch.push(matchPath);
-    if (batch.length >= PARALLEL_CONCURRENCY) {
-      await flushBatch();
       if (results.length >= effectiveMaxResults) {
         truncated = true;
         break;
       }
+
+      batch.push(matchPath);
+      if (batch.length >= PARALLEL_CONCURRENCY) {
+        await flushBatch();
+        if (results.length >= effectiveMaxResults) {
+          truncated = true;
+          break;
+        }
+      }
     }
+  } finally {
+    const { destroy } = stream as { destroy?: () => void };
+    if (typeof destroy === 'function') destroy.call(stream);
   }
 
   if (!truncated) {
@@ -747,6 +764,7 @@ export async function readMultipleFiles(
 
   let totalSize = 0;
   const fileSizes = new Map<string, number>();
+  const skippedBudget = new Set<string>();
 
   for (const filePath of filePaths) {
     try {
@@ -754,6 +772,10 @@ export async function readMultipleFiles(
       const stats = await fs.stat(validPath);
       fileSizes.set(filePath, stats.size);
       if (!isPartialRead) {
+        if (totalSize + stats.size > maxTotalSize) {
+          skippedBudget.add(filePath);
+          continue;
+        }
         totalSize += stats.size;
       }
     } catch {
@@ -761,17 +783,12 @@ export async function readMultipleFiles(
     }
   }
 
-  if (!isPartialRead && totalSize > maxTotalSize) {
-    throw new McpError(
-      ErrorCode.E_TOO_LARGE,
-      `Total size of all files (${totalSize} bytes) exceeds limit (${maxTotalSize} bytes)`,
-      undefined,
-      { totalSize, maxTotalSize, fileCount: filePaths.length }
-    );
-  }
+  const filesToProcess = filePaths
+    .map((filePath, index) => ({ filePath, index }))
+    .filter(({ filePath }) => !skippedBudget.has(filePath));
 
   const { results, errors } = await processInParallel(
-    filePaths.map((filePath, index) => ({ filePath, index })),
+    filesToProcess,
     async ({ filePath, index }) => {
       const result = await readFile(filePath, {
         encoding,
@@ -802,6 +819,16 @@ export async function readMultipleFiles(
       path: filePath,
       error: e.error.message,
     };
+  }
+
+  for (const filePath of skippedBudget) {
+    const index = filePaths.indexOf(filePath);
+    if (index !== -1) {
+      output[index] = {
+        path: filePath,
+        error: `Skipped: combined total would exceed maxTotalSize (${maxTotalSize} bytes)`,
+      };
+    }
   }
 
   return output;

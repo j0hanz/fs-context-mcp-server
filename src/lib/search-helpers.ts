@@ -245,7 +245,7 @@ function shouldStopScan(
 }
 
 function trimAndClampLine(line: string): string {
-  return line.trim().substring(0, MAX_LINE_CONTENT_LENGTH);
+  return line.trimEnd().substring(0, MAX_LINE_CONTENT_LENGTH);
 }
 
 function getMatchCount(
