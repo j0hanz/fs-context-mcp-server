@@ -2,12 +2,10 @@ import * as pathModule from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations.js';
-import {
-  formatDirectoryListing,
-  formatOperationSummary,
-} from '../lib/formatters.js';
 import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
@@ -18,6 +16,97 @@ function getExtension(name: string, isFile: boolean): string | undefined {
   if (!isFile) return undefined;
   const ext = pathModule.extname(name);
   return ext ? ext.slice(1) : undefined;
+}
+
+type ListDirectoryStructuredResult = z.infer<typeof ListDirectoryOutputSchema>;
+
+const BYTE_UNIT_LABELS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024));
+  const unit = BYTE_UNIT_LABELS[unitIndex] ?? 'B';
+  const value = bytes / Math.pow(1024, unitIndex);
+  return `${parseFloat(value.toFixed(2))} ${unit}`;
+}
+
+function formatDirectoryListing(
+  entries: Awaited<ReturnType<typeof listDirectory>>['entries'],
+  basePath: string
+): string {
+  if (entries.length === 0) return 'Directory is empty';
+
+  const dirs = entries.filter((e) => e.type === 'directory');
+  const files = entries.filter((e) => e.type !== 'directory');
+  const lines = [
+    `Contents of ${basePath}:`,
+    '',
+    ...(dirs.length
+      ? [
+          'Directories:',
+          ...dirs.map((dir) => {
+            const symlink = dir.symlinkTarget ? ` -> ${dir.symlinkTarget}` : '';
+            return `  [DIR]  ${dir.relativePath}${symlink}`;
+          }),
+          '',
+        ]
+      : []),
+    ...(files.length
+      ? [
+          'Files:',
+          ...files.map((file) => {
+            const size =
+              file.size !== undefined ? ` (${formatBytes(file.size)})` : '';
+            const tag = file.type === 'symlink' ? '[LINK]' : '[FILE]';
+            const symlink = file.symlinkTarget
+              ? ` -> ${file.symlinkTarget}`
+              : '';
+            return `  ${tag} ${file.relativePath}${size}${symlink}`;
+          }),
+        ]
+      : []),
+    '',
+    `Total: ${dirs.length} directories, ${files.length} files`,
+  ];
+
+  return lines.join('\n');
+}
+
+function formatOperationSummary(summary: {
+  truncated?: boolean;
+  truncatedReason?: string;
+  tip?: string;
+  skippedInaccessible?: number;
+  symlinksNotFollowed?: number;
+  skippedTooLarge?: number;
+  skippedBinary?: number;
+  linesSkippedDueToRegexTimeout?: number;
+}): string {
+  const lines: string[] = [];
+
+  if (summary.truncated) {
+    lines.push(
+      `\n\n!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
+    );
+    if (summary.tip) {
+      lines.push(`Tip: ${summary.tip}`);
+    }
+  }
+
+  const note = (count: number | undefined, msg: string): void => {
+    if (count && count > 0) lines.push(`Note: ${count} ${msg}`);
+  };
+
+  note(summary.skippedTooLarge, 'file(s) skipped (too large).');
+  note(summary.skippedBinary, 'file(s) skipped (binary).');
+  note(summary.skippedInaccessible, 'item(s) were inaccessible and skipped.');
+  note(summary.symlinksNotFollowed, 'symlink(s) were not followed (security).');
+  note(
+    summary.linesSkippedDueToRegexTimeout,
+    'line(s) skipped (regex timeout).'
+  );
+
+  return lines.join('\n');
 }
 
 const LIST_DIRECTORY_TOOL = {
@@ -35,28 +124,6 @@ const LIST_DIRECTORY_TOOL = {
     openWorldHint: true,
   },
 } as const;
-
-interface ListDirectoryStructuredResult extends Record<string, unknown> {
-  ok: true;
-  path: string;
-  entries: {
-    name: string;
-    type: string;
-    extension?: string;
-    size?: number;
-    modified?: string;
-    symlinkTarget?: string;
-  }[];
-  summary: {
-    totalEntries: number;
-    totalFiles: number;
-    totalDirectories: number;
-    maxDepthReached: number;
-    truncated: boolean;
-    skippedInaccessible: number;
-    symlinksNotFollowed: number;
-  };
-}
 
 function buildStructuredResult(
   result: Awaited<ReturnType<typeof listDirectory>>

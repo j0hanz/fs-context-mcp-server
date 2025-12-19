@@ -2,34 +2,71 @@ import * as pathModule from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations.js';
-import {
-  formatOperationSummary,
-  formatSearchResults,
-} from '../lib/formatters.js';
 import {
   SearchFilesInputSchema,
   SearchFilesOutputSchema,
 } from '../schemas/index.js';
 import { buildToolResponse, type ToolResponse } from './tool-response.js';
 
-interface SearchFilesStructuredResult extends Record<string, unknown> {
-  ok: true;
-  basePath: string;
-  pattern: string;
-  results: {
-    path: string;
-    type: string;
-    size?: number;
-    modified?: string;
-  }[];
-  summary: {
-    matched: number;
-    truncated: boolean;
-    skippedInaccessible: number;
-    filesScanned: number;
+type SearchFilesStructuredResult = z.infer<typeof SearchFilesOutputSchema>;
+
+const BYTE_UNIT_LABELS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024));
+  const unit = BYTE_UNIT_LABELS[unitIndex] ?? 'B';
+  const value = bytes / Math.pow(1024, unitIndex);
+  return `${parseFloat(value.toFixed(2))} ${unit}`;
+}
+
+function formatSearchResults(
+  results: Awaited<ReturnType<typeof searchFiles>>['results']
+): string {
+  if (results.length === 0) return 'No matches found';
+  const lines = [`Found ${results.length} matches:`, ''];
+  for (const result of results) {
+    const tag = result.type === 'directory' ? '[DIR]' : '[FILE]';
+    const size =
+      result.size !== undefined ? ` (${formatBytes(result.size)})` : '';
+    lines.push(`${tag} ${result.path}${size}`);
+  }
+  return lines.join('\n');
+}
+
+function formatOperationSummary(summary: {
+  truncated?: boolean;
+  truncatedReason?: string;
+  tip?: string;
+  skippedInaccessible?: number;
+  symlinksNotFollowed?: number;
+  skippedTooLarge?: number;
+  skippedBinary?: number;
+  linesSkippedDueToRegexTimeout?: number;
+}): string {
+  const lines: string[] = [];
+  if (summary.truncated) {
+    lines.push(
+      `\n\n!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
+    );
+    if (summary.tip) lines.push(`Tip: ${summary.tip}`);
+  }
+  const note = (count: number | undefined, msg: string): void => {
+    if (count && count > 0) lines.push(`Note: ${count} ${msg}`);
   };
+  note(summary.skippedTooLarge, 'file(s) skipped (too large).');
+  note(summary.skippedBinary, 'file(s) skipped (binary).');
+  note(summary.skippedInaccessible, 'item(s) were inaccessible and skipped.');
+  note(summary.symlinksNotFollowed, 'symlink(s) were not followed (security).');
+  note(
+    summary.linesSkippedDueToRegexTimeout,
+    'line(s) skipped (regex timeout).'
+  );
+  return lines.join('\n');
 }
 
 function buildStructuredResult(

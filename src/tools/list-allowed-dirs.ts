@@ -2,7 +2,8 @@ import * as fs from 'node:fs/promises';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { formatAllowedDirectories } from '../lib/formatters.js';
+import type { z } from 'zod';
+
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import { ListAllowedDirectoriesOutputSchema } from '../schemas/index.js';
 import { buildToolResponse, type ToolResponse } from './tool-response.js';
@@ -11,6 +12,19 @@ interface DirectoryAccess {
   path: string;
   accessible: boolean;
   readable: boolean;
+}
+
+function formatAllowedDirectories(dirs: string[]): string {
+  if (dirs.length === 0) {
+    return 'No directories are currently allowed.';
+  }
+
+  const lines = ['Allowed Directories:', ''];
+  for (const dir of dirs) {
+    lines.push(`  - ${dir}`);
+  }
+
+  return lines.join('\n');
 }
 
 async function checkDirectoryAccess(dirPath: string): Promise<DirectoryAccess> {
@@ -37,16 +51,9 @@ function buildHint(count: number): string {
   return `${count} directories configured. Operations work across all of them.`;
 }
 
-interface ListAllowedDirectoriesStructuredResult extends Record<
-  string,
-  unknown
-> {
-  ok: true;
-  allowedDirectories: string[];
-  count: number;
-  accessStatus: DirectoryAccess[];
-  hint: string;
-}
+type ListAllowedDirectoriesStructuredResult = z.infer<
+  typeof ListAllowedDirectoriesOutputSchema
+>;
 
 async function handleListAllowedDirectories(): Promise<
   ToolResponse<ListAllowedDirectoriesStructuredResult>

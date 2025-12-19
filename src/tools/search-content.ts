@@ -2,42 +2,94 @@ import * as pathModule from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { searchContent } from '../lib/file-operations.js';
-import {
-  formatContentMatches,
-  formatOperationSummary,
-} from '../lib/formatters.js';
 import {
   SearchContentInputSchema,
   SearchContentOutputSchema,
 } from '../schemas/index.js';
 import { buildToolResponse, type ToolResponse } from './tool-response.js';
 
-interface SearchContentStructuredResult extends Record<string, unknown> {
-  ok: true;
-  basePath: string;
-  pattern: string;
-  filePattern: string;
-  matches: {
-    file: string;
-    line: number;
-    content: string;
-    contextBefore?: string[];
-    contextAfter?: string[];
-    matchCount: number;
-  }[];
-  summary: {
-    filesScanned: number;
-    filesMatched: number;
-    totalMatches: number;
-    truncated: boolean;
-    skippedTooLarge?: number;
-    skippedBinary?: number;
-    skippedInaccessible?: number;
-    linesSkippedDueToRegexTimeout?: number;
-    stoppedReason?: 'maxResults' | 'maxFiles' | 'timeout';
+type SearchContentStructuredResult = z.infer<typeof SearchContentOutputSchema>;
+
+const LINE_NUMBER_PAD_WIDTH = 4;
+
+function formatContentMatches(
+  matches: Awaited<ReturnType<typeof searchContent>>['matches']
+): string {
+  if (matches.length === 0) return 'No matches found';
+
+  const byFile = new Map<string, typeof matches>();
+  for (const match of matches) {
+    const list = byFile.get(match.file) ?? [];
+    list.push(match);
+    byFile.set(match.file, list);
+  }
+
+  const formatContext = (
+    context: string[] | undefined,
+    startLine: number
+  ): string[] =>
+    (context ?? []).map(
+      (line, idx) =>
+        `    ${String(startLine + idx).padStart(LINE_NUMBER_PAD_WIDTH)}: ${line}`
+    );
+
+  const lines: string[] = [`Found ${matches.length} matches:`, ''];
+  for (const [file, fileMatches] of byFile) {
+    lines.push(`${file}:`);
+    for (const match of fileMatches) {
+      const before = formatContext(
+        match.contextBefore,
+        match.line - (match.contextBefore?.length ?? 0)
+      );
+      const after = formatContext(match.contextAfter, match.line + 1);
+      lines.push(...before);
+      lines.push(
+        `  > ${String(match.line).padStart(LINE_NUMBER_PAD_WIDTH)}: ${
+          match.content
+        }`
+      );
+      lines.push(...after);
+      if (before.length || after.length) lines.push('    ---');
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+function formatOperationSummary(summary: {
+  truncated?: boolean;
+  truncatedReason?: string;
+  tip?: string;
+  skippedInaccessible?: number;
+  symlinksNotFollowed?: number;
+  skippedTooLarge?: number;
+  skippedBinary?: number;
+  linesSkippedDueToRegexTimeout?: number;
+}): string {
+  const lines: string[] = [];
+  if (summary.truncated) {
+    lines.push(
+      `\n\n!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
+    );
+    if (summary.tip) lines.push(`Tip: ${summary.tip}`);
+  }
+  const note = (count: number | undefined, msg: string): void => {
+    if (count && count > 0) lines.push(`Note: ${count} ${msg}`);
   };
+  note(summary.skippedTooLarge, 'file(s) skipped (too large).');
+  note(summary.skippedBinary, 'file(s) skipped (binary).');
+  note(summary.skippedInaccessible, 'item(s) were inaccessible and skipped.');
+  note(summary.symlinksNotFollowed, 'symlink(s) were not followed (security).');
+  note(
+    summary.linesSkippedDueToRegexTimeout,
+    'line(s) skipped (regex timeout).'
+  );
+  return lines.join('\n');
 }
 
 function buildStructuredResult(

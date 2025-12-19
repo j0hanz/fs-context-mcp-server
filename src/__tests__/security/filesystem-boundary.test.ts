@@ -38,7 +38,7 @@ describe('security boundary: filesystem access', () => {
       'src/lib/path-validation.ts',
       'src/lib/file-operations.ts',
       'src/lib/fs-helpers.ts',
-      'src/lib/search-helpers.ts',
+      'src/lib/file-operations/search-content.ts',
     ]);
 
     const offenders: string[] = [];

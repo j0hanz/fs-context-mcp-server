@@ -1,18 +1,70 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { getDirectoryTree } from '../lib/file-operations.js';
-import { formatOperationSummary, formatTreeEntry } from '../lib/formatters.js';
 import {
   DirectoryTreeInputSchema,
   DirectoryTreeOutputSchema,
 } from '../schemas/index.js';
 import { buildToolResponse, type ToolResponse } from './tool-response.js';
 
-interface DirectoryTreeStructuredResult extends Record<string, unknown> {
-  ok: true;
-  tree: Awaited<ReturnType<typeof getDirectoryTree>>['tree'];
-  summary: Awaited<ReturnType<typeof getDirectoryTree>>['summary'];
+type DirectoryTreeStructuredResult = z.infer<typeof DirectoryTreeOutputSchema>;
+
+const BYTE_UNIT_LABELS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024));
+  const unit = BYTE_UNIT_LABELS[unitIndex] ?? 'B';
+  const value = bytes / Math.pow(1024, unitIndex);
+  return `${parseFloat(value.toFixed(2))} ${unit}`;
+}
+
+function formatTreeEntry(
+  entry: Awaited<ReturnType<typeof getDirectoryTree>>['tree'],
+  indent = ''
+): string {
+  const lines: string[] = [];
+  const icon = entry.type === 'directory' ? '[DIR]' : '[FILE]';
+  const size = entry.size !== undefined ? ` (${formatBytes(entry.size)})` : '';
+  lines.push(`${indent}${icon} ${entry.name}${size}`);
+  for (const child of entry.children ?? []) {
+    lines.push(formatTreeEntry(child, `${indent}  `));
+  }
+  return lines.join('\n');
+}
+
+function formatOperationSummary(summary: {
+  truncated?: boolean;
+  truncatedReason?: string;
+  tip?: string;
+  skippedInaccessible?: number;
+  symlinksNotFollowed?: number;
+  skippedTooLarge?: number;
+  skippedBinary?: number;
+  linesSkippedDueToRegexTimeout?: number;
+}): string {
+  const lines: string[] = [];
+  if (summary.truncated) {
+    lines.push(
+      `\n\n!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
+    );
+    if (summary.tip) lines.push(`Tip: ${summary.tip}`);
+  }
+  const note = (count: number | undefined, msg: string): void => {
+    if (count && count > 0) lines.push(`Note: ${count} ${msg}`);
+  };
+  note(summary.skippedTooLarge, 'file(s) skipped (too large).');
+  note(summary.skippedBinary, 'file(s) skipped (binary).');
+  note(summary.skippedInaccessible, 'item(s) were inaccessible and skipped.');
+  note(summary.symlinksNotFollowed, 'symlink(s) were not followed (security).');
+  note(
+    summary.linesSkippedDueToRegexTimeout,
+    'line(s) skipped (regex timeout).'
+  );
+  return lines.join('\n');
 }
 
 function buildStructuredResult(

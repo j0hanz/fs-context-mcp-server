@@ -1,5 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations.js';
 import {
@@ -8,15 +10,9 @@ import {
 } from '../schemas/index.js';
 import { buildToolResponse, type ToolResponse } from './tool-response.js';
 
-interface ReadMultipleStructuredResult extends Record<string, unknown> {
-  ok: true;
-  results: Awaited<ReturnType<typeof readMultipleFiles>>;
-  summary: {
-    total: number;
-    succeeded: number;
-    failed: number;
-  };
-}
+type ReadMultipleStructuredResult = z.infer<
+  typeof ReadMultipleFilesOutputSchema
+>;
 
 function buildStructuredResult(
   results: Awaited<ReturnType<typeof readMultipleFiles>>

@@ -1,5 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode, McpError } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
@@ -49,13 +51,7 @@ function buildTextResult(
   return text;
 }
 
-interface ReadFileStructuredResult extends Record<string, unknown> {
-  ok: true;
-  path: string;
-  content: string;
-  truncated: boolean;
-  totalLines?: number;
-}
+type ReadFileStructuredResult = z.infer<typeof ReadFileOutputSchema>;
 
 async function handleReadFile(args: {
   path: string;

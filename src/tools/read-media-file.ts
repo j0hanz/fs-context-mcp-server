@@ -1,5 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { readMediaFile } from '../lib/file-operations.js';
 import {
@@ -8,13 +10,7 @@ import {
 } from '../schemas/index.js';
 import { buildToolResponse, type ToolResponse } from './tool-response.js';
 
-interface ReadMediaStructuredResult extends Record<string, unknown> {
-  ok: true;
-  path: string;
-  mimeType: string;
-  size: number;
-  data: string;
-}
+type ReadMediaStructuredResult = z.infer<typeof ReadMediaFileOutputSchema>;
 
 function buildStructuredResult(
   result: Awaited<ReturnType<typeof readMediaFile>>

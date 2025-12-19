@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ErrorSchema, FileTypeSchema, TreeEntrySchema } from './common.js';
 import { TraversalSummarySchema } from './output-helpers.js';
 
-export const ListAllowedDirectoriesOutputSchema = {
+export const ListAllowedDirectoriesOutputSchema = z.object({
   ok: z.boolean(),
   allowedDirectories: z.array(z.string()).optional(),
   count: z.number().optional().describe('Number of allowed directories'),
@@ -19,9 +19,9 @@ export const ListAllowedDirectoriesOutputSchema = {
     .describe('Access status for each allowed directory'),
   hint: z.string().optional().describe('Usage hint based on configuration'),
   error: ErrorSchema.optional(),
-};
+});
 
-export const ListDirectoryOutputSchema = {
+export const ListDirectoryOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
   entries: z
@@ -49,9 +49,9 @@ export const ListDirectoryOutputSchema = {
     .merge(TraversalSummarySchema)
     .optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const SearchFilesOutputSchema = {
+export const SearchFilesOutputSchema = z.object({
   ok: z.boolean(),
   basePath: z.string().optional(),
   pattern: z.string().optional(),
@@ -77,18 +77,18 @@ export const SearchFilesOutputSchema = {
     })
     .optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const ReadFileOutputSchema = {
+export const ReadFileOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
   content: z.string().optional(),
   truncated: z.boolean().optional(),
   totalLines: z.number().optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const ReadMultipleFilesOutputSchema = {
+export const ReadMultipleFilesOutputSchema = z.object({
   ok: z.boolean(),
   results: z
     .array(
@@ -109,9 +109,9 @@ export const ReadMultipleFilesOutputSchema = {
     })
     .optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const GetFileInfoOutputSchema = {
+export const GetFileInfoOutputSchema = z.object({
   ok: z.boolean(),
   info: z
     .object({
@@ -129,9 +129,9 @@ export const GetFileInfoOutputSchema = {
     })
     .optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const SearchContentOutputSchema = {
+export const SearchContentOutputSchema = z.object({
   ok: z.boolean(),
   basePath: z.string().optional(),
   pattern: z.string().optional(),
@@ -167,9 +167,9 @@ export const SearchContentOutputSchema = {
     })
     .optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const AnalyzeDirectoryOutputSchema = {
+export const AnalyzeDirectoryOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
   totalFiles: z.number().optional(),
@@ -197,20 +197,20 @@ export const AnalyzeDirectoryOutputSchema = {
     })
     .optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const DirectoryTreeOutputSchema = {
+export const DirectoryTreeOutputSchema = z.object({
   ok: z.boolean(),
   tree: TreeEntrySchema.optional(),
   summary: TraversalSummarySchema.optional(),
   error: ErrorSchema.optional(),
-};
+});
 
-export const ReadMediaFileOutputSchema = {
+export const ReadMediaFileOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
   mimeType: z.string().optional(),
   size: z.number().optional(),
   data: z.string().optional(),
   error: ErrorSchema.optional(),
-};
+});

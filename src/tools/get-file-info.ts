@@ -1,29 +1,48 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import type { z } from 'zod';
+
 import { createErrorResponse, ErrorCode } from '../lib/errors.js';
 import { getFileInfo } from '../lib/file-operations.js';
-import { formatFileInfo } from '../lib/formatters.js';
 import {
   GetFileInfoInputSchema,
   GetFileInfoOutputSchema,
 } from '../schemas/index.js';
 import { buildToolResponse, type ToolResponse } from './tool-response.js';
 
-interface GetFileInfoStructuredResult extends Record<string, unknown> {
-  ok: true;
-  info: {
-    name: string;
-    path: string;
-    type: string;
-    size: number;
-    created: string;
-    modified: string;
-    accessed: string;
-    permissions: string;
-    isHidden: boolean;
-    mimeType?: string;
-    symlinkTarget?: string;
-  };
+type GetFileInfoStructuredResult = z.infer<typeof GetFileInfoOutputSchema>;
+
+const BYTE_UNIT_LABELS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024));
+  const unit = BYTE_UNIT_LABELS[unitIndex] ?? 'B';
+  const value = bytes / Math.pow(1024, unitIndex);
+  return `${parseFloat(value.toFixed(2))} ${unit}`;
+}
+
+function formatDate(date: Date): string {
+  return date.toISOString();
+}
+
+function formatFileInfo(info: Awaited<ReturnType<typeof getFileInfo>>): string {
+  const lines = [
+    `Name: ${info.name}`,
+    `Path: ${info.path}`,
+    `Type: ${info.type}`,
+    `Size: ${formatBytes(info.size)}`,
+    `Created: ${formatDate(info.created)}`,
+    `Modified: ${formatDate(info.modified)}`,
+    `Accessed: ${formatDate(info.accessed)}`,
+    `Permissions: ${info.permissions}`,
+    `Hidden: ${info.isHidden ? 'Yes' : 'No'}`,
+  ];
+
+  if (info.mimeType) lines.push(`MIME Type: ${info.mimeType}`);
+  if (info.symlinkTarget) lines.push(`Symlink Target: ${info.symlinkTarget}`);
+
+  return lines.join('\n');
 }
 
 function buildStructuredResult(
