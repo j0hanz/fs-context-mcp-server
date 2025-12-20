@@ -139,6 +139,32 @@ export const KNOWN_BINARY_EXTENSIONS = new Set([
   '.dat',
 ]);
 
+export const DEFAULT_EXCLUDE_PATTERNS = [
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/coverage/**',
+  '**/.git/**',
+  '**/.vscode/**',
+  '**/.idea/**',
+  '**/.DS_Store',
+  '**/.next/**',
+  '**/.nuxt/**',
+  '**/.output/**',
+  '**/.svelte-kit/**',
+  '**/.cache/**',
+  '**/.yarn/**',
+  '**/jspm_packages/**',
+  '**/bower_components/**',
+  '**/out/**',
+  '**/tmp/**',
+  '**/.temp/**',
+  '**/npm-debug.log',
+  '**/yarn-debug.log',
+  '**/yarn-error.log',
+  '**/Thumbs.db',
+];
+
 // MIME type mapping optimized for fast lookups using Map
 const MIME_TYPES = new Map<string, string>([
   ['.png', 'image/png'],

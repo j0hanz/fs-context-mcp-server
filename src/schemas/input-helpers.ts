@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  DEFAULT_EXCLUDE_PATTERNS,
   DEFAULT_MAX_DEPTH,
   DEFAULT_MAX_RESULTS,
   DEFAULT_SEARCH_MAX_FILES,
@@ -59,13 +60,13 @@ export const ExcludePatternsSchema = z
   )
   .max(100, 'Too many exclude patterns (max 100)')
   .optional()
-  .default([]);
+  .default(DEFAULT_EXCLUDE_PATTERNS);
 
 export const BasicExcludePatternsSchema = z
   .array(z.string().max(500, 'Individual exclude pattern is too long'))
   .max(100, 'Too many exclude patterns (max 100)')
   .optional()
-  .default([]);
+  .default(DEFAULT_EXCLUDE_PATTERNS);
 
 // ============================================================================
 // REUSABLE SCHEMA FRAGMENTS
