@@ -131,6 +131,8 @@ function buildTextResult(
 ): string {
   let textOutput = formatDirectoryAnalysis(result.analysis);
   textOutput += formatOperationSummary({
+    truncated: result.summary.truncated,
+    truncatedReason: result.summary.truncated ? 'results truncated' : undefined,
     skippedInaccessible: result.summary.skippedInaccessible,
     symlinksNotFollowed: result.summary.symlinksNotFollowed,
   });
@@ -141,18 +143,21 @@ async function handleAnalyzeDirectory({
   path: dirPath,
   maxDepth,
   topN,
+  maxEntries,
   excludePatterns,
   includeHidden,
 }: {
   path: string;
   maxDepth?: number;
   topN?: number;
+  maxEntries?: number;
   excludePatterns?: string[];
   includeHidden?: boolean;
 }): Promise<ToolResponse<AnalyzeDirectoryStructuredResult>> {
   const result = await analyzeDirectory(dirPath, {
     maxDepth,
     topN,
+    maxEntries,
     excludePatterns,
     includeHidden,
   });

@@ -22,14 +22,16 @@ Environment variables for tuning performance and resource limits. **All variable
 
 ### Default Operation Limits
 
-| Variable                   | Default | Range       | Applies To                            |
-| -------------------------- | ------- | ----------- | ------------------------------------- |
-| `DEFAULT_DEPTH`            | `10`    | 1-100       | `list_directory`, `analyze_directory` |
-| `DEFAULT_RESULTS`          | `100`   | 10-10000    | `search_content`                      |
-| `DEFAULT_SEARCH_MAX_FILES` | `20000` | 100-100000  | `search_content`, `search_files`      |
-| `DEFAULT_SEARCH_TIMEOUT`   | `30000` | 100-3600000 | `search_content`, `search_files`      |
-| `DEFAULT_TOP`              | `10`    | 1-1000      | `analyze_directory`                   |
-| `DEFAULT_TREE`             | `5`     | 1-50        | `directory_tree`                      |
+| Variable                      | Default | Range       | Applies To                            |
+| ----------------------------- | ------- | ----------- | ------------------------------------- |
+| `DEFAULT_DEPTH`               | `10`    | 1-100       | `list_directory`, `analyze_directory` |
+| `DEFAULT_RESULTS`             | `100`   | 10-10000    | `search_content`                      |
+| `DEFAULT_LIST_MAX_ENTRIES`    | `10000` | 100-100000  | `list_directory`                      |
+| `DEFAULT_SEARCH_MAX_FILES`    | `20000` | 100-100000  | `search_content`, `search_files`      |
+| `DEFAULT_SEARCH_TIMEOUT`      | `30000` | 100-3600000 | `search_content`, `search_files`      |
+| `DEFAULT_TOP`                 | `10`    | 1-1000      | `analyze_directory`                   |
+| `DEFAULT_ANALYZE_MAX_ENTRIES` | `20000` | 100-100000  | `analyze_directory`                   |
+| `DEFAULT_TREE`                | `5`     | 1-50        | `directory_tree`                      |
 
 ## Configuration Examples
 

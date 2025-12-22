@@ -82,6 +82,12 @@ describe('File Operations', () => {
       expect(result.summary.totalEntries).toBeGreaterThan(0);
     });
 
+    it('should throw when path is a file', async () => {
+      await expect(
+        listDirectory(path.join(testDir, 'README.md'))
+      ).rejects.toThrow(/Not a directory/i);
+    });
+
     it('should list recursively when specified', async () => {
       const result = await listDirectory(testDir, { recursive: true });
       expect(result.entries.some((e) => e.name === 'index.ts')).toBe(true);
@@ -288,6 +294,14 @@ describe('File Operations', () => {
       expect(result.analysis.totalSize).toBeGreaterThan(0);
     });
 
+    it('should respect maxEntries and mark truncated', async () => {
+      const result = await analyzeDirectory(testDir, { maxEntries: 1 });
+      expect(result.summary.truncated).toBe(true);
+      expect(
+        result.analysis.totalFiles + result.analysis.totalDirectories
+      ).toBeLessThanOrEqual(1);
+    });
+
     it('should list file types', async () => {
       const result = await analyzeDirectory(testDir);
       expect(Object.keys(result.analysis.fileTypes).length).toBeGreaterThan(0);
@@ -296,6 +310,12 @@ describe('File Operations', () => {
     it('should track largest files', async () => {
       const result = await analyzeDirectory(testDir, { topN: 5 });
       expect(result.analysis.largestFiles.length).toBeLessThanOrEqual(5);
+    });
+
+    it('should throw when path is a file', async () => {
+      await expect(
+        analyzeDirectory(path.join(testDir, 'README.md'))
+      ).rejects.toThrow(/Not a directory/i);
     });
   });
 

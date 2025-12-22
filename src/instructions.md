@@ -8,18 +8,18 @@ This server enables AI assistants to safely explore and analyze filesystem conte
 
 ## Quick Reference
 
-| Goal                | Tool                       | Key Parameters                      |
-| ------------------- | -------------------------- | ----------------------------------- |
-| Check access        | `list_allowed_directories` | —                                   |
-| Project structure   | `directory_tree`           | `maxDepth`, `excludePatterns`       |
-| List contents       | `list_directory`           | `recursive`, `sortBy`               |
-| Directory stats     | `analyze_directory`        | `topN`, `excludePatterns`           |
-| Find files          | `search_files`             | `pattern` (glob), `maxResults`      |
-| Search in files     | `search_content`           | `pattern` (regex), `contextLines`   |
-| Read file           | `read_file`                | `head`, `tail`, `lineStart/lineEnd` |
-| Read multiple files | `read_multiple_files`      | `paths[]` — **preferred for 2+**    |
-| File metadata       | `get_file_info`            | `path`                              |
-| Binary/media files  | `read_media_file`          | `maxSize`                           |
+| Goal                | Tool                       | Key Parameters                          |
+| ------------------- | -------------------------- | --------------------------------------- |
+| Check access        | `list_allowed_directories` | —                                       |
+| Project structure   | `directory_tree`           | `maxDepth`, `excludePatterns`           |
+| List contents       | `list_directory`           | `recursive`, `sortBy`                   |
+| Directory stats     | `analyze_directory`        | `topN`, `excludePatterns`, `maxEntries` |
+| Find files          | `search_files`             | `pattern` (glob), `maxResults`          |
+| Search in files     | `search_content`           | `pattern` (regex), `contextLines`       |
+| Read file           | `read_file`                | `head`, `tail`, `lineStart/lineEnd`     |
+| Read multiple files | `read_multiple_files`      | `paths[]` — **preferred for 2+**        |
+| File metadata       | `get_file_info`            | `path`                                  |
+| Binary/media files  | `read_media_file`          | `maxSize`                               |
 
 ---
 
@@ -151,18 +151,19 @@ Flat listing with metadata.
 | `recursive`  | false   | Include subdirs           |
 | `sortBy`     | "name"  | `name/size/modified/type` |
 | `maxDepth`   | 10      | Depth when recursive      |
-| `maxEntries` | —       | Limit (up to 100,000)     |
+| `maxEntries` | 10000   | Limit (up to 100,000)     |
 
 ### `analyze_directory`
 
 Statistics: counts, sizes, types, largest/recent files.
 
-| Parameter         | Default | Description        |
-| ----------------- | ------- | ------------------ |
-| `path`            | —       | Directory path     |
-| `maxDepth`        | 10      | Analysis depth     |
-| `topN`            | 10      | Top largest/recent |
-| `excludePatterns` | []      | Patterns to skip   |
+| Parameter         | Default | Description         |
+| ----------------- | ------- | ------------------- |
+| `path`            | -       | Directory path      |
+| `maxDepth`        | 10      | Analysis depth      |
+| `topN`            | 10      | Top largest/recent  |
+| `maxEntries`      | 20000   | Max entries scanned |
+| `excludePatterns` | []      | Patterns to skip    |
 
 ### `read_media_file`
 

@@ -1,7 +1,11 @@
 import type { ListDirectoryResult } from '../../config/types.js';
-import { DEFAULT_MAX_DEPTH, DIR_TRAVERSAL_CONCURRENCY } from '../constants.js';
+import {
+  DEFAULT_LIST_MAX_ENTRIES,
+  DEFAULT_MAX_DEPTH,
+  DIR_TRAVERSAL_CONCURRENCY,
+} from '../constants.js';
 import { runWorkQueue } from '../fs-helpers.js';
-import { validateExistingPath } from '../path-validation.js';
+import { validateExistingDirectory } from '../path-validation.js';
 import {
   createStopChecker,
   handleDirectory,
@@ -25,12 +29,12 @@ export async function listDirectory(
     recursive = false,
     includeHidden = false,
     maxDepth = DEFAULT_MAX_DEPTH,
-    maxEntries,
+    maxEntries = DEFAULT_LIST_MAX_ENTRIES,
     sortBy = 'name',
     includeSymlinkTargets = false,
   } = options;
 
-  const basePath = await validateExistingPath(dirPath);
+  const basePath = await validateExistingDirectory(dirPath);
   const state = initListState();
   const shouldStop = createStopChecker(maxEntries, state);
   const config: ListDirectoryConfig = {

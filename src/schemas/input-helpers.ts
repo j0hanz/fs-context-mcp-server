@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 import {
+  DEFAULT_ANALYZE_MAX_ENTRIES,
   DEFAULT_EXCLUDE_PATTERNS,
+  DEFAULT_LIST_MAX_ENTRIES,
   DEFAULT_MAX_DEPTH,
   DEFAULT_MAX_RESULTS,
   DEFAULT_SEARCH_MAX_FILES,
@@ -152,7 +154,17 @@ export const MaxEntriesSchema = z
   .min(1, 'maxEntries must be at least 1')
   .max(100000, 'maxEntries cannot exceed 100,000')
   .optional()
+  .default(DEFAULT_LIST_MAX_ENTRIES)
   .describe('Maximum number of entries to return (prevents huge responses)');
+
+export const AnalyzeMaxEntriesSchema = z
+  .number()
+  .int('maxEntries must be an integer')
+  .min(1, 'maxEntries must be at least 1')
+  .max(100000, 'maxEntries cannot exceed 100,000')
+  .optional()
+  .default(DEFAULT_ANALYZE_MAX_ENTRIES)
+  .describe('Maximum number of entries to scan before truncating');
 
 export const CaseSensitiveSchema = z
   .boolean()

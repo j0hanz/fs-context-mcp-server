@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { MAX_MEDIA_FILE_SIZE } from '../lib/constants.js';
 import {
+  AnalyzeMaxEntriesSchema,
   BaseNameMatchSchema,
   BasicExcludePatternsSchema,
   CaseSensitiveSchema,
@@ -230,6 +231,9 @@ export const AnalyzeDirectoryInputSchema = {
     .describe('Directory to analyze'),
   maxDepth: MaxDepthSchema.describe('Maximum depth to analyze'),
   topN: TopNSchema,
+  maxEntries: AnalyzeMaxEntriesSchema.describe(
+    'Maximum number of entries (files + directories) to scan'
+  ),
   excludePatterns: BasicExcludePatternsSchema.describe(
     'Glob patterns to exclude (e.g., "node_modules", "*.log")'
   ),

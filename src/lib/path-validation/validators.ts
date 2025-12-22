@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 
 import { ErrorCode, McpError } from '../errors.js';
 import { normalizePath } from '../path-utils.js';
@@ -84,6 +85,26 @@ async function resolveRealPath(
   }
 }
 
+async function assertIsDirectory(
+  resolvedPath: string,
+  requestedPath: string
+): Promise<void> {
+  let stats: Stats;
+  try {
+    stats = await fs.stat(resolvedPath);
+  } catch (error) {
+    throw toMcpError(requestedPath, error);
+  }
+
+  if (stats.isDirectory()) return;
+
+  throw new McpError(
+    ErrorCode.E_NOT_DIRECTORY,
+    `Not a directory: ${requestedPath}`,
+    requestedPath
+  );
+}
+
 async function validateExistingPathDetailsInternal(
   requestedPath: string
 ): Promise<ValidatedPathDetails> {
@@ -119,5 +140,13 @@ export async function validateExistingPath(
   requestedPath: string
 ): Promise<string> {
   const details = await validateExistingPathDetailsInternal(requestedPath);
+  return details.resolvedPath;
+}
+
+export async function validateExistingDirectory(
+  requestedPath: string
+): Promise<string> {
+  const details = await validateExistingPathDetailsInternal(requestedPath);
+  await assertIsDirectory(details.resolvedPath, requestedPath);
   return details.resolvedPath;
 }

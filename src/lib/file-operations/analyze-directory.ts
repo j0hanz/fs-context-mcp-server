@@ -7,13 +7,14 @@ import type {
   DirectoryAnalysis,
 } from '../../config/types.js';
 import {
+  DEFAULT_ANALYZE_MAX_ENTRIES,
   DEFAULT_MAX_DEPTH,
   DEFAULT_TOP_N,
   DIR_TRAVERSAL_CONCURRENCY,
 } from '../constants.js';
 import { runWorkQueue } from '../fs-helpers.js';
 import {
-  validateExistingPath,
+  validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
 import {
@@ -29,6 +30,7 @@ interface AnalysisState {
   currentMaxDepth: number;
   skippedInaccessible: number;
   symlinksNotFollowed: number;
+  truncated: boolean;
   fileTypes: Record<string, number>;
   largestFiles: { path: string; size: number }[];
   recentlyModified: { path: string; modified: Date }[];
@@ -42,6 +44,7 @@ function initAnalysisState(): AnalysisState {
     currentMaxDepth: 0,
     skippedInaccessible: 0,
     symlinksNotFollowed: 0,
+    truncated: false,
     fileTypes: {},
     largestFiles: [],
     recentlyModified: [],
@@ -92,6 +95,15 @@ function updateFileStats(
   );
 }
 
+function shouldStop(state: AnalysisState, maxEntries: number): boolean {
+  if (state.truncated) return true;
+  if (state.totalFiles + state.totalDirectories >= maxEntries) {
+    state.truncated = true;
+    return true;
+  }
+  return false;
+}
+
 async function handleEntry(
   params: { currentPath: string; depth: number },
   enqueue: (entry: { currentPath: string; depth: number }) => void,
@@ -100,11 +112,13 @@ async function handleEntry(
     basePath: string;
     maxDepth: number;
     topN: number;
+    maxEntries: number;
     includeHidden: boolean;
     shouldExclude: (name: string, relativePath: string) => boolean;
   }
 ): Promise<void> {
   if (params.depth > options.maxDepth) return;
+  if (shouldStop(state, options.maxEntries)) return;
   state.currentMaxDepth = Math.max(state.currentMaxDepth, params.depth);
 
   await forEachDirectoryEntry(
@@ -116,8 +130,10 @@ async function handleEntry(
       onInaccessible: () => {
         state.skippedInaccessible++;
       },
+      shouldStop: () => shouldStop(state, options.maxEntries),
     },
     async ({ item, fullPath }) => {
+      if (shouldStop(state, options.maxEntries)) return;
       try {
         const validated = await validateExistingPathDetailed(fullPath);
         if (validated.isSymlink || item.isSymbolicLink()) {
@@ -128,6 +144,7 @@ async function handleEntry(
         const stats = await fs.stat(validated.resolvedPath);
         if (stats.isDirectory()) {
           state.totalDirectories++;
+          if (shouldStop(state, options.maxEntries)) return;
           if (params.depth + 1 <= options.maxDepth) {
             enqueue({
               currentPath: validated.resolvedPath,
@@ -139,6 +156,7 @@ async function handleEntry(
 
         if (stats.isFile()) {
           updateFileStats(state, validated.resolvedPath, stats, options.topN);
+          if (shouldStop(state, options.maxEntries)) return;
         }
       } catch (error) {
         if (classifyAccessError(error) === 'symlink') {
@@ -177,6 +195,7 @@ export async function analyzeDirectory(
   options: {
     maxDepth?: number;
     topN?: number;
+    maxEntries?: number;
     excludePatterns?: string[];
     includeHidden?: boolean;
   } = {}
@@ -184,11 +203,12 @@ export async function analyzeDirectory(
   const {
     maxDepth = DEFAULT_MAX_DEPTH,
     topN = DEFAULT_TOP_N,
+    maxEntries = DEFAULT_ANALYZE_MAX_ENTRIES,
     excludePatterns = [],
     includeHidden = false,
   } = options;
 
-  const basePath = await validateExistingPath(dirPath);
+  const basePath = await validateExistingDirectory(dirPath);
   const state = initAnalysisState();
   const shouldExclude = createExcludeMatcher(excludePatterns);
 
@@ -199,6 +219,7 @@ export async function analyzeDirectory(
         basePath,
         maxDepth,
         topN,
+        maxEntries,
         includeHidden,
         shouldExclude,
       }),
@@ -208,7 +229,7 @@ export async function analyzeDirectory(
   return {
     analysis: finalizeAnalysis(state, basePath),
     summary: {
-      truncated: false,
+      truncated: state.truncated,
       skippedInaccessible: state.skippedInaccessible,
       symlinksNotFollowed: state.symlinksNotFollowed,
     },
