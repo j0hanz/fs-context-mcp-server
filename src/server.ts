@@ -42,10 +42,21 @@ function validateCliPath(inputPath: string): void {
     throw new Error('Path contains null bytes');
   }
 
+  if (isWindowsDriveRelativePath(inputPath)) {
+    throw new Error(
+      'Windows drive-relative paths are not allowed. Use C:\\path or C:/path instead of C:path.'
+    );
+  }
+
   const reserved = getReservedCliDeviceName(inputPath);
   if (reserved) {
     throw new Error(`Reserved device name not allowed: ${reserved}`);
   }
+}
+
+function isWindowsDriveRelativePath(inputPath: string): boolean {
+  if (process.platform !== 'win32') return false;
+  return /^[a-zA-Z]:(?![\\/])/.test(inputPath);
 }
 
 function getReservedCliDeviceName(inputPath: string): string | undefined {

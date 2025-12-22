@@ -12,16 +12,24 @@ function hasKnownBinaryExtension(filePath: string): boolean {
   return KNOWN_BINARY_EXTENSIONS.has(ext);
 }
 
-async function resolveHandle(
+async function withFileHandle<T>(
   filePath: string,
+  fn: (handle: fs.FileHandle) => Promise<T>,
   existingHandle?: fs.FileHandle
-): Promise<{ handle: fs.FileHandle; shouldClose: boolean }> {
+): Promise<T> {
   if (existingHandle) {
-    return { handle: existingHandle, shouldClose: false };
+    return fn(existingHandle);
   }
 
   const effectivePath = await validateExistingPath(filePath);
-  return { handle: await fs.open(effectivePath, 'r'), shouldClose: true };
+  const handle = await fs.open(effectivePath, 'r');
+  try {
+    return await fn(handle);
+  } finally {
+    await handle.close().catch((error: unknown) => {
+      console.error('Failed to close file handle:', error);
+    });
+  }
 }
 
 async function readProbe(handle: fs.FileHandle): Promise<Buffer> {
@@ -65,28 +73,18 @@ export async function isProbablyBinary(
     return true;
   }
 
-  const { handle, shouldClose } = await resolveHandle(filePath, existingHandle);
-
-  try {
-    const slice = await readProbe(handle);
-    return isBinarySlice(slice);
-  } finally {
-    await closeHandle(handle, shouldClose);
-  }
+  return withFileHandle(
+    filePath,
+    async (handle) => {
+      const slice = await readProbe(handle);
+      return isBinarySlice(slice);
+    },
+    existingHandle
+  );
 }
 
 function isBinarySlice(slice: Buffer): boolean {
   if (slice.length === 0) return false;
   if (hasUtf8Bom(slice) || hasUtf16Bom(slice)) return false;
   return slice.includes(0);
-}
-
-async function closeHandle(
-  handle: fs.FileHandle,
-  shouldClose: boolean
-): Promise<void> {
-  if (!shouldClose) return;
-  await handle.close().catch((error: unknown) => {
-    console.error('Failed to close file handle:', error);
-  });
 }

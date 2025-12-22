@@ -1,6 +1,6 @@
 import * as crypto from 'node:crypto';
-import * as fs from 'node:fs';
-import * as fsPromises from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
 
 import { PARALLEL_CONCURRENCY } from '../constants.js';
 import { ErrorCode, McpError } from '../errors.js';
@@ -44,7 +44,7 @@ async function computeSingleChecksum(
   const validPath = await validateExistingPath(filePath);
 
   // Check file stats
-  const stats = await fsPromises.stat(validPath);
+  const stats = await fs.stat(validPath);
 
   if (stats.isDirectory()) {
     throw new McpError(
@@ -80,7 +80,7 @@ function computeHashStream(
 ): Promise<crypto.Hash> {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash(algorithm);
-    const stream = fs.createReadStream(filePath);
+    const stream = createReadStream(filePath);
 
     stream.on('data', (chunk: Buffer | string) => {
       hash.update(chunk);

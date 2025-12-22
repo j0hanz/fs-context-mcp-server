@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { Dirent } from 'node:fs';
+import type { Dir, Dirent } from 'node:fs';
 
 import { Minimatch } from 'minimatch';
 
@@ -64,12 +64,12 @@ export function classifyAccessError(
   return 'inaccessible';
 }
 
-async function readDirectoryEntries(
+async function openDirectory(
   currentPath: string,
   onInaccessible: () => void
-): Promise<Dirent[] | null> {
+): Promise<Dir | null> {
   try {
-    return await fs.readdir(currentPath, { withFileTypes: true });
+    return await fs.opendir(currentPath);
   } catch {
     onInaccessible();
     return null;
@@ -106,24 +106,20 @@ export async function forEachDirectoryEntry(
   options: DirectoryIterationOptions,
   handler: (entry: DirectoryIterationEntry) => Promise<void>
 ): Promise<void> {
-  const items = await readDirectoryEntries(currentPath, options.onInaccessible);
-  if (!items) return;
-  await iterateDirectoryEntries(items, currentPath, basePath, options, handler);
-}
-
-async function iterateDirectoryEntries(
-  items: Dirent[],
-  currentPath: string,
-  basePath: string,
-  options: DirectoryIterationOptions,
-  handler: (entry: DirectoryIterationEntry) => Promise<void>
-): Promise<void> {
+  const dir = await openDirectory(currentPath, options.onInaccessible);
+  if (!dir) return;
   const shouldStop = options.shouldStop ?? (() => false);
 
-  for (const item of items) {
-    if (shouldStop()) break;
-    const entry = buildIterationEntry(currentPath, basePath, item);
-    if (shouldSkipEntry(entry, options)) continue;
-    await handler(entry);
+  try {
+    for await (const item of dir) {
+      if (shouldStop()) break;
+      const entry = buildIterationEntry(currentPath, basePath, item);
+      if (shouldSkipEntry(entry, options)) continue;
+      await handler(entry);
+    }
+  } catch {
+    options.onInaccessible();
+  } finally {
+    await dir.close().catch(() => {});
   }
 }

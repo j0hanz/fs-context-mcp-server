@@ -251,6 +251,7 @@ export async function analyzeDirectory(
     maxEntries?: number;
     excludePatterns?: string[];
     includeHidden?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<AnalyzeDirectoryResult> {
   const normalized = normalizeAnalyzeOptions(options);
@@ -269,7 +270,8 @@ export async function analyzeDirectory(
         includeHidden: normalized.includeHidden,
         shouldExclude,
       }),
-    DIR_TRAVERSAL_CONCURRENCY
+    DIR_TRAVERSAL_CONCURRENCY,
+    options.signal
   );
 
   return {

@@ -19,7 +19,8 @@ export async function searchContent(
     includeHidden?: boolean;
     baseNameMatch?: boolean;
     caseSensitiveFileMatch?: boolean;
+    signal?: AbortSignal;
   } = {}
 ): Promise<SearchContentResult> {
-  return executeSearch(basePath, searchPattern, options);
+  return executeSearch(basePath, searchPattern, options, options.signal);
 }

@@ -23,18 +23,46 @@ function parseEnvInt(
   return parsed;
 }
 
+function parseOptionalEnvInt(
+  envVar: string,
+  min: number,
+  max: number
+): number | undefined {
+  const value = process.env[envVar];
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < min || parsed > max) {
+    console.error(
+      `[WARNING] Invalid ${envVar} value: ${value} (must be ${min}-${max}). Ignoring.`
+    );
+    return undefined;
+  }
+
+  return parsed;
+}
+
 // Determine optimal parallelism based on CPU cores
 function getOptimalParallelism(): number {
   const cpuCores = availableParallelism();
   return Math.min(cpuCores * 2, 50);
 }
 
-export const PARALLEL_CONCURRENCY = parseEnvInt(
+const UV_THREADPOOL_LIMIT = parseOptionalEnvInt('UV_THREADPOOL_SIZE', 1, 1024);
+
+const BASE_PARALLEL_CONCURRENCY = parseEnvInt(
   'FILESYSTEM_CONTEXT_CONCURRENCY',
   getOptimalParallelism(),
   1,
   100
 );
+
+export const PARALLEL_CONCURRENCY =
+  UV_THREADPOOL_LIMIT !== undefined
+    ? Math.min(BASE_PARALLEL_CONCURRENCY, UV_THREADPOOL_LIMIT)
+    : BASE_PARALLEL_CONCURRENCY;
 export const DIR_TRAVERSAL_CONCURRENCY = parseEnvInt(
   'TRAVERSAL_JOBS',
   8,

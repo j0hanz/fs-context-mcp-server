@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { Dirent, Stats } from 'node:fs';
+import type { Dir, Dirent, Stats } from 'node:fs';
 
 import { minimatch } from 'minimatch';
 
@@ -63,19 +63,20 @@ function buildEntryBase(
   };
 }
 
-function resolveEntryType(item: Dirent, stats: Stats): DirectoryEntry['type'] {
-  if (item.isDirectory()) return 'directory';
-  if (item.isFile()) return 'file';
-  return stats.isSymbolicLink() ? 'symlink' : 'other';
+function resolveEntryType(stats: Stats): DirectoryEntry['type'] {
+  if (stats.isDirectory()) return 'directory';
+  if (stats.isFile()) return 'file';
+  if (stats.isSymbolicLink()) return 'symlink';
+  return 'other';
 }
 
 async function buildSymlinkResult(
   item: Dirent,
   fullPath: string,
   relativePath: string,
-  includeSymlinkTargets: boolean
+  includeSymlinkTargets: boolean,
+  stats: Stats
 ): Promise<DirectoryItemResult> {
-  const stats = await fs.lstat(fullPath);
   let symlinkTarget: string | undefined;
 
   if (includeSymlinkTargets) {
@@ -117,6 +118,7 @@ async function buildRegularResult(
   item: Dirent,
   fullPath: string,
   relativePath: string,
+  stats: Stats,
   options: {
     includeSymlinkTargets: boolean;
     recursive: boolean;
@@ -125,8 +127,7 @@ async function buildRegularResult(
     basePath: string;
   }
 ): Promise<DirectoryItemResult> {
-  const stats = await fs.stat(fullPath);
-  const type = resolveEntryType(item, stats);
+  const type = resolveEntryType(stats);
 
   const entry: DirectoryEntry = {
     ...buildEntryBase(item, fullPath, relativePath, type),
@@ -153,7 +154,9 @@ function buildFallbackEntry(
     ? 'directory'
     : item.isFile()
       ? 'file'
-      : 'other';
+      : item.isSymbolicLink()
+        ? 'symlink'
+        : 'other';
 
   return {
     entry: buildEntryBase(item, fullPath, relativePath, type),
@@ -197,16 +200,18 @@ async function buildDirectoryItemResultCore(
     basePath: string;
   }
 ): Promise<DirectoryItemResult> {
-  if (item.isSymbolicLink()) {
+  const stats = await fs.lstat(fullPath);
+  if (stats.isSymbolicLink()) {
     return await buildSymlinkResult(
       item,
       fullPath,
       relativePath,
-      options.includeSymlinkTargets
+      options.includeSymlinkTargets,
+      stats
     );
   }
 
-  return await buildRegularResult(item, fullPath, relativePath, options);
+  return await buildRegularResult(item, fullPath, relativePath, stats, options);
 }
 
 export function createStopChecker(
@@ -222,14 +227,14 @@ export function createStopChecker(
   };
 }
 
-async function readVisibleItems(
+async function openDirectory(
   currentPath: string,
-  includeHidden: boolean
-): Promise<Dirent[] | null> {
+  onInaccessible: () => void
+): Promise<Dir | null> {
   try {
-    const items = await fs.readdir(currentPath, { withFileTypes: true });
-    return includeHidden ? items : items.filter((item) => !isHidden(item.name));
+    return await fs.opendir(currentPath);
   } catch {
+    onInaccessible();
     return null;
   }
 }
@@ -256,16 +261,29 @@ function shouldExcludeEntry(
   );
 }
 
-function filterExcludedItems(
-  items: Dirent[],
+async function* streamVisibleItems(
   currentPath: string,
   basePath: string,
-  excludePatterns: string[]
-): Dirent[] {
-  if (excludePatterns.length === 0) return items;
-  return items.filter(
-    (item) => !shouldExcludeEntry(item, currentPath, basePath, excludePatterns)
-  );
+  includeHidden: boolean,
+  excludePatterns: string[],
+  onInaccessible: () => void
+): AsyncIterable<Dirent> {
+  const dir = await openDirectory(currentPath, onInaccessible);
+  if (!dir) return;
+
+  try {
+    for await (const item of dir) {
+      if (!includeHidden && isHidden(item.name)) continue;
+      if (shouldExcludeEntry(item, currentPath, basePath, excludePatterns)) {
+        continue;
+      }
+      yield item;
+    }
+  } catch {
+    onInaccessible();
+  } finally {
+    await dir.close().catch(() => {});
+  }
 }
 
 function applyDirectoryItemResult(
@@ -334,34 +352,44 @@ export async function handleDirectory(
 
   state.maxDepthReached = Math.max(state.maxDepthReached, params.depth);
 
-  const items = await readVisibleItems(
-    params.currentPath,
-    config.includeHidden
-  );
-  if (!items) {
-    state.skippedInaccessible++;
-    return;
-  }
-
-  const visibleItems = filterExcludedItems(
-    items,
+  const itemStream = streamVisibleItems(
     params.currentPath,
     config.basePath,
-    config.excludePatterns
+    config.includeHidden,
+    config.excludePatterns,
+    () => {
+      state.skippedInaccessible++;
+    }
   );
+  const batch: Dirent[] = [];
 
-  const { results, errors } = await processInParallel(
-    visibleItems,
-    async (item) =>
-      buildDirectoryItemResult(item, params.currentPath, config.basePath, {
-        includeSymlinkTargets: config.includeSymlinkTargets,
-        recursive: config.recursive,
-        depth: params.depth,
-        maxDepth: config.maxDepth,
-      }),
-    PARALLEL_CONCURRENCY
-  );
+  const flushBatch = async (): Promise<void> => {
+    if (batch.length === 0) return;
+    const items = batch.splice(0, batch.length);
+    const { results, errors } = await processInParallel(
+      items,
+      async (item) =>
+        buildDirectoryItemResult(item, params.currentPath, config.basePath, {
+          includeSymlinkTargets: config.includeSymlinkTargets,
+          recursive: config.recursive,
+          depth: params.depth,
+          maxDepth: config.maxDepth,
+        }),
+      PARALLEL_CONCURRENCY
+    );
 
-  state.skippedInaccessible += errors.length;
-  processResults(results, state, enqueue, shouldStop, config.pattern);
+    state.skippedInaccessible += errors.length;
+    processResults(results, state, enqueue, shouldStop, config.pattern);
+  };
+
+  for await (const item of itemStream) {
+    if (shouldStop()) break;
+    batch.push(item);
+    if (batch.length >= PARALLEL_CONCURRENCY) {
+      await flushBatch();
+      if (shouldStop()) break;
+    }
+  }
+
+  await flushBatch();
 }

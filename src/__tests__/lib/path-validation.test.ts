@@ -129,3 +129,15 @@ it('validateExistingPath rejects path with null bytes', async () => {
   const pathWithNull = path.join(testDir, 'file\0name.txt');
   await expect(validateExistingPath(pathWithNull)).rejects.toThrow();
 });
+
+const itWindows = process.platform === 'win32' ? it : it.skip;
+
+itWindows(
+  'validateExistingPath rejects Windows drive-relative paths',
+  async () => {
+    await expect(validateExistingPath('C:')).rejects.toThrow(/drive-relative/i);
+    await expect(validateExistingPath('C:temp')).rejects.toThrow(
+      /drive-relative/i
+    );
+  }
+);

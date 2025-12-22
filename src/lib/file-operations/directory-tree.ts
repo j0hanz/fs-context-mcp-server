@@ -41,6 +41,7 @@ async function buildTreeState(
     includeSize: boolean;
     maxFiles: number;
     shouldExclude: (name: string, relativePath: string) => boolean;
+    signal?: AbortSignal;
   }
 ): Promise<TreeState> {
   const state = initTreeState(basePath);
@@ -55,7 +56,8 @@ async function buildTreeState(
         maxFiles: options.maxFiles,
         shouldExclude: options.shouldExclude,
       }),
-    DIR_TRAVERSAL_CONCURRENCY
+    DIR_TRAVERSAL_CONCURRENCY,
+    options.signal
   );
   return state;
 }
@@ -68,6 +70,7 @@ export async function getDirectoryTree(
     includeHidden?: boolean;
     includeSize?: boolean;
     maxFiles?: number;
+    signal?: AbortSignal;
   } = {}
 ): Promise<DirectoryTreeResult> {
   const normalized = normalizeTreeOptions(options);
@@ -80,6 +83,7 @@ export async function getDirectoryTree(
     includeSize: normalized.includeSize,
     maxFiles: normalized.maxFiles,
     shouldExclude,
+    signal: options.signal,
   });
 
   const childrenByParent = buildChildrenByParent(

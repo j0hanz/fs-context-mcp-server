@@ -52,6 +52,17 @@ function ensureNoReservedWindowsNames(requestedPath: string): void {
   }
 }
 
+function ensureNoWindowsDriveRelativePath(requestedPath: string): void {
+  if (process.platform !== 'win32') return;
+  if (/^[a-zA-Z]:(?![\\/])/.test(requestedPath)) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Windows drive-relative paths are not allowed. Use C:\\\\path or C:/path instead of C:path.',
+      requestedPath
+    );
+  }
+}
+
 function getReservedDeviceName(segment: string): string | undefined {
   const baseName = segment.split('.')[0]?.toUpperCase();
   if (!baseName) return undefined;
@@ -77,6 +88,7 @@ function validateRequestedPath(requestedPath: string): string {
   ensureNonEmptyPath(requestedPath);
   ensureNoNullBytes(requestedPath);
   ensureNoReservedWindowsNames(requestedPath);
+  ensureNoWindowsDriveRelativePath(requestedPath);
   return normalizePath(requestedPath);
 }
 

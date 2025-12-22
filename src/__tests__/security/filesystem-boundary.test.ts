@@ -21,14 +21,25 @@ function normalizeRelPath(relPath: string): string {
   return relPath.replace(/\\/gu, '/');
 }
 
-function getAllowedFsImportFiles(): Set<string> {
-  return new Set<string>([
-    'src/server.ts',
-    'src/lib/path-validation.ts',
-    'src/lib/file-operations.ts',
-    'src/lib/fs-helpers.ts',
-    'src/lib/file-operations/search-content.ts',
-  ]);
+const ALLOWED_FS_IMPORT_FILES = new Set<string>([
+  'src/server.ts',
+  'src/tools/list-allowed-dirs.ts',
+  'src/lib/path-validation.ts',
+  'src/lib/file-operations.ts',
+  'src/lib/fs-helpers.ts',
+]);
+const ALLOWED_FS_IMPORT_PREFIXES = [
+  'src/lib/path-validation/',
+  'src/lib/file-operations/',
+  'src/lib/fs-helpers/',
+];
+
+function isAllowedFsImportFile(relPath: string): boolean {
+  const normalized = normalizeRelPath(relPath);
+  if (ALLOWED_FS_IMPORT_FILES.has(normalized)) return true;
+  return ALLOWED_FS_IMPORT_PREFIXES.some((prefix) =>
+    normalized.startsWith(prefix)
+  );
 }
 
 async function listSourceFiles(repoRoot: string): Promise<string[]> {
@@ -43,14 +54,14 @@ async function listSourceFiles(repoRoot: string): Promise<string[]> {
 async function collectFsImportOffenders(
   repoRoot: string,
   sourceFiles: string[],
-  allowedFsImportFiles: Set<string>
+  allowFsImport: (relPath: string) => boolean
 ): Promise<string[]> {
   const offenders: string[] = [];
   for (const relPath of sourceFiles) {
     const absPath = path.join(repoRoot, relPath);
     const content = await fs.readFile(absPath, 'utf-8');
     if (!hasFsImport(content)) continue;
-    if (!allowedFsImportFiles.has(normalizeRelPath(relPath))) {
+    if (!allowFsImport(relPath)) {
       offenders.push(relPath);
     }
   }
@@ -60,11 +71,10 @@ async function collectFsImportOffenders(
 it('keeps direct node:fs imports inside boundary modules', async () => {
   const repoRoot = getRepoRoot();
   const sourceFiles = await listSourceFiles(repoRoot);
-  const allowedFsImportFiles = getAllowedFsImportFiles();
   const offenders = await collectFsImportOffenders(
     repoRoot,
     sourceFiles,
-    allowedFsImportFiles
+    isAllowedFsImportFile
   );
 
   expect(

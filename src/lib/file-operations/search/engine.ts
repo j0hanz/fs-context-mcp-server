@@ -57,7 +57,8 @@ function buildResult(
 export async function executeSearch(
   basePath: string,
   searchPattern: string,
-  partialOptions: Partial<SearchOptions>
+  partialOptions: Partial<SearchOptions>,
+  signal?: AbortSignal
 ): Promise<SearchContentResult> {
   const options = buildSearchOptions(partialOptions);
 
@@ -76,6 +77,9 @@ export async function executeSearch(
   const stream = createStream(validPath, options);
 
   try {
+    if (signal?.aborted) {
+      throw new Error('Search aborted');
+    }
     await processStream(
       stream,
       state,
