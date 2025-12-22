@@ -1,8 +1,12 @@
 export {
   AnalyzeDirectoryInputSchema,
+  ChecksumAlgorithmSchema,
+  ChecksumEncodingSchema,
+  ComputeChecksumsInputSchema,
   DefinitionTypeSchema,
   DirectoryTreeInputSchema,
   GetFileInfoInputSchema,
+  GetMultipleFileInfoInputSchema,
   ListDirectoryInputSchema,
   ReadFileInputSchema,
   ReadMediaFileInputSchema,
@@ -15,9 +19,11 @@ export {
 // Output schemas
 export {
   AnalyzeDirectoryOutputSchema,
+  ComputeChecksumsOutputSchema,
   DefinitionTypeOutputSchema,
   DirectoryTreeOutputSchema,
   GetFileInfoOutputSchema,
+  GetMultipleFileInfoOutputSchema,
   ListAllowedDirectoriesOutputSchema,
   ListDirectoryOutputSchema,
   ReadFileOutputSchema,

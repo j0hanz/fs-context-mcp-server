@@ -23,6 +23,7 @@ export interface ListDirectoryConfig {
   basePath: string;
   recursive: boolean;
   includeHidden: boolean;
+  excludePatterns: string[];
   maxDepth: number;
   maxEntries?: number;
   includeSymlinkTargets: boolean;
@@ -233,6 +234,40 @@ async function readVisibleItems(
   }
 }
 
+function shouldExcludeEntry(
+  item: Dirent,
+  currentPath: string,
+  basePath: string,
+  excludePatterns: string[]
+): boolean {
+  if (excludePatterns.length === 0) return false;
+  const relativePath =
+    path.relative(basePath, path.join(currentPath, item.name)) || item.name;
+  const normalizedRelative = relativePath.replace(/\\/g, '/');
+  const options = {
+    dot: true,
+    nocase: process.platform === 'win32',
+    windowsPathsNoEscape: true,
+  };
+  return excludePatterns.some(
+    (pattern) =>
+      minimatch(item.name, pattern, options) ||
+      minimatch(normalizedRelative, pattern, options)
+  );
+}
+
+function filterExcludedItems(
+  items: Dirent[],
+  currentPath: string,
+  basePath: string,
+  excludePatterns: string[]
+): Dirent[] {
+  if (excludePatterns.length === 0) return items;
+  return items.filter(
+    (item) => !shouldExcludeEntry(item, currentPath, basePath, excludePatterns)
+  );
+}
+
 function applyDirectoryItemResult(
   result: DirectoryItemResult,
   state: ListDirectoryState,
@@ -308,8 +343,15 @@ export async function handleDirectory(
     return;
   }
 
-  const { results, errors } = await processInParallel(
+  const visibleItems = filterExcludedItems(
     items,
+    params.currentPath,
+    config.basePath,
+    config.excludePatterns
+  );
+
+  const { results, errors } = await processInParallel(
+    visibleItems,
     async (item) =>
       buildDirectoryItemResult(item, params.currentPath, config.basePath, {
         includeSymlinkTargets: config.includeSymlinkTargets,

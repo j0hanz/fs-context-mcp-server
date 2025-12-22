@@ -194,15 +194,17 @@ List all directories that this server is allowed to access.
 
 List contents of a directory with optional recursive listing.
 
-| Parameter               | Type    | Required | Default | Description                                 |
-| ----------------------- | ------- | -------- | ------- | ------------------------------------------- |
-| `path`                  | string  | ✅       | -       | Directory path to list                      |
-| `recursive`             | boolean | ❌       | `false` | List recursively                            |
-| `includeHidden`         | boolean | ❌       | `false` | Include hidden files                        |
-| `maxDepth`              | number  | ❌       | `10`    | Maximum depth for recursive listing (0-100) |
-| `maxEntries`            | number  | ❌       | `10000` | Maximum entries to return (1-100,000)       |
-| `sortBy`                | string  | ❌       | `name`  | Sort by: `name`, `size`, `modified`, `type` |
-| `includeSymlinkTargets` | boolean | ❌       | `false` | Include symlink target paths                |
+| Parameter               | Type     | Required | Default | Description                                 |
+| ----------------------- | -------- | -------- | ------- | ------------------------------------------- |
+| `path`                  | string   | ?        | -       | Directory path to list                      |
+| `recursive`             | boolean  | ?        | `false` | List recursively                            |
+| `includeHidden`         | boolean  | ?        | `false` | Include hidden files                        |
+| `excludePatterns`       | string[] | ?        | `[]`    | Patterns to exclude                         |
+| `pattern`               | string   | ?        | -       | Glob pattern to include                     |
+| `maxDepth`              | number   | ?        | `10`    | Maximum depth for recursive listing (0-100) |
+| `maxEntries`            | number   | ?        | `10000` | Maximum entries to return (1-100,000)       |
+| `sortBy`                | string   | ?        | `name`  | Sort by: `name`, `size`, `modified`, `type` |
+| `includeSymlinkTargets` | boolean  | ?        | `false` | Include symlink target paths                |
 
 **Returns:** List of entries with name, type, size, and modified date.
 
@@ -210,7 +212,7 @@ List contents of a directory with optional recursive listing.
 
 ### `search_files`
 
-Search for files using glob patterns.
+Search for files (not directories) using glob patterns.
 
 | Parameter         | Type     | Required | Default | Description                                   |
 | ----------------- | -------- | -------- | ------- | --------------------------------------------- |
@@ -241,15 +243,16 @@ Search for files using glob patterns.
 
 Read the contents of a text file.
 
-| Parameter   | Type   | Required | Default | Description                                                |
-| ----------- | ------ | -------- | ------- | ---------------------------------------------------------- |
-| `path`      | string | ✅       | -       | File path to read                                          |
-| `encoding`  | string | ❌       | `utf-8` | File encoding (`utf-8`, `ascii`, `base64`, etc.)           |
-| `maxSize`   | number | ❌       | 10MB    | Maximum file size in bytes                                 |
-| `lineStart` | number | ❌       | -       | Start line (1-indexed, min 1) for reading a range          |
-| `lineEnd`   | number | ❌       | -       | End line (1-indexed, inclusive, min 1) for reading a range |
-| `head`      | number | ❌       | -       | Read only first N lines                                    |
-| `tail`      | number | ❌       | -       | Read only last N lines                                     |
+| Parameter    | Type    | Required | Default | Description                                                |
+| ------------ | ------- | -------- | ------- | ---------------------------------------------------------- |
+| `path`       | string  | ?        | -       | File path to read                                          |
+| `encoding`   | string  | ?        | `utf-8` | File encoding (`utf-8`, `ascii`, `base64`, etc.)           |
+| `maxSize`    | number  | ?        | 10MB    | Maximum file size in bytes                                 |
+| `skipBinary` | boolean | ?        | `false` | Reject binary files (use `read_media_file` instead)        |
+| `lineStart`  | number  | ?        | -       | Start line (1-indexed, min 1) for reading a range          |
+| `lineEnd`    | number  | ?        | -       | End line (1-indexed, inclusive, min 1) for reading a range |
+| `head`       | number  | ?        | -       | Read only first N lines                                    |
+| `tail`       | number  | ?        | -       | Read only last N lines                                     |
 
 > **Note:** Cannot specify both `head` and `tail` simultaneously. Use `lineStart`/`lineEnd` for range reading.
 

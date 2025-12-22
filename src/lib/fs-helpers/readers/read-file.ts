@@ -4,6 +4,7 @@ import type { Stats } from 'node:fs';
 import { MAX_TEXT_FILE_SIZE } from '../../constants.js';
 import { ErrorCode, McpError } from '../../errors.js';
 import { validateExistingPath } from '../../path-validation.js';
+import { isProbablyBinary } from '../binary-detect.js';
 import { headFile } from './head-file.js';
 import { readLineRange } from './line-range.js';
 import { tailFile } from './tail-file.js';
@@ -14,6 +15,7 @@ interface NormalizedOptions {
   lineRange?: { start: number; end: number };
   head?: number;
   tail?: number;
+  skipBinary: boolean;
 }
 
 interface ReadFileOptions {
@@ -22,6 +24,7 @@ interface ReadFileOptions {
   lineRange?: { start: number; end: number };
   head?: number;
   tail?: number;
+  skipBinary?: boolean;
 }
 
 interface ReadFileResult {
@@ -43,6 +46,7 @@ function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
     lineRange: options.lineRange,
     head: options.head,
     tail: options.tail,
+    skipBinary: options.skipBinary ?? false,
   };
 }
 
@@ -272,6 +276,19 @@ async function readByMode(
   return await readFullResult(validPath, filePath, stats, normalized);
 }
 
+async function assertNotBinary(
+  validPath: string,
+  filePath: string
+): Promise<void> {
+  const isBinary = await isProbablyBinary(validPath);
+  if (!isBinary) return;
+  throw new McpError(
+    ErrorCode.E_INVALID_INPUT,
+    `Binary file detected: ${filePath}. Use read_media_file instead.`,
+    filePath
+  );
+}
+
 export async function readFile(
   filePath: string,
   options: ReadFileOptions = {}
@@ -282,6 +299,9 @@ export async function readFile(
 
   assertIsFile(stats, filePath);
   assertSingleMode(normalized, filePath);
+  if (normalized.skipBinary) {
+    await assertNotBinary(validPath, filePath);
+  }
 
   return await readByMode(validPath, filePath, stats, normalized);
 }

@@ -131,6 +131,42 @@ export interface MediaFileResult {
   data: string;
 }
 
+export type ChecksumAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512';
+export type ChecksumEncoding = 'hex' | 'base64';
+
+export interface ChecksumResult {
+  path: string;
+  checksum?: string;
+  algorithm: ChecksumAlgorithm;
+  size?: number;
+  error?: string;
+}
+
+export interface ComputeChecksumsResult {
+  results: ChecksumResult[];
+  summary: {
+    total: number;
+    succeeded: number;
+    failed: number;
+  };
+}
+
+export interface MultipleFileInfoResult {
+  path: string;
+  info?: FileInfo;
+  error?: string;
+}
+
+export interface GetMultipleFileInfoResult {
+  results: MultipleFileInfoResult[];
+  summary: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    totalSize: number;
+  };
+}
+
 export type DefinitionType =
   | 'function'
   | 'class'

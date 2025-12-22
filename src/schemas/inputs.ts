@@ -43,6 +43,19 @@ export const ListDirectoryInputSchema = {
       'If true, list contents of subdirectories recursively up to maxDepth'
     ),
   includeHidden: IncludeHiddenSchema,
+  excludePatterns: z
+    .array(
+      z
+        .string()
+        .max(500, 'Individual exclude pattern is too long')
+        .refine((val) => !val.includes('**/**/**'), {
+          message: 'Pattern too deeply nested (max 2 levels of **)',
+        })
+    )
+    .max(100, 'Too many exclude patterns (max 100)')
+    .optional()
+    .default([])
+    .describe('Glob patterns to exclude (e.g., "node_modules/**")'),
   maxDepth: MaxDepthSchema.describe(
     'Maximum depth for recursive listing (higher values may impact performance)'
   ),
@@ -53,6 +66,16 @@ export const ListDirectoryInputSchema = {
     .optional()
     .default(false)
     .describe('Include symlink target paths for symbolic links'),
+  pattern: z
+    .string()
+    .min(1, 'Pattern cannot be empty')
+    .max(1000, 'Pattern is too long (max 1000 characters)')
+    .refine(isSafeGlobPattern, {
+      message:
+        'Pattern must be relative (no absolute paths or ".." segments allowed)',
+    })
+    .optional()
+    .describe('Glob pattern to include (e.g., "**/*.ts")'),
 };
 
 export const SearchFilesInputSchema = {
@@ -120,6 +143,11 @@ const ReadFileBaseSchema = z.object({
   maxSize: ReadFileMaxSizeSchema,
   lineStart: LineStartSchema,
   lineEnd: LineEndSchema,
+  skipBinary: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('If true, reject binary files (use read_media_file instead)'),
   head: HeadLinesSchema.describe(
     'Read only the first N lines of the file (memory efficient for large files)'
   ),
@@ -327,4 +355,51 @@ export const SearchDefinitionsInputSchema = {
   contextLines: ContextLinesSchema.describe(
     'Number of lines to include before and after each definition (0-10)'
   ),
+};
+
+export const GetMultipleFileInfoInputSchema = {
+  paths: z
+    .array(z.string().min(1, 'Path cannot be empty'))
+    .min(1, 'At least one path is required')
+    .max(100, 'Cannot get info for more than 100 files at once')
+    .describe('Array of file or directory paths to get information about'),
+  includeMimeType: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Include MIME type detection for files (default: true)'),
+};
+
+export const ChecksumAlgorithmSchema = z.enum([
+  'md5',
+  'sha1',
+  'sha256',
+  'sha512',
+]);
+export const ChecksumEncodingSchema = z.enum(['hex', 'base64']);
+
+export const ComputeChecksumsInputSchema = {
+  paths: z
+    .array(z.string().min(1, 'Path cannot be empty'))
+    .min(1, 'At least one path is required')
+    .max(50, 'Cannot compute checksums for more than 50 files at once')
+    .describe('Array of file paths to compute checksums for'),
+  algorithm: ChecksumAlgorithmSchema.optional()
+    .default('sha256')
+    .describe(
+      'Hash algorithm to use: md5, sha1, sha256, sha512 (default: sha256)'
+    ),
+  encoding: ChecksumEncodingSchema.optional()
+    .default('hex')
+    .describe('Output encoding: hex or base64 (default: hex)'),
+  maxFileSize: z
+    .number()
+    .int('maxFileSize must be an integer')
+    .min(1, 'maxFileSize must be at least 1 byte')
+    .max(1024 * 1024 * 1024, 'maxFileSize cannot exceed 1GB')
+    .optional()
+    .default(100 * 1024 * 1024)
+    .describe(
+      'Maximum file size to process in bytes (default: 100MB). Files larger than this will be skipped.'
+    ),
 };

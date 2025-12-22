@@ -39,7 +39,7 @@ function buildStructuredResult(
     pattern: result.pattern,
     results: result.results.map((r) => ({
       path: pathModule.relative(result.basePath, r.path),
-      type: r.type,
+      type: r.type === 'directory' ? 'other' : r.type,
       size: r.size,
       modified: r.modified?.toISOString(),
     })),
@@ -143,7 +143,7 @@ async function handleSearchFiles({
 const SEARCH_FILES_TOOL = {
   title: 'Search Files',
   description:
-    'Find files matching a glob pattern within a directory tree. ' +
+    'Find files matching a glob pattern within a directory tree (files only). ' +
     'Pattern examples: "**/*.ts" (all TypeScript files), "src/**/*.{js,jsx}" (JS/JSX in src), ' +
     '"**/test/**" (all test directories). Returns paths, types, sizes, and modification dates. ' +
     'Use excludePatterns to skip directories like node_modules, and includeHidden=true to include dotfiles.',

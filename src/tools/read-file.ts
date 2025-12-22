@@ -98,6 +98,7 @@ async function handleReadFile(args: {
   lineEnd?: number;
   head?: number;
   tail?: number;
+  skipBinary?: boolean;
 }): Promise<ToolResponse<ReadFileStructuredResult>> {
   assertNoMixedRangeOptions(
     args.head !== undefined || args.tail !== undefined,
@@ -111,6 +112,7 @@ async function handleReadFile(args: {
     lineRange,
     head: args.head,
     tail: args.tail,
+    skipBinary: args.skipBinary,
   });
 
   const structured: ReadFileStructuredResult = {
@@ -131,6 +133,7 @@ const READ_FILE_TOOL = {
     'Read the text contents of a single file. ' +
     'Supports different encodings and partial reads via head (first N lines), tail (last N lines), ' +
     'or lineStart/lineEnd (specific line range). ' +
+    'Use skipBinary=true to reject binary files and prefer read_media_file. ' +
     'For multiple files, use read_multiple_files for efficiency. ' +
     'For binary/media files, use read_media_file instead.',
   inputSchema: ReadFileInputSchema,

@@ -55,6 +55,8 @@ export const ListDirectoryOutputSchema = z.object({
   error: ErrorSchema.optional(),
 });
 
+const SearchFilesTypeSchema = z.enum(['file', 'symlink', 'other']);
+
 export const SearchFilesOutputSchema = z.object({
   ok: z.boolean(),
   basePath: z.string().optional(),
@@ -63,7 +65,7 @@ export const SearchFilesOutputSchema = z.object({
     .array(
       z.object({
         path: z.string().describe('Relative path from basePath'),
-        type: FileTypeSchema,
+        type: SearchFilesTypeSchema,
         size: z.number().optional(),
         modified: z.string().optional(),
       })
@@ -254,6 +256,65 @@ export const SearchDefinitionsOutputSchema = z.object({
       filesMatched: z.number(),
       totalDefinitions: z.number(),
       truncated: z.boolean(),
+    })
+    .optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const GetMultipleFileInfoOutputSchema = z.object({
+  ok: z.boolean(),
+  results: z
+    .array(
+      z.object({
+        path: z.string(),
+        info: z
+          .object({
+            name: z.string(),
+            path: z.string(),
+            type: FileTypeSchema,
+            size: z.number(),
+            created: z.string().optional(),
+            modified: z.string(),
+            accessed: z.string().optional(),
+            permissions: z.string(),
+            isHidden: z.boolean().optional(),
+            mimeType: z.string().optional(),
+            symlinkTarget: z.string().optional(),
+          })
+          .optional(),
+        error: z.string().optional(),
+      })
+    )
+    .optional(),
+  summary: z
+    .object({
+      total: z.number(),
+      succeeded: z.number(),
+      failed: z.number(),
+      totalSize: z.number().describe('Total size of all successfully read files'),
+    })
+    .optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const ComputeChecksumsOutputSchema = z.object({
+  ok: z.boolean(),
+  results: z
+    .array(
+      z.object({
+        path: z.string(),
+        checksum: z.string().optional(),
+        algorithm: z.string(),
+        size: z.number().optional(),
+        error: z.string().optional(),
+      })
+    )
+    .optional(),
+  summary: z
+    .object({
+      total: z.number(),
+      succeeded: z.number(),
+      failed: z.number(),
     })
     .optional(),
   error: ErrorSchema.optional(),

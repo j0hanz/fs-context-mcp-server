@@ -78,6 +78,7 @@ const LIST_DIRECTORY_TOOL = {
     'List files and subdirectories in a specified path with optional recursive traversal. ' +
     'Returns names (basename), relative paths, types (file/directory/symlink), sizes, and modification dates. ' +
     'Use recursive=true with maxDepth to explore nested structures. ' +
+    'Use excludePatterns to skip directories like node_modules, or pattern to include only matching paths. ' +
     'For a visual tree structure, use directory_tree instead.',
   inputSchema: ListDirectoryInputSchema,
   outputSchema: ListDirectoryOutputSchema.shape,
@@ -137,6 +138,7 @@ async function handleListDirectory({
   path: dirPath,
   recursive,
   includeHidden,
+  excludePatterns,
   maxDepth,
   maxEntries,
   sortBy,
@@ -146,6 +148,7 @@ async function handleListDirectory({
   path: string;
   recursive?: boolean;
   includeHidden?: boolean;
+  excludePatterns?: string[];
   maxDepth?: number;
   maxEntries?: number;
   sortBy?: 'name' | 'size' | 'modified' | 'type';
@@ -155,6 +158,7 @@ async function handleListDirectory({
   const result = await listDirectory(dirPath, {
     recursive,
     includeHidden,
+    excludePatterns,
     maxDepth,
     maxEntries,
     sortBy,

@@ -1,8 +1,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { registerAnalyzeDirectoryTool } from './analyze-directory.js';
+import { registerComputeChecksumsTool } from './compute-checksums.js';
 import { registerDirectoryTreeTool } from './directory-tree.js';
 import { registerGetFileInfoTool } from './get-file-info.js';
+import { registerGetMultipleFileInfoTool } from './get-multiple-file-info.js';
 import { registerListAllowedDirectoriesTool } from './list-allowed-dirs.js';
 import { registerListDirectoryTool } from './list-directory.js';
 import { registerReadFileTool } from './read-file.js';
@@ -19,6 +21,8 @@ export function registerAllTools(server: McpServer): void {
   registerReadFileTool(server);
   registerReadMultipleFilesTool(server);
   registerGetFileInfoTool(server);
+  registerGetMultipleFileInfoTool(server);
+  registerComputeChecksumsTool(server);
   registerSearchContentTool(server);
   registerSearchDefinitionsTool(server);
   registerAnalyzeDirectoryTool(server);

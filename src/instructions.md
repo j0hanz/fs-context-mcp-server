@@ -95,7 +95,7 @@ JSON tree structure for AI parsing.
 
 ### `search_files`
 
-Find files by glob pattern.
+Find files (not directories) by glob pattern.
 
 | Parameter         | Default | Description               |
 | ----------------- | ------- | ------------------------- |
@@ -147,15 +147,16 @@ Find code definitions (classes, functions, interfaces, types, enums, variables) 
 
 Read single file with line selection.
 
-| Parameter   | Default | Description                     |
-| ----------- | ------- | ------------------------------- |
-| `path`      | —       | File path                       |
-| `encoding`  | utf-8   | `utf-8/ascii/base64/hex/latin1` |
-| `maxSize`   | 10MB    | Size limit                      |
-| `head`      | —       | First N lines                   |
-| `tail`      | —       | Last N lines                    |
-| `lineStart` | —       | Start line (1-indexed)          |
-| `lineEnd`   | —       | End line (inclusive)            |
+| Parameter    | Default | Description                                         |
+| ------------ | ------- | --------------------------------------------------- |
+| `path`       | -       | File path                                           |
+| `encoding`   | utf-8   | `utf-8/ascii/base64/hex/latin1`                     |
+| `maxSize`    | 10MB    | Size limit                                          |
+| `skipBinary` | false   | Reject binary files (use `read_media_file` instead) |
+| `head`       | -       | First N lines                                       |
+| `tail`       | -       | Last N lines                                        |
+| `lineStart`  | -       | Start line (1-indexed)                              |
+| `lineEnd`    | -       | End line (inclusive)                                |
 
 > ⚠️ Cannot combine `head/tail` with `lineStart/lineEnd`
 
@@ -179,13 +180,15 @@ Parallel batch reads - failures don't block others.
 
 Flat listing with metadata.
 
-| Parameter    | Default | Description               |
-| ------------ | ------- | ------------------------- |
-| `path`       | -       | Directory path            |
-| `recursive`  | false   | Include subdirs           |
-| `sortBy`     | "name"  | `name/size/modified/type` |
-| `maxDepth`   | 10      | Depth when recursive      |
-| `maxEntries` | 10000   | Limit (up to 100,000)     |
+| Parameter         | Default | Description               |
+| ----------------- | ------- | ------------------------- |
+| `path`            | -       | Directory path            |
+| `recursive`       | false   | Include subdirs           |
+| `excludePatterns` | []      | Patterns to skip          |
+| `pattern`         | -       | Glob to include           |
+| `sortBy`          | "name"  | `name/size/modified/type` |
+| `maxDepth`        | 10      | Depth when recursive      |
+| `maxEntries`      | 10000   | Limit (up to 100,000)     |
 
 **Structured output notes:** `entries[].name` is the basename, and `entries[].relativePath` is the path relative to the listed base.
 

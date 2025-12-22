@@ -17,6 +17,7 @@ import { sortByField } from './sorting.js';
 interface ListDirectoryOptions {
   recursive?: boolean;
   includeHidden?: boolean;
+  excludePatterns?: string[];
   maxDepth?: number;
   maxEntries?: number;
   sortBy?: 'name' | 'size' | 'modified' | 'type';
@@ -41,6 +42,7 @@ function normalizeListDirectoryOptions(
   const defaults: Required<ListDirectoryOptions> = {
     recursive: false,
     includeHidden: false,
+    excludePatterns: [],
     maxDepth: DEFAULT_MAX_DEPTH,
     maxEntries: DEFAULT_LIST_MAX_ENTRIES,
     sortBy: 'name',
@@ -77,6 +79,7 @@ export async function listDirectory(
     basePath,
     recursive: normalized.recursive,
     includeHidden: normalized.includeHidden,
+    excludePatterns: normalized.excludePatterns,
     maxDepth: normalized.maxDepth,
     maxEntries: normalized.maxEntries,
     includeSymlinkTargets: normalized.includeSymlinkTargets,
