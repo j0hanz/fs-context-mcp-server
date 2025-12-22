@@ -121,8 +121,8 @@ async function collectFileBudget(
   isPartialRead: boolean,
   maxTotalSize: number,
   maxSize: number
-): Promise<{ skippedBudget: Set<string> }> {
-  const skippedBudget = new Set<string>();
+): Promise<{ skippedBudget: Set<number> }> {
+  const skippedBudget = new Set<number>();
 
   // Gather file sizes
   const { results } = await processInParallel(
@@ -144,7 +144,7 @@ async function collectFileBudget(
       ? Math.min(result.size, maxSize)
       : result.size;
     if (totalSize + estimatedSize > maxTotalSize) {
-      skippedBudget.add(result.filePath);
+      skippedBudget.add(result.index);
       continue;
     }
     totalSize += estimatedSize;
@@ -155,11 +155,11 @@ async function collectFileBudget(
 
 function buildProcessTargets(
   filePaths: string[],
-  skippedBudget: Set<string>
+  skippedBudget: Set<number>
 ): { filePath: string; index: number }[] {
   return filePaths
     .map((filePath, index) => ({ filePath, index }))
-    .filter(({ filePath }) => !skippedBudget.has(filePath));
+    .filter(({ index }) => !skippedBudget.has(index));
 }
 
 function applyParallelResults(
@@ -183,14 +183,13 @@ function applyParallelResults(
 
 function applySkippedBudgetErrors(
   output: ReadMultipleResult[],
-  skippedBudget: Set<string>,
+  skippedBudget: Set<number>,
   filePaths: string[],
   maxTotalSize: number
 ): void {
-  for (const filePath of skippedBudget) {
-    const index = filePaths.indexOf(filePath);
-    if (index === -1) continue;
-
+  for (const index of skippedBudget) {
+    const filePath = filePaths[index];
+    if (!filePath) continue;
     output[index] = {
       path: filePath,
       error: `Skipped: combined estimated read would exceed maxTotalSize (${maxTotalSize} bytes)`,
@@ -232,7 +231,7 @@ async function readFilesInParallel(
       return {
         index,
         value: {
-          path: result.path,
+          path: filePath,
           content: result.content,
           truncated: result.truncated,
           totalLines: result.totalLines,

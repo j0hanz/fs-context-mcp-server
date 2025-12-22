@@ -29,6 +29,14 @@ it('readMultipleFiles handles individual file errors gracefully', async () => {
   expect(results[1]?.error).toBeDefined();
 });
 
+it('readMultipleFiles preserves requested paths for duplicates', async () => {
+  const filePath = path.join(getTestDir(), 'README.md');
+  const results = await readMultipleFiles([filePath, filePath]);
+  expect(results.length).toBe(2);
+  expect(results[0]?.path).toBe(filePath);
+  expect(results[1]?.path).toBe(filePath);
+});
+
 it('readMultipleFiles enforces total size cap for head/tail reads', async () => {
   const big1 = path.join(getTestDir(), 'big1.log');
   const big2 = path.join(getTestDir(), 'big2.log');
