@@ -25,7 +25,8 @@ type SearchContentStructuredResult = z.infer<typeof SearchContentOutputSchema>;
 type SearchContentOptions = Parameters<typeof searchContent>[2];
 
 function buildSearchContentOptions(
-  args: SearchContentArgs
+  args: SearchContentArgs,
+  signal?: AbortSignal
 ): SearchContentOptions {
   return {
     filePattern: args.filePattern,
@@ -42,16 +43,18 @@ function buildSearchContentOptions(
     isLiteral: args.isLiteral,
     baseNameMatch: args.baseNameMatch,
     caseSensitiveFileMatch: args.caseSensitiveFileMatch,
+    signal,
   };
 }
 
 async function handleSearchContent(
-  args: SearchContentArgs
+  args: SearchContentArgs,
+  signal?: AbortSignal
 ): Promise<ToolResponse<SearchContentStructuredResult>> {
   const result = await searchContent(
     args.path,
     args.pattern,
-    buildSearchContentOptions(args)
+    buildSearchContentOptions(args, signal)
   );
 
   return buildToolResponse(
@@ -84,10 +87,11 @@ const SEARCH_CONTENT_TOOL_DEPRECATED = {
 
 export function registerSearchContentTool(server: McpServer): void {
   const handler = async (
-    args: SearchContentArgs
+    args: SearchContentArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<SearchContentStructuredResult>> => {
     try {
-      return await handleSearchContent(args);
+      return await handleSearchContent(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path);
     }

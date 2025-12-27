@@ -59,7 +59,8 @@ export async function searchDefinitions(
   const searchResult = await executeSearch(
     validPath,
     combinedPattern,
-    buildSearchOptions(options, maxResults)
+    buildSearchOptions(options, maxResults),
+    options.signal
   );
 
   // Process and filter matches

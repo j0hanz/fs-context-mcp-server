@@ -109,7 +109,13 @@ async function processDirectoryEntry(
   );
   if (!resolvedPath) return;
 
-  const stats = await fs.stat(resolvedPath);
+  let stats: Stats;
+  try {
+    stats = await fs.stat(resolvedPath);
+  } catch {
+    state.skippedInaccessible++;
+    return;
+  }
   if (stats.isDirectory()) {
     handleDirectoryStats(resolvedPath, params.depth, state, options, enqueue);
     return;

@@ -75,27 +75,31 @@ function buildTextResult(
   return textOutput;
 }
 
-async function handleDirectoryTree({
-  path,
-  maxDepth,
-  excludePatterns,
-  includeHidden,
-  includeSize,
-  maxFiles,
-}: {
-  path: string;
-  maxDepth?: number;
-  excludePatterns?: string[];
-  includeHidden?: boolean;
-  includeSize?: boolean;
-  maxFiles?: number;
-}): Promise<ToolResponse<DirectoryTreeStructuredResult>> {
+async function handleDirectoryTree(
+  {
+    path,
+    maxDepth,
+    excludePatterns,
+    includeHidden,
+    includeSize,
+    maxFiles,
+  }: {
+    path: string;
+    maxDepth?: number;
+    excludePatterns?: string[];
+    includeHidden?: boolean;
+    includeSize?: boolean;
+    maxFiles?: number;
+  },
+  signal?: AbortSignal
+): Promise<ToolResponse<DirectoryTreeStructuredResult>> {
   const result = await getDirectoryTree(path, {
     maxDepth,
     excludePatterns,
     includeHidden,
     includeSize,
     maxFiles,
+    signal,
   });
   const structured = buildStructuredResult(result);
   const textOutput = buildTextResult(result, includeSize);
@@ -126,10 +130,11 @@ const DIRECTORY_TREE_TOOL_DEPRECATED = {
 
 export function registerDirectoryTreeTool(server: McpServer): void {
   const handler = async (
-    args: DirectoryTreeArgs
+    args: DirectoryTreeArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<DirectoryTreeStructuredResult>> => {
     try {
-      return await handleDirectoryTree(args);
+      return await handleDirectoryTree(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(
         error,

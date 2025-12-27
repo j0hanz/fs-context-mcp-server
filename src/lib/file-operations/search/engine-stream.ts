@@ -143,8 +143,10 @@ async function handleStreamEntry(
   processing: StreamProcessingState,
   matcher: Matcher,
   options: SearchOptions,
-  deadlineMs: number | undefined
+  deadlineMs: number | undefined,
+  signal?: AbortSignal
 ): Promise<'continue' | 'stop'> {
+  if (signal?.aborted) return 'stop';
   if (shouldStop(searchState, options, deadlineMs)) return 'stop';
   const maxFilesAction = await enforceMaxFilesScanned(
     searchState,
@@ -162,7 +164,8 @@ async function handleStreamEntry(
     matcher,
     processing.processorBaseOptions,
     options,
-    deadlineMs
+    deadlineMs,
+    signal
   );
   processing.inFlight++;
   processing.active.add(task);
@@ -179,10 +182,12 @@ function createProcessingTask(
   matcher: Matcher,
   processorBaseOptions: ProcessorBaseOptions,
   options: SearchOptions,
-  deadlineMs: number | undefined
+  deadlineMs: number | undefined,
+  signal?: AbortSignal
 ): Promise<void> {
   return (async (): Promise<void> => {
     try {
+      if (signal?.aborted) return;
       if (shouldStop(state, options, deadlineMs)) return;
       const result = await processFile(rawPath, matcher, {
         ...processorBaseOptions,
@@ -201,21 +206,27 @@ export async function processStream(
   matcher: Matcher,
   options: SearchOptions,
   deadlineMs: number | undefined,
-  searchPattern: string
+  searchPattern: string,
+  signal?: AbortSignal
 ): Promise<void> {
   const processing = createProcessingState(options, deadlineMs, searchPattern);
 
   for await (const entry of stream) {
+    if (signal?.aborted) break;
     const action = await handleStreamEntry(
       entry,
       searchState,
       processing,
       matcher,
       options,
-      deadlineMs
+      deadlineMs,
+      signal
     );
     if (action === 'stop') break;
   }
 
   await Promise.all(processing.active);
+  if (signal?.aborted) {
+    throw new Error('Search aborted');
+  }
 }

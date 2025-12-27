@@ -54,6 +54,12 @@ function buildResult(
   };
 }
 
+function assertNotAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new Error('Search aborted');
+  }
+}
+
 export async function executeSearch(
   basePath: string,
   searchPattern: string,
@@ -62,6 +68,7 @@ export async function executeSearch(
 ): Promise<SearchContentResult> {
   const options = buildSearchOptions(partialOptions);
 
+  assertNotAborted(signal);
   const validPath = await validateExistingDirectory(basePath);
   validateGlobPatternOrThrow(options.filePattern, validPath);
 
@@ -77,16 +84,15 @@ export async function executeSearch(
   const stream = createStream(validPath, options);
 
   try {
-    if (signal?.aborted) {
-      throw new Error('Search aborted');
-    }
+    assertNotAborted(signal);
     await processStream(
       stream,
       state,
       matcher,
       options,
       deadlineMs,
-      searchPattern
+      searchPattern,
+      signal
     );
   } finally {
     safeDestroy(stream);

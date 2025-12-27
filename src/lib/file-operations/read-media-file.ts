@@ -30,6 +30,14 @@ export async function readMediaFile(
   filePath: string,
   { maxSize = MAX_MEDIA_FILE_SIZE }: { maxSize?: number } = {}
 ): Promise<MediaFileResult> {
+  if (maxSize > MAX_MEDIA_FILE_SIZE) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `maxSize cannot exceed ${MAX_MEDIA_FILE_SIZE} bytes`,
+      filePath,
+      { maxSize, maxAllowed: MAX_MEDIA_FILE_SIZE }
+    );
+  }
   const validPath = await validateExistingPath(filePath);
   const stats = await fs.stat(validPath);
 

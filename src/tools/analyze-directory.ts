@@ -106,27 +106,31 @@ function buildTextResult(
   return textOutput;
 }
 
-async function handleAnalyzeDirectory({
-  path: dirPath,
-  maxDepth,
-  topN,
-  maxEntries,
-  excludePatterns,
-  includeHidden,
-}: {
-  path: string;
-  maxDepth?: number;
-  topN?: number;
-  maxEntries?: number;
-  excludePatterns?: string[];
-  includeHidden?: boolean;
-}): Promise<ToolResponse<AnalyzeDirectoryStructuredResult>> {
+async function handleAnalyzeDirectory(
+  {
+    path: dirPath,
+    maxDepth,
+    topN,
+    maxEntries,
+    excludePatterns,
+    includeHidden,
+  }: {
+    path: string;
+    maxDepth?: number;
+    topN?: number;
+    maxEntries?: number;
+    excludePatterns?: string[];
+    includeHidden?: boolean;
+  },
+  signal?: AbortSignal
+): Promise<ToolResponse<AnalyzeDirectoryStructuredResult>> {
   const result = await analyzeDirectory(dirPath, {
     maxDepth,
     topN,
     maxEntries,
     excludePatterns,
     includeHidden,
+    signal,
   });
   const structured = buildStructuredResult(result);
   const textOutput = buildTextResult(result);
@@ -156,10 +160,11 @@ const ANALYZE_DIRECTORY_TOOL_DEPRECATED = {
 
 export function registerAnalyzeDirectoryTool(server: McpServer): void {
   const handler = async (
-    args: AnalyzeDirectoryArgs
+    args: AnalyzeDirectoryArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<AnalyzeDirectoryStructuredResult>> => {
     try {
-      return await handleAnalyzeDirectory(args);
+      return await handleAnalyzeDirectory(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(
         error,

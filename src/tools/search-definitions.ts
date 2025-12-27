@@ -137,7 +137,8 @@ function buildStructuredResult(
 }
 
 async function handleSearchDefinitions(
-  args: SearchDefinitionsArgs
+  args: SearchDefinitionsArgs,
+  signal?: AbortSignal
 ): Promise<ToolResponse<SearchDefinitionsStructuredResult>> {
   const result = await searchDefinitions({
     path: args.path,
@@ -148,6 +149,7 @@ async function handleSearchDefinitions(
     excludePatterns: args.excludePatterns,
     includeHidden: args.includeHidden,
     contextLines: args.contextLines,
+    signal,
   });
 
   return buildToolResponse(
@@ -179,10 +181,11 @@ const SEARCH_DEFINITIONS_TOOL_DEPRECATED = {
 
 export function registerSearchDefinitionsTool(server: McpServer): void {
   const handler = async (
-    args: SearchDefinitionsArgs
+    args: SearchDefinitionsArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<SearchDefinitionsStructuredResult>> => {
     try {
-      return await handleSearchDefinitions(args);
+      return await handleSearchDefinitions(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path);
     }

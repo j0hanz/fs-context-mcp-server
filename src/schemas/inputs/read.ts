@@ -71,8 +71,8 @@ export const ReadMediaFileInputSchema = {
     .number()
     .int('maxSize must be an integer')
     .min(1, 'maxSize must be at least 1 byte')
-    .max(500 * 1024 * 1024, 'maxSize cannot exceed 500MB')
+    .max(MAX_MEDIA_FILE_SIZE, 'maxSize cannot exceed 50MB')
     .optional()
     .default(MAX_MEDIA_FILE_SIZE)
-    .describe('Maximum file size in bytes (default 50MB)'),
+    .describe('Maximum file size in bytes (default 50MB, max 50MB)'),
 };

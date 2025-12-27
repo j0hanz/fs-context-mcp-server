@@ -184,6 +184,7 @@ export interface SearchDefinitionsOptions {
   excludePatterns?: string[];
   includeHidden?: boolean;
   contextLines?: number;
+  signal?: AbortSignal;
 }
 
 export interface DefinitionMatch {
