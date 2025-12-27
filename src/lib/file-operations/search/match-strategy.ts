@@ -1,9 +1,14 @@
+import RE2 from 're2';
 import safeRegex from 'safe-regex2';
 
 import { REGEX_MATCH_TIMEOUT_MS } from '../../constants.js';
 import { ErrorCode, McpError } from '../../errors.js';
 
 export type Matcher = (line: string) => number;
+interface RegExpLike {
+  exec: (line: string) => RegExpExecArray | null;
+  lastIndex: number;
+}
 
 export function createMatcher(
   pattern: string,
@@ -55,7 +60,7 @@ function createLiteralMatcher(
 }
 
 function createRegexMatcher(
-  regex: RegExp,
+  regex: RegExpLike,
   timeoutMs: number = REGEX_MATCH_TIMEOUT_MS
 ): Matcher {
   return (line: string): number => countRegexMatches(line, regex, timeoutMs);
@@ -63,7 +68,7 @@ function createRegexMatcher(
 
 function countRegexMatches(
   line: string,
-  regex: RegExp,
+  regex: RegExpLike,
   timeoutMs: number
 ): number {
   if (line.length === 0) return 0;
@@ -76,7 +81,7 @@ function countRegexMatches(
 
 function runRegexMatchLoop(
   line: string,
-  regex: RegExp,
+  regex: RegExpLike,
   deadline: number,
   maxIterations: number
 ): number {
@@ -103,7 +108,7 @@ function runRegexMatchLoop(
 
 function advanceRegexIndex(
   match: RegExpExecArray,
-  regex: RegExp,
+  regex: RegExpLike,
   lastIndex: number
 ): { nextLastIndex: number; shouldAbort: boolean } {
   const currentIndex = regex.lastIndex;
@@ -171,9 +176,9 @@ function compileRegex(
   pattern: string,
   caseSensitive: boolean,
   basePath: string
-): RegExp {
+): RegExpLike {
   try {
-    return new RegExp(pattern, caseSensitive ? 'g' : 'gi');
+    return new RE2(pattern, caseSensitive ? 'g' : 'gi');
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     throw new McpError(

@@ -105,6 +105,7 @@ export const MAX_MEDIA_FILE_SIZE = parseEnvInt(
 );
 
 export const MAX_LINE_CONTENT_LENGTH = 200;
+export const MAX_SEARCH_LINE_LENGTH = 100_000;
 export const BINARY_CHECK_BUFFER_SIZE = 512;
 
 export const DEFAULT_MAX_DEPTH = parseEnvInt('DEFAULT_DEPTH', 10, 1, 100);

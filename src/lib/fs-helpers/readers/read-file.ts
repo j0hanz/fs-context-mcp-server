@@ -203,7 +203,9 @@ async function readFullResult(
   assertWithinMaxSize(stats, normalized.maxSize, filePath);
   const { content, totalLines } = await readFullContent(
     validPath,
-    normalized.encoding
+    normalized.encoding,
+    normalized.maxSize,
+    filePath
   );
   return buildReadResult(validPath, content, false, totalLines);
 }

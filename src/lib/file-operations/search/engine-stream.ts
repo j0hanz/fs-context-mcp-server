@@ -10,6 +10,7 @@ interface ProcessorBaseOptions {
   maxResults: number;
   contextLines: number;
   deadlineMs?: number;
+  signal?: AbortSignal;
   isLiteral: boolean;
   wholeWord: boolean;
   caseSensitive: boolean;
@@ -192,6 +193,7 @@ function createProcessingTask(
       const result = await processFile(rawPath, matcher, {
         ...processorBaseOptions,
         currentMatchCount: state.matches.length,
+        signal,
       });
       updateState(state, result);
     } catch {
@@ -226,7 +228,12 @@ export async function processStream(
   }
 
   await Promise.all(processing.active);
+  if (deadlineMs && Date.now() > deadlineMs && !searchState.truncated) {
+    searchState.truncated = true;
+    searchState.stoppedReason = 'timeout';
+  }
   if (signal?.aborted) {
+    if (deadlineMs && Date.now() >= deadlineMs) return;
     throw new Error('Search aborted');
   }
 }

@@ -1,9 +1,11 @@
 import * as fsPromises from 'node:fs/promises';
-import * as readline from 'node:readline';
 import type { ReadStream } from 'node:fs';
 
 import type { ContentMatch } from '../../../config/types.js';
-import { MAX_LINE_CONTENT_LENGTH } from '../../constants.js';
+import {
+  MAX_LINE_CONTENT_LENGTH,
+  MAX_SEARCH_LINE_LENGTH,
+} from '../../constants.js';
 import { isProbablyBinary } from '../../fs-helpers.js';
 import { validateExistingPathDetailed } from '../../path-validation.js';
 import { ContextManager } from './context-manager.js';
@@ -36,19 +38,84 @@ async function resolvePath(
   }
 }
 
-function createReadInterface(handle: fsPromises.FileHandle): {
-  rl: readline.Interface;
-  stream: ReadStream;
-} {
-  const stream = handle.createReadStream({
+function createReadStream(handle: fsPromises.FileHandle): ReadStream {
+  return handle.createReadStream({
     encoding: 'utf-8',
     autoClose: false,
   });
-  const rl = readline.createInterface({
-    input: stream,
-    crlfDelay: Infinity,
-  });
-  return { rl, stream };
+}
+
+function attachAbortHandler(
+  stream: ReadStream,
+  signal?: AbortSignal
+): () => void {
+  if (!signal) return () => {};
+
+  const onAbort = (): void => {
+    stream.destroy();
+  };
+
+  if (signal.aborted) {
+    onAbort();
+  } else {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  return (): void => {
+    signal.removeEventListener('abort', onAbort);
+  };
+}
+
+async function* iterateLines(
+  stream: ReadStream,
+  maxLineLength: number,
+  signal?: AbortSignal
+): AsyncGenerator<string> {
+  let buffer = '';
+  let overflow = false;
+  const detachAbort = attachAbortHandler(stream, signal);
+  const iterableStream = stream as AsyncIterable<string | Buffer>;
+
+  try {
+    for await (const chunk of iterableStream) {
+      if (signal?.aborted) break;
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+      let cursor = 0;
+
+      while (cursor < text.length) {
+        const newlineIndex = text.indexOf('\n', cursor);
+        const segmentEnd = newlineIndex === -1 ? text.length : newlineIndex;
+        const segment = text.slice(cursor, segmentEnd);
+
+        if (!overflow) {
+          if (buffer.length + segment.length > maxLineLength) {
+            const remaining = Math.max(0, maxLineLength - buffer.length);
+            if (remaining > 0) {
+              buffer += segment.slice(0, remaining);
+            }
+            overflow = true;
+          } else {
+            buffer += segment;
+          }
+        }
+
+        if (newlineIndex !== -1) {
+          yield buffer.replace(/\r$/, '');
+          buffer = '';
+          overflow = false;
+          cursor = newlineIndex + 1;
+        } else {
+          cursor = segmentEnd;
+        }
+      }
+    }
+
+    if (!signal?.aborted && buffer.length > 0) {
+      yield buffer.replace(/\r$/, '');
+    }
+  } finally {
+    detachAbort();
+  }
 }
 
 function trimLine(line: string): string {
@@ -83,7 +150,7 @@ function shouldStop(
 }
 
 async function scanLines(
-  rl: readline.Interface,
+  stream: ReadStream,
   displayPath: string,
   matcher: Matcher,
   options: SearchOptions,
@@ -93,7 +160,12 @@ async function scanLines(
   let linesSkipped = 0;
   let lineNumber = 0;
 
-  for await (const line of rl) {
+  for await (const line of iterateLines(
+    stream,
+    MAX_SEARCH_LINE_LENGTH,
+    options.signal
+  )) {
+    if (options.signal?.aborted) break;
     lineNumber++;
     if (shouldStop(matches.length, options)) break;
 
@@ -124,11 +196,11 @@ async function scanContent(
   options: SearchOptions
 ): Promise<ScanResult> {
   const contextManager = new ContextManager(options.contextLines);
-  const { rl, stream } = createReadInterface(handle);
+  const stream = createReadStream(handle);
 
   try {
     const { matches, linesSkipped } = await scanLines(
-      rl,
+      stream,
       displayPath,
       matcher,
       options,
@@ -136,7 +208,6 @@ async function scanContent(
     );
     return createScanResult(matches, linesSkipped);
   } finally {
-    rl.close();
     stream.destroy();
   }
 }
@@ -165,6 +236,9 @@ export async function processFile(
   matcher: Matcher,
   options: SearchOptions
 ): Promise<ScanResult> {
+  if (options.signal?.aborted) {
+    return createEmptyResult({ scanned: true });
+  }
   const resolved = await resolvePath(rawPath);
   if (!resolved) {
     return createEmptyResult({ scanned: false }); // Inaccessible

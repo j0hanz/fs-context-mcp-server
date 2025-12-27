@@ -7,6 +7,7 @@ export interface SearchOptions {
   maxResults: number;
   contextLines: number;
   deadlineMs?: number;
+  signal?: AbortSignal;
   currentMatchCount: number;
   isLiteral?: boolean;
   searchString?: string;

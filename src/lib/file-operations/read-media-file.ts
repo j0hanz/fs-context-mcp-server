@@ -5,6 +5,7 @@ import type { Stats } from 'node:fs';
 import type { MediaFileResult } from '../../config/types.js';
 import { getMimeType, MAX_MEDIA_FILE_SIZE } from '../constants.js';
 import { ErrorCode, McpError } from '../errors.js';
+import { readFileBufferWithLimit } from '../fs-helpers/readers/read-buffer.js';
 import { validateExistingPath } from '../path-validation.js';
 
 function assertFile(stats: Stats, filePath: string): void {
@@ -46,7 +47,7 @@ export async function readMediaFile(
 
   const ext = path.extname(validPath).toLowerCase();
   const mimeType = getMimeType(ext);
-  const buffer = await fs.readFile(validPath);
+  const buffer = await readFileBufferWithLimit(validPath, maxSize, filePath);
 
   return {
     path: validPath,

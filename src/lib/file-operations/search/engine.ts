@@ -60,6 +60,43 @@ function assertNotAborted(signal?: AbortSignal): void {
   }
 }
 
+function createSearchSignal(
+  signal: AbortSignal | undefined,
+  deadlineMs: number | undefined
+): { signal?: AbortSignal; cleanup: () => void } {
+  if (!signal && !deadlineMs) {
+    return { signal: undefined, cleanup: () => {} };
+  }
+
+  const controller = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const onAbort = (): void => {
+    controller.abort();
+  };
+
+  if (signal?.aborted) {
+    controller.abort();
+  } else if (signal) {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  if (deadlineMs) {
+    const delay = Math.max(0, deadlineMs - Date.now());
+    timeoutId = setTimeout(() => {
+      controller.abort();
+    }, delay);
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: (): void => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (signal) signal.removeEventListener('abort', onAbort);
+    },
+  };
+}
+
 export async function executeSearch(
   basePath: string,
   searchPattern: string,
@@ -68,7 +105,13 @@ export async function executeSearch(
 ): Promise<SearchContentResult> {
   const options = buildSearchOptions(partialOptions);
 
-  assertNotAborted(signal);
+  const deadlineMs = getDeadlineMs(options);
+  const { signal: combinedSignal, cleanup } = createSearchSignal(
+    signal,
+    deadlineMs
+  );
+
+  assertNotAborted(combinedSignal);
   const validPath = await validateExistingDirectory(basePath);
   validateGlobPatternOrThrow(options.filePattern, validPath);
 
@@ -80,11 +123,10 @@ export async function executeSearch(
   });
 
   const state = createInitialState();
-  const deadlineMs = getDeadlineMs(options);
   const stream = createStream(validPath, options);
 
   try {
-    assertNotAborted(signal);
+    assertNotAborted(combinedSignal);
     await processStream(
       stream,
       state,
@@ -92,9 +134,10 @@ export async function executeSearch(
       options,
       deadlineMs,
       searchPattern,
-      signal
+      combinedSignal
     );
   } finally {
+    cleanup();
     safeDestroy(stream);
   }
 

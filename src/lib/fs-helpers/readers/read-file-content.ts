@@ -1,7 +1,6 @@
-import * as fs from 'node:fs/promises';
-
 import { headFile } from './head-file.js';
 import { readLineRange } from './line-range.js';
+import { readFileBufferWithLimit } from './read-buffer.js';
 import { tailFile } from './tail-file.js';
 
 export async function readLineRangeContent(
@@ -56,8 +55,15 @@ export async function readTailContent(
 
 export async function readFullContent(
   filePath: string,
-  encoding: BufferEncoding
+  encoding: BufferEncoding,
+  maxSize: number,
+  requestedPath: string = filePath
 ): Promise<{ content: string; totalLines: number }> {
-  const content = await fs.readFile(filePath, { encoding });
+  const buffer = await readFileBufferWithLimit(
+    filePath,
+    maxSize,
+    requestedPath
+  );
+  const content = buffer.toString(encoding);
   return { content, totalLines: content.split('\n').length };
 }
