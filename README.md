@@ -140,6 +140,10 @@ See [CONFIGURATION.md](CONFIGURATION.md) for profiles and examples.
 
 ## Tools
 
+All tools return both human-readable text and structured JSON. Structured
+responses include `ok`, `error` (with `code`, `message`, `path`, `suggestion`),
+and `effectiveOptions`/`summary` fields where applicable.
+
 ### `list_allowed_directories`
 
 List all directories that this server can access.
@@ -148,7 +152,8 @@ List all directories that this server can access.
 | --------- | ---- | -------- | ------- | ----------- |
 | (none)    | -    | -        | -       | -           |
 
-Returns: Array of allowed directory paths.
+Returns: Allowed directory paths plus access status (accessible/readable),
+count, and a configuration hint in structured output.
 
 ---
 
@@ -168,7 +173,10 @@ List contents of a directory with optional recursion.
 | `sortBy`                | string   | No       | `name`  | Sort by: `name`, `size`, `modified`, `type`              |
 | `includeSymlinkTargets` | boolean  | No       | `false` | Include symlink target paths (symlinks are not followed) |
 
-Returns: List of entries with name, type, size, modified time, and relative path.
+Returns: Entries with name, relativePath, type, extension, size, modified time,
+and symlink target. Structured output includes `effectiveOptions` and a
+`summary` (totals, maxDepthReached, truncated/stoppedReason, entriesScanned,
+entriesVisible, skippedInaccessible, symlinksNotFollowed).
 
 ---
 
@@ -190,7 +198,9 @@ Search for files (not directories) using glob patterns.
 | `skipSymlinks`    | boolean  | No       | `true`                | Must remain true; symlink traversal is disabled for security |
 | `includeHidden`   | boolean  | No       | `false`               | Include hidden files and directories                         |
 
-Returns: List of matching files with path, type, size, and modified date.
+Returns: Matching files with relative path, type, size, and modified date.
+Structured output includes `effectiveOptions` and a `summary` (matched,
+filesScanned, truncated/stoppedReason, skippedInaccessible).
 
 ---
 
@@ -212,6 +222,9 @@ Read the contents of a text file.
 Notes:
 
 - `head`, `tail`, and `lineStart/lineEnd` are mutually exclusive.
+
+Returns: File content plus structured metadata (readMode, linesRead,
+totalLines, hasMoreLines, truncated, effectiveOptions).
 
 ---
 
@@ -235,6 +248,9 @@ Notes:
 - `lineStart` and `lineEnd` must be provided together.
 - `head`, `tail`, and `lineStart/lineEnd` are mutually exclusive.
 
+Returns: Per-file content or error, plus structured summary and
+effectiveOptions.
+
 ---
 
 ### `get_file_info`
@@ -245,7 +261,8 @@ Get detailed metadata about a file or directory.
 | --------- | ------ | -------- | ------- | ------------------------- |
 | `path`    | string | Yes      | -       | Path to file or directory |
 
-Returns: name, path, type, size, created/modified/accessed timestamps, permissions, MIME type, and symlink target (if applicable).
+Returns: name, path, type, size, created/modified/accessed timestamps,
+permissions, isHidden, MIME type, and symlink target (if applicable).
 
 ---
 
@@ -258,7 +275,8 @@ Get metadata for multiple files/directories in parallel.
 | `paths`           | string[] | Yes      | -       | Array of paths to query (max 100) |
 | `includeMimeType` | boolean  | No       | `true`  | Include MIME type detection       |
 
-Returns: Array of file info with individual success/error status, plus summary.
+Returns: Array of file info with individual success/error status, plus summary
+(total, succeeded, failed, totalSize).
 
 ---
 
@@ -285,11 +303,34 @@ Search for text content within files using regular expressions.
 | `baseNameMatch`          | boolean  | No       | `false`               | Match file patterns without slashes against basenames      |
 | `caseSensitiveFileMatch` | boolean  | No       | `true`                | Case-sensitive filename matching                           |
 
-Returns: Matching lines with file path, line number, content, and optional context.
+Returns: Matching lines with file path, line number, content, and optional
+context. Structured output includes `effectiveOptions` and a `summary`
+(filesScanned/filesMatched, totalMatches, truncated/stoppedReason,
+skippedTooLarge/skippedBinary/skippedInaccessible,
+linesSkippedDueToRegexTimeout).
 
 ---
 
-Built-in exclude list: common dependency/build/output directories (e.g., `node_modules`, `dist`, `build`, `coverage`, `.git`, `.vscode`). Pass `excludePatterns: []` to disable it.
+Built-in exclude list: common dependency/build/output directories (e.g.,
+`node_modules`, `dist`, `build`, `coverage`, `.git`, `.vscode`, `.idea`,
+`.cache`, `.next`, `.nuxt`, `.svelte-kit`). Pass `excludePatterns: []` to
+disable it.
+
+## Error Codes
+
+| Code                    | Meaning                       |
+| ----------------------- | ----------------------------- |
+| `E_ACCESS_DENIED`       | Path outside allowed roots    |
+| `E_NOT_FOUND`           | Path does not exist           |
+| `E_NOT_FILE`            | Expected file, got directory  |
+| `E_NOT_DIRECTORY`       | Expected directory, got file  |
+| `E_TOO_LARGE`           | File exceeds size limits      |
+| `E_TIMEOUT`             | Operation timed out           |
+| `E_INVALID_PATTERN`     | Invalid glob/regex pattern    |
+| `E_INVALID_INPUT`       | Invalid argument(s)           |
+| `E_PERMISSION_DENIED`   | OS-level permission denied    |
+| `E_SYMLINK_NOT_ALLOWED` | Symlink escapes allowed roots |
+| `E_UNKNOWN`             | Unexpected error              |
 
 ## Client Configuration
 

@@ -9,10 +9,14 @@ Environment variables for tuning performance and resource limits. All variables 
 - If the MCP client supports Roots, its roots are used when no CLI paths are provided.
 - If CLI paths and/or `--allow-cwd` are provided, client roots are only accepted if they are within those baseline directories.
 - If nothing is configured and the client provides no roots, the server has no access and logs a warning.
+- Windows drive-relative paths like `C:path` are rejected. Use `C:\path` or `C:/path`.
+- Reserved Windows device names (e.g., `CON`, `NUL`) are blocked.
 
 ## Environment Variables
 
-Values are integers. Sizes are in bytes, timeouts are in milliseconds.
+Values are integers. Sizes are in bytes, timeouts are in milliseconds. Invalid
+values emit a warning and fall back to defaults (or are ignored for
+`UV_THREADPOOL_SIZE`).
 
 ### Performance and Concurrency
 
@@ -32,6 +36,10 @@ Values are integers. Sizes are in bytes, timeouts are in milliseconds.
 | `MAX_FILE_SIZE`   | 10MB    | 1MB-100MB  | `read_file`, `read_multiple_files` | Large logs/data    | Low memory        |
 | `MAX_SEARCH_SIZE` | 1MB     | 100KB-10MB | `search_content`                   | Large source files | Performance focus |
 
+`MAX_FILE_SIZE` is a hard cap for read tools; per-request `maxSize` values are
+clamped. `MAX_SEARCH_SIZE` sets the default `maxFileSize` for content search
+and can be overridden per request (up to 100MB).
+
 ### Default Operation Limits
 
 | Variable                   | Default | Range       | Applies To                       |
@@ -41,6 +49,10 @@ Values are integers. Sizes are in bytes, timeouts are in milliseconds.
 | `DEFAULT_LIST_MAX_ENTRIES` | `10000` | 100-100000  | `list_directory`                 |
 | `DEFAULT_SEARCH_MAX_FILES` | `20000` | 100-100000  | `search_files`, `search_content` |
 | `DEFAULT_SEARCH_TIMEOUT`   | `30000` | 100-3600000 | `search_files`, `search_content` |
+
+Defaults apply when tool parameters are omitted. Tool-level `maxDepth` can be
+set to `0` to restrict listing/searching to the base directory, even though
+`DEFAULT_DEPTH` is constrained to 1-100.
 
 ## Configuration Examples
 
