@@ -9,6 +9,10 @@ import {
   formatOperationSummary,
   joinLines,
 } from '../config/formatting.js';
+import {
+  DEFAULT_LIST_MAX_ENTRIES,
+  DEFAULT_MAX_DEPTH,
+} from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations.js';
 import {
@@ -34,30 +38,35 @@ type ListDirectoryStructuredResult = z.infer<typeof ListDirectoryOutputSchema>;
 
 function formatDirectoryListing(
   entries: Awaited<ReturnType<typeof listDirectory>>['entries'],
-  basePath: string
+  basePath: string,
+  summary: Awaited<ReturnType<typeof listDirectory>>['summary']
 ): string {
-  if (entries.length === 0) return 'Empty directory';
+  if (entries.length === 0) {
+    if (summary.entriesScanned && summary.entriesScanned > 0) {
+      if (summary.entriesVisible === 0) {
+        return 'No entries matched visibility filters (hidden/excludePatterns).';
+      }
+      return 'No entries matched the provided pattern.';
+    }
+    return 'Empty directory';
+  }
 
-  const dirs = entries.filter((e) => e.type === 'directory');
-  const files = entries.filter((e) => e.type !== 'directory');
+  const dirs = entries.filter((e) => e.type === 'directory').length;
+  const files = entries.length - dirs;
 
-  const dirLines = dirs.map((dir) => {
-    const symlink = dir.symlinkTarget ? ` -> ${dir.symlinkTarget}` : '';
-    return `[DIR] ${dir.relativePath}${symlink}`;
+  const entryLines = entries.map((entry) => {
+    if (entry.type === 'directory') {
+      const symlink = entry.symlinkTarget ? ` -> ${entry.symlinkTarget}` : '';
+      return `[DIR] ${entry.relativePath}${symlink}`;
+    }
+    const size =
+      entry.size !== undefined ? ` (${formatBytes(entry.size)})` : '';
+    const tag = entry.type === 'symlink' ? '[LINK]' : '[FILE]';
+    const symlink = entry.symlinkTarget ? ` -> ${entry.symlinkTarget}` : '';
+    return `${tag} ${entry.relativePath}${size}${symlink}`;
   });
 
-  const fileLines = files.map((file) => {
-    const size = file.size !== undefined ? ` (${formatBytes(file.size)})` : '';
-    const tag = file.type === 'symlink' ? '[LINK]' : '[FILE]';
-    const symlink = file.symlinkTarget ? ` -> ${file.symlinkTarget}` : '';
-    return `${tag} ${file.relativePath}${size}${symlink}`;
-  });
-
-  const lines = [
-    `${basePath} (${dirs.length} dirs, ${files.length} files):`,
-    ...dirLines,
-    ...fileLines,
-  ];
+  const lines = [`${basePath} (${dirs} dirs, ${files} files):`, ...entryLines];
 
   return joinLines(lines);
 }
@@ -101,8 +110,11 @@ function buildStructuredResult(
       totalDirectories: summary.totalDirectories,
       maxDepthReached: summary.maxDepthReached,
       truncated: summary.truncated,
+      stoppedReason: summary.stoppedReason,
       skippedInaccessible: summary.skippedInaccessible,
       symlinksNotFollowed: summary.symlinksNotFollowed,
+      entriesScanned: summary.entriesScanned,
+      entriesVisible: summary.entriesVisible,
     },
   };
 }
@@ -111,15 +123,20 @@ function buildTextResult(
   result: Awaited<ReturnType<typeof listDirectory>>
 ): string {
   const { entries, summary, path } = result;
-  let textOutput = formatDirectoryListing(entries, path);
-  if (entries.length === 0 && summary.totalEntries > 0) {
-    textOutput +=
-      '\n(No entries matched the provided pattern/filters, but the directory contains items.)';
-  }
+  let textOutput = formatDirectoryListing(entries, path, summary);
+  const truncatedReason =
+    summary.stoppedReason === 'aborted'
+      ? 'operation aborted'
+      : summary.stoppedReason === 'maxEntries'
+        ? `reached max entries limit (${summary.totalEntries} returned)`
+        : undefined;
   textOutput += formatOperationSummary({
     truncated: summary.truncated,
-    truncatedReason: `reached max entries limit (${summary.totalEntries} returned)`,
-    tip: 'Increase maxEntries or reduce maxDepth to see more results.',
+    truncatedReason,
+    tip:
+      summary.stoppedReason === 'maxEntries'
+        ? 'Increase maxEntries or reduce maxDepth to see more results.'
+        : undefined,
     skippedInaccessible: summary.skippedInaccessible,
     symlinksNotFollowed: summary.symlinksNotFollowed,
   });
@@ -150,18 +167,29 @@ async function handleListDirectory(
   },
   signal?: AbortSignal
 ): Promise<ToolResponse<ListDirectoryStructuredResult>> {
-  const result = await listDirectory(dirPath, {
-    recursive,
-    includeHidden,
-    excludePatterns,
-    maxDepth,
-    maxEntries,
-    sortBy,
-    includeSymlinkTargets,
+  const effectiveOptions = {
+    recursive: recursive ?? false,
+    includeHidden: includeHidden ?? false,
+    excludePatterns: excludePatterns ?? [],
+    maxDepth: maxDepth ?? DEFAULT_MAX_DEPTH,
+    maxEntries: maxEntries ?? DEFAULT_LIST_MAX_ENTRIES,
+    sortBy: sortBy ?? 'name',
+    includeSymlinkTargets: includeSymlinkTargets ?? false,
     pattern,
+  };
+  const result = await listDirectory(dirPath, {
+    recursive: effectiveOptions.recursive,
+    includeHidden: effectiveOptions.includeHidden,
+    excludePatterns: effectiveOptions.excludePatterns,
+    maxDepth: effectiveOptions.maxDepth,
+    maxEntries: effectiveOptions.maxEntries,
+    sortBy: effectiveOptions.sortBy,
+    includeSymlinkTargets: effectiveOptions.includeSymlinkTargets,
+    pattern: effectiveOptions.pattern,
     signal,
   });
   const structured = buildStructuredResult(result);
+  structured.effectiveOptions = effectiveOptions;
   const textOutput = buildTextResult(result);
   return buildToolResponse(textOutput, structured);
 }

@@ -10,14 +10,36 @@ type SearchContentStructuredResult = z.infer<typeof SearchContentOutputSchema>;
 
 const LINE_NUMBER_PAD_WIDTH = 4;
 
+type NormalizedMatch = SearchContentResult['matches'][number] & {
+  relativeFile: string;
+  index: number;
+};
+
+function normalizeMatches(result: SearchContentResult): NormalizedMatch[] {
+  const normalized = result.matches.map((match, index) => ({
+    ...match,
+    relativeFile: pathModule.relative(result.basePath, match.file),
+    index,
+  }));
+
+  normalized.sort((a, b) => {
+    const fileCompare = a.relativeFile.localeCompare(b.relativeFile);
+    if (fileCompare !== 0) return fileCompare;
+    if (a.line !== b.line) return a.line - b.line;
+    return a.index - b.index;
+  });
+
+  return normalized;
+}
+
 function groupMatchesByFile(
-  matches: SearchContentResult['matches']
-): Map<string, SearchContentResult['matches']> {
-  const byFile = new Map<string, SearchContentResult['matches']>();
+  matches: NormalizedMatch[]
+): Map<string, NormalizedMatch[]> {
+  const byFile = new Map<string, NormalizedMatch[]>();
   for (const match of matches) {
-    const list = byFile.get(match.file) ?? [];
+    const list = byFile.get(match.relativeFile) ?? [];
     list.push(match);
-    byFile.set(match.file, list);
+    byFile.set(match.relativeFile, list);
   }
   return byFile;
 }
@@ -49,10 +71,7 @@ function formatMatchBlock(
   return lines;
 }
 
-function formatFileMatches(
-  file: string,
-  matches: SearchContentResult['matches']
-): string[] {
+function formatFileMatches(file: string, matches: NormalizedMatch[]): string[] {
   const matchCount = matches.reduce((sum, m) => sum + m.matchCount, 0);
   const lines: string[] = [
     `${file} (${matchCount} match${matchCount === 1 ? '' : 'es'}):`,
@@ -64,7 +83,7 @@ function formatFileMatches(
   return lines;
 }
 
-function formatContentMatches(matches: SearchContentResult['matches']): string {
+function formatContentMatches(matches: NormalizedMatch[]): string {
   if (matches.length === 0) return 'No matches';
 
   const byFile = groupMatchesByFile(matches);
@@ -79,14 +98,15 @@ function formatContentMatches(matches: SearchContentResult['matches']): string {
 export function buildStructuredResult(
   result: SearchContentResult
 ): SearchContentStructuredResult {
-  const { basePath, pattern, filePattern, matches, summary } = result;
+  const { basePath, pattern, filePattern, summary } = result;
+  const normalizedMatches = normalizeMatches(result);
   return {
     ok: true,
     basePath,
     pattern,
     filePattern,
-    matches: matches.map((m) => ({
-      file: pathModule.relative(basePath, m.file),
+    matches: normalizedMatches.map((m) => ({
+      file: m.relativeFile,
       line: m.line,
       content: m.content,
       contextBefore: m.contextBefore,
@@ -135,7 +155,13 @@ function buildTruncationInfo(result: SearchContentResult): {
 export function buildTextResult(result: SearchContentResult): string {
   const { summary } = result;
   const { truncatedReason, tip } = buildTruncationInfo(result);
-  let textOutput = formatContentMatches(result.matches);
+  const header = joinLines([
+    `Base path: ${result.basePath}`,
+    `Pattern: ${result.pattern}`,
+    `File pattern: ${result.filePattern}`,
+  ]);
+  const normalizedMatches = normalizeMatches(result);
+  let textOutput = joinLines([header, formatContentMatches(normalizedMatches)]);
   textOutput += formatOperationSummary({
     truncated: summary.truncated,
     truncatedReason,

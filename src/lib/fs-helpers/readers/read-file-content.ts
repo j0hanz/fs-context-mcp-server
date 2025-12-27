@@ -7,7 +7,13 @@ export async function readLineRangeContent(
   filePath: string,
   lineRange: { start: number; end: number },
   options: { encoding: BufferEncoding; maxSize: number }
-): Promise<{ content: string; truncated: boolean }> {
+): Promise<{
+  content: string;
+  truncated: boolean;
+  linesRead: number;
+  totalLinesScanned: number;
+  hasMoreLines: boolean;
+}> {
   const result = await readLineRange(
     filePath,
     lineRange.start,
@@ -22,35 +28,68 @@ export async function readLineRangeContent(
     result.linesRead < expectedLines ||
     result.hasMoreLines;
 
-  return { content: result.content, truncated };
+  return {
+    content: result.content,
+    truncated,
+    linesRead: result.linesRead,
+    totalLinesScanned: result.totalLinesScanned,
+    hasMoreLines: result.hasMoreLines,
+  };
+}
+
+function countLines(content: string): number {
+  if (content.length === 0) return 0;
+  return content.split('\n').length;
 }
 
 export async function readHeadContent(
   filePath: string,
   head: number,
   options: { encoding: BufferEncoding; maxSize: number }
-): Promise<{ content: string; truncated: boolean }> {
+): Promise<{
+  content: string;
+  truncated: boolean;
+  linesRead: number;
+  hasMoreLines: boolean;
+}> {
   const content = await headFile(
     filePath,
     head,
     options.encoding,
     options.maxSize
   );
-  return { content, truncated: true };
+  const linesRead = countLines(content);
+  return {
+    content,
+    truncated: true,
+    linesRead,
+    hasMoreLines: linesRead >= head,
+  };
 }
 
 export async function readTailContent(
   filePath: string,
   tail: number,
   options: { encoding: BufferEncoding; maxSize: number }
-): Promise<{ content: string; truncated: boolean }> {
+): Promise<{
+  content: string;
+  truncated: boolean;
+  linesRead: number;
+  hasMoreLines: boolean;
+}> {
   const content = await tailFile(
     filePath,
     tail,
     options.encoding,
     options.maxSize
   );
-  return { content, truncated: true };
+  const linesRead = countLines(content);
+  return {
+    content,
+    truncated: true,
+    linesRead,
+    hasMoreLines: linesRead >= tail,
+  };
 }
 
 export async function readFullContent(

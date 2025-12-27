@@ -35,6 +35,13 @@ interface ReadFileResult {
   content: string;
   truncated: boolean;
   totalLines?: number;
+  readMode: ReadMode;
+  lineStart?: number;
+  lineEnd?: number;
+  head?: number;
+  tail?: number;
+  linesRead?: number;
+  hasMoreLines?: boolean;
 }
 
 type ReadMode = 'lineRange' | 'tail' | 'head' | 'full';
@@ -140,13 +147,19 @@ function assertLineRangeWithinLimit(
   );
 }
 
+type ReadResultMetadata = Omit<
+  ReadFileResult,
+  'path' | 'content' | 'truncated' | 'totalLines'
+>;
+
 function buildReadResult(
   filePath: string,
   content: string,
   truncated: boolean,
-  totalLines?: number
+  totalLines: number | undefined,
+  metadata: ReadResultMetadata
 ): ReadFileResult {
-  return { path: filePath, content, truncated, totalLines };
+  return { path: filePath, content, truncated, totalLines, ...metadata };
 }
 
 async function readLineRangeResult(
@@ -157,15 +170,18 @@ async function readLineRangeResult(
   const lineRange = requireOption(normalized.lineRange, 'lineRange', filePath);
   validateLineRange(lineRange, filePath);
   assertLineRangeWithinLimit(lineRange, filePath);
-  const { content, truncated } = await readLineRangeContent(
-    validPath,
-    lineRange,
-    {
+  const { content, truncated, linesRead, hasMoreLines } =
+    await readLineRangeContent(validPath, lineRange, {
       encoding: normalized.encoding,
       maxSize: normalized.maxSize,
-    }
-  );
-  return buildReadResult(validPath, content, truncated);
+    });
+  return buildReadResult(validPath, content, truncated, undefined, {
+    readMode: 'lineRange',
+    lineStart: lineRange.start,
+    lineEnd: lineRange.end,
+    linesRead,
+    hasMoreLines,
+  });
 }
 
 async function readTailResult(
@@ -174,11 +190,20 @@ async function readTailResult(
   normalized: NormalizedOptions
 ): Promise<ReadFileResult> {
   const tail = requireOption(normalized.tail, 'tail', filePath);
-  const { content, truncated } = await readTailContent(validPath, tail, {
-    encoding: normalized.encoding,
-    maxSize: normalized.maxSize,
+  const { content, truncated, linesRead, hasMoreLines } = await readTailContent(
+    validPath,
+    tail,
+    {
+      encoding: normalized.encoding,
+      maxSize: normalized.maxSize,
+    }
+  );
+  return buildReadResult(validPath, content, truncated, undefined, {
+    readMode: 'tail',
+    tail,
+    linesRead,
+    hasMoreLines,
   });
-  return buildReadResult(validPath, content, truncated);
 }
 
 async function readHeadResult(
@@ -187,11 +212,20 @@ async function readHeadResult(
   normalized: NormalizedOptions
 ): Promise<ReadFileResult> {
   const head = requireOption(normalized.head, 'head', filePath);
-  const { content, truncated } = await readHeadContent(validPath, head, {
-    encoding: normalized.encoding,
-    maxSize: normalized.maxSize,
+  const { content, truncated, linesRead, hasMoreLines } = await readHeadContent(
+    validPath,
+    head,
+    {
+      encoding: normalized.encoding,
+      maxSize: normalized.maxSize,
+    }
+  );
+  return buildReadResult(validPath, content, truncated, undefined, {
+    readMode: 'head',
+    head,
+    linesRead,
+    hasMoreLines,
   });
-  return buildReadResult(validPath, content, truncated);
 }
 
 async function readFullResult(
@@ -207,7 +241,11 @@ async function readFullResult(
     normalized.maxSize,
     filePath
   );
-  return buildReadResult(validPath, content, false, totalLines);
+  return buildReadResult(validPath, content, false, totalLines, {
+    readMode: 'full',
+    linesRead: totalLines,
+    hasMoreLines: false,
+  });
 }
 
 async function readByMode(

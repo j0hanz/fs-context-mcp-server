@@ -56,8 +56,11 @@ function buildSummary(
     totalDirectories: state.totalDirectories,
     maxDepthReached: state.maxDepthReached,
     truncated: state.truncated,
+    stoppedReason: state.stoppedReason,
     skippedInaccessible: state.skippedInaccessible,
     symlinksNotFollowed: state.symlinksNotFollowed,
+    entriesScanned: state.entriesScanned,
+    entriesVisible: state.entriesVisible,
   };
 }
 

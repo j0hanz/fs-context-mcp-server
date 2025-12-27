@@ -24,6 +24,19 @@ export const ListAllowedDirectoriesOutputSchema = z.object({
 export const ListDirectoryOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
+  effectiveOptions: z
+    .object({
+      recursive: z.boolean(),
+      includeHidden: z.boolean(),
+      excludePatterns: z.array(z.string()),
+      maxDepth: z.number(),
+      maxEntries: z.number(),
+      sortBy: z.enum(['name', 'size', 'modified', 'type']),
+      includeSymlinkTargets: z.boolean(),
+      pattern: z.string().optional(),
+    })
+    .optional()
+    .describe('Effective options used for the directory listing'),
   entries: z
     .array(
       z.object({

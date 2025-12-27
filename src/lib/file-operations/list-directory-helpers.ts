@@ -18,8 +18,11 @@ interface ListDirectoryState {
   totalDirectories: number;
   maxDepthReached: number;
   truncated: boolean;
+  stoppedReason?: 'maxEntries' | 'aborted';
   skippedInaccessible: number;
   symlinksNotFollowed: number;
+  entriesScanned: number;
+  entriesVisible: number;
 }
 
 export interface ListDirectoryConfig {
@@ -43,6 +46,8 @@ export function initListState(): ListDirectoryState {
     truncated: false,
     skippedInaccessible: 0,
     symlinksNotFollowed: 0,
+    entriesScanned: 0,
+    entriesVisible: 0,
   };
 }
 
@@ -52,9 +57,14 @@ export function createStopChecker(
   signal?: AbortSignal
 ): () => boolean {
   return (): boolean => {
-    if (signal?.aborted) return true;
+    if (signal?.aborted) {
+      state.truncated = true;
+      state.stoppedReason = 'aborted';
+      return true;
+    }
     if (maxEntries !== undefined && state.entries.length >= maxEntries) {
       state.truncated = true;
+      state.stoppedReason = 'maxEntries';
       return true;
     }
     return false;
@@ -100,46 +110,30 @@ async function* streamVisibleItems(
   basePath: string,
   includeHidden: boolean,
   excludePatterns: string[],
-  onInaccessible: () => void
+  onInaccessible: () => void,
+  onScanned: () => void,
+  onVisible: () => void
 ): AsyncIterable<Dirent> {
   const dir = await openDirectory(currentPath, onInaccessible);
   if (!dir) return;
 
-  const filteredItems = filterVisibleItems(
-    dir,
-    currentPath,
-    basePath,
-    includeHidden,
-    excludePatterns
-  );
-
   try {
-    for await (const item of filteredItems) {
-      yield item;
+    for await (const item of dir) {
+      onScanned();
+      if (
+        shouldIncludeEntry(item, currentPath, basePath, {
+          includeHidden,
+          excludePatterns,
+        })
+      ) {
+        onVisible();
+        yield item;
+      }
     }
   } catch {
     onInaccessible();
   } finally {
     await dir.close().catch(() => {});
-  }
-}
-
-async function* filterVisibleItems(
-  items: AsyncIterable<Dirent>,
-  currentPath: string,
-  basePath: string,
-  includeHidden: boolean,
-  excludePatterns: string[]
-): AsyncIterable<Dirent> {
-  for await (const item of items) {
-    if (
-      shouldIncludeEntry(item, currentPath, basePath, {
-        includeHidden,
-        excludePatterns,
-      })
-    ) {
-      yield item;
-    }
   }
 }
 
@@ -277,6 +271,12 @@ export async function handleDirectory(
     config.excludePatterns,
     () => {
       state.skippedInaccessible++;
+    },
+    () => {
+      state.entriesScanned++;
+    },
+    () => {
+      state.entriesVisible++;
     }
   );
   const batch: Dirent[] = [];

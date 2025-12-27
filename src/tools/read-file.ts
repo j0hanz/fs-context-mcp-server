@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { joinLines } from '../config/formatting.js';
+import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
@@ -32,12 +33,21 @@ function buildReadFileNote(
   head: number | undefined,
   tail: number | undefined
 ): string | undefined {
+  const rangeNote = buildRangeNote(result);
+  const linesNote =
+    result.totalLines !== undefined
+      ? `Total lines: ${result.totalLines}`
+      : undefined;
   if (result.truncated) {
-    return buildTruncatedNote(result, head, tail);
+    return joinLines(
+      [buildTruncatedNote(result, head, tail), rangeNote, linesNote].filter(
+        (value): value is string => Boolean(value)
+      )
+    );
   }
-  return result.totalLines !== undefined
-    ? `Total lines: ${result.totalLines}`
-    : undefined;
+  return joinLines(
+    [rangeNote, linesNote].filter((value): value is string => Boolean(value))
+  );
 }
 
 function buildTruncatedNote(
@@ -53,6 +63,17 @@ function buildTruncatedNote(
   }
   if (tail !== undefined) {
     return `Showing last ${String(tail)} lines`;
+  }
+  return undefined;
+}
+
+function buildRangeNote(
+  result: Awaited<ReturnType<typeof readFile>>
+): string | undefined {
+  if (result.readMode === 'lineRange') {
+    if (result.lineStart !== undefined && result.lineEnd !== undefined) {
+      return `Showing lines ${result.lineStart}-${result.lineEnd}`;
+    }
   }
   return undefined;
 }
@@ -75,13 +96,21 @@ async function handleReadFile(args: {
     args.lineStart !== undefined || args.lineEnd !== undefined;
   assertNoMixedRangeOptions(hasHeadTail, hasLineRange, args.path);
   const lineRange = buildLineRange(args.lineStart, args.lineEnd, args.path);
-  const result = await readFile(args.path, {
-    encoding: args.encoding,
-    maxSize: args.maxSize,
+  const effectiveOptions = {
+    encoding: args.encoding ?? 'utf-8',
+    maxSize: Math.min(args.maxSize ?? MAX_TEXT_FILE_SIZE, MAX_TEXT_FILE_SIZE),
+    skipBinary: args.skipBinary ?? true,
     lineRange,
     head: args.head,
     tail: args.tail,
-    skipBinary: args.skipBinary,
+  };
+  const result = await readFile(args.path, {
+    encoding: effectiveOptions.encoding,
+    maxSize: effectiveOptions.maxSize,
+    lineRange: effectiveOptions.lineRange,
+    head: effectiveOptions.head,
+    tail: effectiveOptions.tail,
+    skipBinary: effectiveOptions.skipBinary,
   });
 
   const structured: ReadFileStructuredResult = {
@@ -90,6 +119,22 @@ async function handleReadFile(args: {
     content: result.content,
     truncated: result.truncated,
     totalLines: result.totalLines,
+    readMode: result.readMode,
+    lineStart: result.lineStart,
+    lineEnd: result.lineEnd,
+    head: result.head,
+    tail: result.tail,
+    linesRead: result.linesRead,
+    hasMoreLines: result.hasMoreLines,
+    effectiveOptions: {
+      encoding: effectiveOptions.encoding,
+      maxSize: effectiveOptions.maxSize,
+      skipBinary: effectiveOptions.skipBinary,
+      lineStart: args.lineStart,
+      lineEnd: args.lineEnd,
+      head: args.head,
+      tail: args.tail,
+    },
   };
 
   const text = buildTextResult(result, args.head, args.tail);

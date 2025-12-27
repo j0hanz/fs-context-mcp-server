@@ -29,10 +29,13 @@ export interface ListDirectoryResult {
   entries: DirectoryEntry[];
   summary: {
     totalEntries: number;
+    entriesScanned?: number;
+    entriesVisible?: number;
     totalFiles: number;
     totalDirectories: number;
     maxDepthReached: number;
     truncated: boolean;
+    stoppedReason?: 'maxEntries' | 'aborted';
     skippedInaccessible: number;
     symlinksNotFollowed: number;
   };

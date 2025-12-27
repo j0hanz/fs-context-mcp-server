@@ -9,6 +9,13 @@ import {
   formatOperationSummary,
   joinLines,
 } from '../config/formatting.js';
+import {
+  DEFAULT_EXCLUDE_PATTERNS,
+  DEFAULT_MAX_DEPTH,
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_SEARCH_MAX_FILES,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+} from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations.js';
 import {
@@ -27,7 +34,8 @@ type SearchFilesArgs = z.infer<z.ZodObject<typeof SearchFilesInputSchema>>;
 type SearchFilesStructuredResult = z.infer<typeof SearchFilesOutputSchema>;
 
 function formatSearchResults(
-  results: Awaited<ReturnType<typeof searchFiles>>['results']
+  results: Awaited<ReturnType<typeof searchFiles>>['results'],
+  basePath: string
 ): string {
   if (results.length === 0) return 'No matches';
 
@@ -35,7 +43,7 @@ function formatSearchResults(
     const tag = result.type === 'directory' ? '[DIR]' : '[FILE]';
     const size =
       result.size !== undefined ? ` (${formatBytes(result.size)})` : '';
-    return `${tag} ${result.path}${size}`;
+    return `${tag} ${pathModule.relative(basePath, result.path)}${size}`;
   });
 
   return joinLines([`Found ${results.length}:`, ...lines]);
@@ -94,7 +102,12 @@ function buildTextResult(
 ): string {
   const { summary, results } = result;
   const { truncatedReason, tip } = buildTruncationInfo(result);
-  let textOutput = formatSearchResults(results);
+  const header = joinLines([
+    `Base path: ${result.basePath}`,
+    `Pattern: ${result.pattern}`,
+  ]);
+  const body = formatSearchResults(results, result.basePath);
+  let textOutput = joinLines([header, body]);
   if (results.length === 0) {
     textOutput +=
       '\n(Try a broader pattern, remove excludePatterns, or set includeHidden=true if searching dotfiles.)';
@@ -140,21 +153,36 @@ async function handleSearchFiles(
   },
   signal?: AbortSignal
 ): Promise<ToolResponse<SearchFilesStructuredResult>> {
-  const result = await searchFiles(searchBasePath, pattern, excludePatterns, {
-    maxResults,
-    sortBy,
-    maxDepth,
-    maxFilesScanned,
-    timeoutMs,
-    baseNameMatch,
-    skipSymlinks,
-    includeHidden,
-    signal,
-  });
-  return buildToolResponse(
-    buildTextResult(result),
-    buildStructuredResult(result)
+  const effectiveOptions = {
+    excludePatterns: excludePatterns ?? DEFAULT_EXCLUDE_PATTERNS,
+    maxResults: maxResults ?? DEFAULT_MAX_RESULTS,
+    sortBy: sortBy ?? 'path',
+    maxDepth: maxDepth ?? DEFAULT_MAX_DEPTH,
+    maxFilesScanned: maxFilesScanned ?? DEFAULT_SEARCH_MAX_FILES,
+    timeoutMs: timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
+    baseNameMatch: baseNameMatch ?? false,
+    skipSymlinks: skipSymlinks ?? true,
+    includeHidden: includeHidden ?? false,
+  };
+  const result = await searchFiles(
+    searchBasePath,
+    pattern,
+    effectiveOptions.excludePatterns,
+    {
+      maxResults: effectiveOptions.maxResults,
+      sortBy: effectiveOptions.sortBy,
+      maxDepth: effectiveOptions.maxDepth,
+      maxFilesScanned: effectiveOptions.maxFilesScanned,
+      timeoutMs: effectiveOptions.timeoutMs,
+      baseNameMatch: effectiveOptions.baseNameMatch,
+      skipSymlinks: effectiveOptions.skipSymlinks,
+      includeHidden: effectiveOptions.includeHidden,
+      signal,
+    }
   );
+  const structured = buildStructuredResult(result);
+  structured.effectiveOptions = effectiveOptions;
+  return buildToolResponse(buildTextResult(result), structured);
 }
 
 const SEARCH_FILES_TOOL = {

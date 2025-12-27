@@ -10,6 +10,13 @@ interface ReadMultipleResult {
   content?: string;
   truncated?: boolean;
   totalLines?: number;
+  readMode?: 'full' | 'head' | 'tail' | 'lineRange';
+  lineStart?: number;
+  lineEnd?: number;
+  head?: number;
+  tail?: number;
+  linesRead?: number;
+  hasMoreLines?: boolean;
   error?: string;
 }
 
@@ -239,6 +246,13 @@ async function readFilesInParallel(
           content: result.content,
           truncated: result.truncated,
           totalLines: result.totalLines,
+          readMode: result.readMode,
+          lineStart: result.lineStart,
+          lineEnd: result.lineEnd,
+          head: result.head,
+          tail: result.tail,
+          linesRead: result.linesRead,
+          hasMoreLines: result.hasMoreLines,
         },
       };
     },

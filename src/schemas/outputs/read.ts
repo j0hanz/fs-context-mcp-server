@@ -9,6 +9,24 @@ export const ReadFileOutputSchema = z.object({
   content: z.string().optional(),
   truncated: z.boolean().optional(),
   totalLines: z.number().optional(),
+  readMode: z.enum(['full', 'head', 'tail', 'lineRange']).optional(),
+  lineStart: z.number().optional(),
+  lineEnd: z.number().optional(),
+  head: z.number().optional(),
+  tail: z.number().optional(),
+  linesRead: z.number().optional(),
+  hasMoreLines: z.boolean().optional(),
+  effectiveOptions: z
+    .object({
+      encoding: z.string(),
+      maxSize: z.number(),
+      skipBinary: z.boolean(),
+      lineStart: z.number().optional(),
+      lineEnd: z.number().optional(),
+      head: z.number().optional(),
+      tail: z.number().optional(),
+    })
+    .optional(),
   error: ErrorSchema.optional(),
 });
 
@@ -21,10 +39,28 @@ export const ReadMultipleFilesOutputSchema = z.object({
         content: z.string().optional(),
         truncated: z.boolean().optional(),
         totalLines: z.number().optional(),
+        readMode: z.enum(['full', 'head', 'tail', 'lineRange']).optional(),
+        lineStart: z.number().optional(),
+        lineEnd: z.number().optional(),
+        head: z.number().optional(),
+        tail: z.number().optional(),
+        linesRead: z.number().optional(),
+        hasMoreLines: z.boolean().optional(),
         error: z.string().optional(),
       })
     )
     .optional(),
   summary: BatchSummarySchema.optional(),
+  effectiveOptions: z
+    .object({
+      encoding: z.string(),
+      maxSize: z.number(),
+      maxTotalSize: z.number(),
+      head: z.number().optional(),
+      tail: z.number().optional(),
+      lineStart: z.number().optional(),
+      lineEnd: z.number().optional(),
+    })
+    .optional(),
   error: ErrorSchema.optional(),
 });

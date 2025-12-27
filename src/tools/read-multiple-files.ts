@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { joinLines } from '../config/formatting.js';
+import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations.js';
 import {
@@ -29,7 +30,16 @@ type ReadMultipleStructuredResult = z.infer<
 >;
 
 function buildStructuredResult(
-  results: Awaited<ReturnType<typeof readMultipleFiles>>
+  results: Awaited<ReturnType<typeof readMultipleFiles>>,
+  effectiveOptions: {
+    encoding: BufferEncoding;
+    maxSize: number;
+    maxTotalSize: number;
+    head?: number;
+    tail?: number;
+    lineStart?: number;
+    lineEnd?: number;
+  }
 ): ReadMultipleStructuredResult {
   const succeeded = results.filter((r) => r.content !== undefined).length;
   const failed = results.filter((r) => r.error !== undefined).length;
@@ -42,6 +52,7 @@ function buildStructuredResult(
       succeeded,
       failed,
     },
+    effectiveOptions,
   };
 }
 
@@ -56,7 +67,14 @@ function formatReadMultipleResult(
 ): string {
   if (result.content !== undefined) {
     const note = buildReadMultipleNote(result);
-    return joinLines([`=== ${result.path} ===`, `${result.content}${note}`]);
+    const rangeNote = buildReadMultipleRangeNote(result);
+    const footer = [rangeNote, note].filter((value): value is string =>
+      Boolean(value)
+    );
+    const contentBlock = footer.length
+      ? joinLines([result.content, ...footer])
+      : result.content;
+    return joinLines([`=== ${result.path} ===`, contentBlock]);
   }
   return joinLines([
     `=== ${result.path} ===`,
@@ -69,9 +87,26 @@ function buildReadMultipleNote(
 ): string {
   if (result.truncated !== true) return '';
   if (result.totalLines !== undefined) {
-    return `\n[Truncated. Total lines: ${result.totalLines}]`;
+    return `[Truncated. Total lines: ${result.totalLines}]`;
   }
-  return '\n[Truncated]';
+  return '[Truncated]';
+}
+
+function buildReadMultipleRangeNote(
+  result: Awaited<ReturnType<typeof readMultipleFiles>>[number]
+): string | undefined {
+  if (result.readMode === 'lineRange') {
+    if (result.lineStart !== undefined && result.lineEnd !== undefined) {
+      return `Showing lines ${result.lineStart}-${result.lineEnd}`;
+    }
+  }
+  if (result.readMode === 'head' && result.head !== undefined) {
+    return `Showing first ${String(result.head)} lines`;
+  }
+  if (result.readMode === 'tail' && result.tail !== undefined) {
+    return `Showing last ${String(result.tail)} lines`;
+  }
+  return undefined;
 }
 
 async function handleReadMultipleFiles(
@@ -93,20 +128,29 @@ async function handleReadMultipleFiles(
     args.lineStart !== undefined || args.lineEnd !== undefined;
   assertLineRangeComplete(args.lineStart, args.lineEnd, pathLabel);
   assertNoMixedRangeOptions(hasHeadTail, hasLineRange, pathLabel);
-  const results = await readMultipleFiles(args.paths, {
-    encoding: args.encoding,
-    maxSize: args.maxSize,
-    maxTotalSize: args.maxTotalSize,
+  const effectiveOptions = {
+    encoding: args.encoding ?? 'utf-8',
+    maxSize: Math.min(args.maxSize ?? MAX_TEXT_FILE_SIZE, MAX_TEXT_FILE_SIZE),
+    maxTotalSize: args.maxTotalSize ?? 100 * 1024 * 1024,
     head: args.head,
     tail: args.tail,
     lineStart: args.lineStart,
     lineEnd: args.lineEnd,
+  };
+  const results = await readMultipleFiles(args.paths, {
+    encoding: effectiveOptions.encoding,
+    maxSize: effectiveOptions.maxSize,
+    maxTotalSize: effectiveOptions.maxTotalSize,
+    head: effectiveOptions.head,
+    tail: effectiveOptions.tail,
+    lineStart: effectiveOptions.lineStart,
+    lineEnd: effectiveOptions.lineEnd,
     signal,
   });
 
   return buildToolResponse(
     buildTextResult(results),
-    buildStructuredResult(results)
+    buildStructuredResult(results, effectiveOptions)
   );
 }
 

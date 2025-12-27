@@ -23,13 +23,11 @@ import {
 type SearchContentArgs = z.infer<z.ZodObject<typeof SearchContentInputSchema>>;
 type SearchContentStructuredResult = z.infer<typeof SearchContentOutputSchema>;
 
-type SearchContentOptions = Parameters<typeof searchContent>[2];
-
-function buildSearchContentOptions(
+async function handleSearchContent(
   args: SearchContentArgs,
   signal?: AbortSignal
-): SearchContentOptions {
-  return {
+): Promise<ToolResponse<SearchContentStructuredResult>> {
+  const effectiveOptions = {
     filePattern: args.filePattern,
     excludePatterns: args.excludePatterns,
     caseSensitive: args.caseSensitive,
@@ -44,24 +42,17 @@ function buildSearchContentOptions(
     isLiteral: args.isLiteral,
     baseNameMatch: args.baseNameMatch,
     caseSensitiveFileMatch: args.caseSensitiveFileMatch,
-    signal,
   };
-}
 
-async function handleSearchContent(
-  args: SearchContentArgs,
-  signal?: AbortSignal
-): Promise<ToolResponse<SearchContentStructuredResult>> {
-  const result = await searchContent(
-    args.path,
-    args.pattern,
-    buildSearchContentOptions(args, signal)
-  );
+  const result = await searchContent(args.path, args.pattern, {
+    ...effectiveOptions,
+    signal,
+  });
 
-  return buildToolResponse(
-    buildTextResult(result),
-    buildStructuredResult(result)
-  );
+  const structured = buildStructuredResult(result);
+  structured.effectiveOptions = effectiveOptions;
+
+  return buildToolResponse(buildTextResult(result), structured);
 }
 
 const SEARCH_CONTENT_TOOL = {

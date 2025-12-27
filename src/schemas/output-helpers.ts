@@ -7,6 +7,10 @@ export const TraversalSummarySchema = z.object({
   totalDirectories: z.number(),
   maxDepthReached: z.number().optional(),
   truncated: z.boolean(),
+  stoppedReason: z
+    .enum(['maxEntries', 'aborted'])
+    .optional()
+    .describe('Reason traversal stopped early'),
   skippedInaccessible: z.number().optional(),
   symlinksNotFollowed: z
     .number()
@@ -14,6 +18,14 @@ export const TraversalSummarySchema = z.object({
     .describe(
       'Number of symbolic links encountered but not followed (for security)'
     ),
+  entriesScanned: z
+    .number()
+    .optional()
+    .describe('Total number of directory entries scanned before filtering'),
+  entriesVisible: z
+    .number()
+    .optional()
+    .describe('Entries remaining after hidden/exclude filters'),
 });
 
 export const BatchSummarySchema = z.object({
