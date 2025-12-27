@@ -24,12 +24,17 @@ interface ListDirectoryOptions {
   sortBy?: 'name' | 'size' | 'modified' | 'type';
   includeSymlinkTargets?: boolean;
   pattern?: string;
+  signal?: AbortSignal;
 }
 
+type NormalizedListDirectoryOptions = Required<
+  Omit<ListDirectoryOptions, 'signal'>
+>;
+
 function normalizeListDirectoryOptions(
-  options: ListDirectoryOptions
-): Required<ListDirectoryOptions> {
-  const defaults: Required<ListDirectoryOptions> = {
+  options: Omit<ListDirectoryOptions, 'signal'>
+): NormalizedListDirectoryOptions {
+  const defaults: NormalizedListDirectoryOptions = {
     recursive: false,
     includeHidden: false,
     excludePatterns: [],
@@ -60,11 +65,12 @@ export async function listDirectory(
   dirPath: string,
   options: ListDirectoryOptions = {}
 ): Promise<ListDirectoryResult> {
-  const normalized = normalizeListDirectoryOptions(options);
+  const { signal, ...rest } = options;
+  const normalized = normalizeListDirectoryOptions(rest);
 
   const basePath = await validateExistingDirectory(dirPath);
   const state = initListState();
-  const shouldStop = createStopChecker(normalized.maxEntries, state);
+  const shouldStop = createStopChecker(normalized.maxEntries, state, signal);
   const config: ListDirectoryConfig = {
     basePath,
     recursive: normalized.recursive,
@@ -74,13 +80,15 @@ export async function listDirectory(
     maxEntries: normalized.maxEntries,
     includeSymlinkTargets: normalized.includeSymlinkTargets,
     pattern: normalized.pattern,
+    signal,
   };
 
   await runWorkQueue<{ currentPath: string; depth: number }>(
     [{ currentPath: basePath, depth: 0 }],
     async (params, enqueue) =>
       handleDirectory(params, enqueue, config, state, shouldStop),
-    DIR_TRAVERSAL_CONCURRENCY
+    DIR_TRAVERSAL_CONCURRENCY,
+    signal
   );
 
   sortByField(state.entries, normalized.sortBy);

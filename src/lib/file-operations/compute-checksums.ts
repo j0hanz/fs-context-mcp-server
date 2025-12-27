@@ -21,6 +21,7 @@ interface ComputeChecksumsOptions {
   algorithm?: ChecksumAlgorithm;
   encoding?: ChecksumEncoding;
   maxFileSize?: number;
+  signal?: AbortSignal;
 }
 
 const DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
@@ -209,7 +210,8 @@ export async function computeChecksums(
 ): Promise<ComputeChecksumsResult> {
   if (paths.length === 0) return buildEmptyResult();
 
-  const { algorithm, encoding, maxFileSize } = normalizeComputeOptions(options);
+  const { signal, ...rest } = options;
+  const { algorithm, encoding, maxFileSize } = normalizeComputeOptions(rest);
 
   const output = createOutputSkeleton(paths, (filePath) => ({
     path: filePath,
@@ -227,7 +229,8 @@ export async function computeChecksums(
         maxFileSize
       ),
     }),
-    PARALLEL_CONCURRENCY
+    PARALLEL_CONCURRENCY,
+    signal
   );
 
   applyParallelResults(output, results, errors, paths, (filePath, error) => ({

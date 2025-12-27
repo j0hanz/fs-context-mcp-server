@@ -35,6 +35,14 @@ export function initSearchFilesState(): SearchFilesState {
   };
 }
 
+function assertNotAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    const error = new Error('Search aborted');
+    error.name = 'AbortError';
+    throw error;
+  }
+}
+
 function markTruncated(
   state: SearchFilesState,
   reason: SearchStopReason
@@ -151,9 +159,11 @@ async function processBatch(
     deadlineMs?: number;
     maxFilesScanned?: number;
     maxResults: number;
-  }
+  },
+  signal?: AbortSignal
 ): Promise<void> {
   if (batch.length === 0) return;
+  assertNotAborted(signal);
   if (shouldStopProcessing(state, options)) return;
 
   const toProcess = batch.splice(0, batch.length);
@@ -162,6 +172,7 @@ async function processBatch(
   );
 
   for (const result of settled) {
+    assertNotAborted(signal);
     if (shouldStopProcessing(state, options)) break;
     recordSettledResult(state, result);
   }
@@ -170,18 +181,20 @@ async function processBatch(
 export async function scanStream(
   stream: AsyncIterable<string | Buffer>,
   state: SearchFilesState,
-  options: ScanStreamOptions
+  options: ScanStreamOptions,
+  signal?: AbortSignal
 ): Promise<void> {
   const batch: string[] = [];
 
   for await (const entry of stream) {
+    assertNotAborted(signal);
     if (shouldStopProcessing(state, options)) break;
-    const stop = await handleStreamEntry(entry, state, options, batch);
+    const stop = await handleStreamEntry(entry, state, options, batch, signal);
     if (stop) break;
   }
 
   if (!state.truncated) {
-    await processBatch(batch, state, options);
+    await processBatch(batch, state, options, signal);
   }
 }
 
@@ -189,15 +202,17 @@ async function handleStreamEntry(
   entry: string | Buffer,
   state: SearchFilesState,
   options: ScanStreamOptions,
-  batch: string[]
+  batch: string[],
+  signal?: AbortSignal
 ): Promise<boolean> {
+  assertNotAborted(signal);
   const matchPath = typeof entry === 'string' ? entry : String(entry);
   state.filesScanned++;
   if (shouldStopProcessing(state, options)) return true;
 
   batch.push(matchPath);
   if (batch.length >= PARALLEL_CONCURRENCY) {
-    await processBatch(batch, state, options);
+    await processBatch(batch, state, options, signal);
   }
 
   return false;

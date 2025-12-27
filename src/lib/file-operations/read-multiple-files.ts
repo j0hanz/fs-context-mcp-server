@@ -30,6 +30,7 @@ interface ReadMultipleOptions {
   tail?: number;
   lineStart?: number;
   lineEnd?: number;
+  signal?: AbortSignal;
 }
 
 function assertLineRangeComplete(
@@ -120,7 +121,8 @@ async function collectFileBudget(
   filePaths: string[],
   isPartialRead: boolean,
   maxTotalSize: number,
-  maxSize: number
+  maxSize: number,
+  signal?: AbortSignal
 ): Promise<{ skippedBudget: Set<number> }> {
   const skippedBudget = new Set<number>();
 
@@ -132,7 +134,8 @@ async function collectFileBudget(
       const stats = await fs.stat(validPath);
       return { filePath, index, size: stats.size };
     },
-    PARALLEL_CONCURRENCY
+    PARALLEL_CONCURRENCY,
+    signal
   );
 
   // Determine which files to skip based on budget
@@ -212,7 +215,8 @@ function mapParallelErrors(
 
 async function readFilesInParallel(
   filesToProcess: { filePath: string; index: number }[],
-  options: NormalizedReadMultipleOptions
+  options: NormalizedReadMultipleOptions,
+  signal?: AbortSignal
 ): Promise<{
   results: { index: number; value: ReadMultipleResult }[];
   errors: { index: number; error: Error }[];
@@ -238,7 +242,8 @@ async function readFilesInParallel(
         },
       };
     },
-    PARALLEL_CONCURRENCY
+    PARALLEL_CONCURRENCY,
+    signal
   );
 }
 
@@ -248,7 +253,8 @@ export async function readMultipleFiles(
 ): Promise<ReadMultipleResult[]> {
   if (filePaths.length === 0) return [];
 
-  const normalized = normalizeReadMultipleOptions(options);
+  const { signal, ...rest } = options;
+  const normalized = normalizeReadMultipleOptions(rest);
   assertExclusiveReadOptions(
     normalized.lineRange,
     normalized.head,
@@ -261,14 +267,16 @@ export async function readMultipleFiles(
     filePaths,
     partialRead,
     normalized.maxTotalSize,
-    normalized.maxSize
+    normalized.maxSize,
+    signal
   );
 
   const filesToProcess = buildProcessTargets(filePaths, skippedBudget);
 
   const { results, errors } = await readFilesInParallel(
     filesToProcess,
-    normalized
+    normalized,
+    signal
   );
   const mappedErrors = mapParallelErrors(errors, filesToProcess);
 

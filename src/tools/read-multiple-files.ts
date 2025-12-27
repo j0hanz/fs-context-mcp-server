@@ -82,16 +82,19 @@ function assertNoMixedRangeOptions(
   );
 }
 
-async function handleReadMultipleFiles(args: {
-  paths: string[];
-  encoding?: BufferEncoding;
-  maxSize?: number;
-  maxTotalSize?: number;
-  head?: number;
-  tail?: number;
-  lineStart?: number;
-  lineEnd?: number;
-}): Promise<ToolResponse<ReadMultipleStructuredResult>> {
+async function handleReadMultipleFiles(
+  args: {
+    paths: string[];
+    encoding?: BufferEncoding;
+    maxSize?: number;
+    maxTotalSize?: number;
+    head?: number;
+    tail?: number;
+    lineStart?: number;
+    lineEnd?: number;
+  },
+  signal?: AbortSignal
+): Promise<ToolResponse<ReadMultipleStructuredResult>> {
   assertNoMixedRangeOptions(
     args.head !== undefined || args.tail !== undefined,
     args.lineStart !== undefined || args.lineEnd !== undefined,
@@ -105,6 +108,7 @@ async function handleReadMultipleFiles(args: {
     tail: args.tail,
     lineStart: args.lineStart,
     lineEnd: args.lineEnd,
+    signal,
   });
 
   return buildToolResponse(
@@ -131,10 +135,11 @@ const READ_MULTIPLE_FILES_TOOL = {
 
 export function registerReadMultipleFilesTool(server: McpServer): void {
   const handler = async (
-    args: ReadMultipleArgs
+    args: ReadMultipleArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<ReadMultipleStructuredResult>> => {
     try {
-      return await handleReadMultipleFiles(args);
+      return await handleReadMultipleFiles(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(error, ErrorCode.E_UNKNOWN);
     }

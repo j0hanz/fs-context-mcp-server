@@ -9,6 +9,8 @@ interface WorkQueueState<T> {
   queue: T[];
   inFlight: number;
   aborted: boolean;
+  errors: Error[];
+  abortReason?: Error;
   doneResolve?: () => void;
 }
 
@@ -25,9 +27,28 @@ function resolveIfDone<T>(state: WorkQueueState<T>): void {
   }
 }
 
+function createAbortError(): Error {
+  const error = new Error('Operation aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+function recordError<T>(state: WorkQueueState<T>, error: unknown): void {
+  const normalized = error instanceof Error ? error : new Error(String(error));
+  state.errors.push(normalized);
+  if (!state.aborted) {
+    state.aborted = true;
+    state.abortReason = normalized;
+  }
+  resolveIfDone(state);
+}
+
 function createAbortHandler<T>(state: WorkQueueState<T>): () => void {
   return (): void => {
-    state.aborted = true;
+    if (!state.aborted) {
+      state.aborted = true;
+      state.abortReason = createAbortError();
+    }
     resolveIfDone(state);
   };
 }
@@ -60,6 +81,7 @@ function startWorker<T>(
           '[runWorkQueue] Worker error:',
           error instanceof Error ? error.message : String(error)
         );
+        recordError(state, error);
       })
       .finally(() => {
         handleWorkerCompletion(state);
@@ -72,6 +94,7 @@ function startWorker<T>(
       '[runWorkQueue] Worker synchronous error:',
       error instanceof Error ? error.message : String(error)
     );
+    recordError(state, error);
     handleWorkerCompletion(state);
     if (!state.aborted) {
       maybeStartNext();
@@ -107,9 +130,15 @@ export async function runWorkQueue<T>(
     queue: [...initialItems],
     inFlight: 0,
     aborted: false,
+    errors: [],
   };
   const donePromise = createDonePromise(state);
   const onAbort = createAbortHandler(state);
+
+  if (signal?.aborted) {
+    state.aborted = true;
+    state.abortReason = createAbortError();
+  }
 
   signal?.addEventListener('abort', onAbort, { once: true });
 
@@ -122,12 +151,24 @@ export async function runWorkQueue<T>(
   } finally {
     signal?.removeEventListener('abort', onAbort);
   }
+
+  if (state.errors.length === 1) {
+    const error = state.errors[0];
+    throw error ?? new Error('Work queue failed');
+  }
+  if (state.errors.length > 1) {
+    throw new AggregateError(state.errors, 'Work queue failed');
+  }
+  if (state.abortReason) {
+    throw state.abortReason;
+  }
 }
 
 export async function processInParallel<T, R>(
   items: T[],
   processor: (item: T) => Promise<R>,
-  concurrency: number = PARALLEL_CONCURRENCY
+  concurrency: number = PARALLEL_CONCURRENCY,
+  signal?: AbortSignal
 ): Promise<ParallelResult<R>> {
   const results: R[] = [];
   const errors: { index: number; error: Error }[] = [];
@@ -148,7 +189,8 @@ export async function processInParallel<T, R>(
         errors.push({ index, error });
       }
     },
-    concurrency
+    concurrency,
+    signal
   );
 
   return { results, errors };

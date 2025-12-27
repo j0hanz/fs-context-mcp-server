@@ -109,31 +109,34 @@ function buildTextResult(
   return textOutput;
 }
 
-async function handleSearchFiles({
-  path: searchBasePath,
-  pattern,
-  excludePatterns,
-  maxResults,
-  sortBy,
-  maxDepth,
-  maxFilesScanned,
-  timeoutMs,
-  baseNameMatch,
-  skipSymlinks,
-  includeHidden,
-}: {
-  path: string;
-  pattern: string;
-  excludePatterns?: string[];
-  maxResults?: number;
-  sortBy?: 'name' | 'size' | 'modified' | 'path';
-  maxDepth?: number;
-  maxFilesScanned?: number;
-  timeoutMs?: number;
-  baseNameMatch?: boolean;
-  skipSymlinks?: boolean;
-  includeHidden?: boolean;
-}): Promise<ToolResponse<SearchFilesStructuredResult>> {
+async function handleSearchFiles(
+  {
+    path: searchBasePath,
+    pattern,
+    excludePatterns,
+    maxResults,
+    sortBy,
+    maxDepth,
+    maxFilesScanned,
+    timeoutMs,
+    baseNameMatch,
+    skipSymlinks,
+    includeHidden,
+  }: {
+    path: string;
+    pattern: string;
+    excludePatterns?: string[];
+    maxResults?: number;
+    sortBy?: 'name' | 'size' | 'modified' | 'path';
+    maxDepth?: number;
+    maxFilesScanned?: number;
+    timeoutMs?: number;
+    baseNameMatch?: boolean;
+    skipSymlinks?: boolean;
+    includeHidden?: boolean;
+  },
+  signal?: AbortSignal
+): Promise<ToolResponse<SearchFilesStructuredResult>> {
   const result = await searchFiles(searchBasePath, pattern, excludePatterns, {
     maxResults,
     sortBy,
@@ -143,6 +146,7 @@ async function handleSearchFiles({
     baseNameMatch,
     skipSymlinks,
     includeHidden,
+    signal,
   });
   return buildToolResponse(
     buildTextResult(result),
@@ -168,10 +172,11 @@ const SEARCH_FILES_TOOL = {
 
 export function registerSearchFilesTool(server: McpServer): void {
   const handler = async (
-    args: SearchFilesArgs
+    args: SearchFilesArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<SearchFilesStructuredResult>> => {
     try {
-      return await handleSearchFiles(args);
+      return await handleSearchFiles(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(
         error,

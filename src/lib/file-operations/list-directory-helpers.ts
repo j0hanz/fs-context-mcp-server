@@ -31,6 +31,7 @@ export interface ListDirectoryConfig {
   maxEntries?: number;
   includeSymlinkTargets: boolean;
   pattern?: string;
+  signal?: AbortSignal;
 }
 
 export function initListState(): ListDirectoryState {
@@ -47,9 +48,11 @@ export function initListState(): ListDirectoryState {
 
 export function createStopChecker(
   maxEntries: number | undefined,
-  state: ListDirectoryState
+  state: ListDirectoryState,
+  signal?: AbortSignal
 ): () => boolean {
   return (): boolean => {
+    if (signal?.aborted) return true;
     if (maxEntries !== undefined && state.entries.length >= maxEntries) {
       state.truncated = true;
       return true;
@@ -230,7 +233,8 @@ async function flushBatch(
         depth: params.depth,
         maxDepth: config.maxDepth,
       }),
-    PARALLEL_CONCURRENCY
+    PARALLEL_CONCURRENCY,
+    config.signal
   );
 
   state.skippedInaccessible += errors.length;

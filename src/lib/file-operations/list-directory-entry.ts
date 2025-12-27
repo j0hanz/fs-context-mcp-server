@@ -3,7 +3,10 @@ import * as path from 'node:path';
 import type { Dirent, Stats } from 'node:fs';
 
 import type { DirectoryEntry } from '../../config/types.js';
-import { validateExistingPath } from '../path-validation.js';
+import {
+  validateExistingPath,
+  validateExistingPathDetailed,
+} from '../path-validation.js';
 
 export interface DirectoryItemResult {
   entry: DirectoryEntry;
@@ -45,6 +48,7 @@ async function buildSymlinkResult(
   if (includeSymlinkTargets) {
     try {
       symlinkTarget = await fs.readlink(fullPath);
+      await validateExistingPathDetailed(fullPath);
     } catch {
       symlinkTarget = undefined;
     }

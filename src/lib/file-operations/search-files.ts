@@ -26,7 +26,8 @@ export async function searchFiles(
   // Validate pattern
   validateGlobPatternOrThrow(pattern, validPath);
 
-  const normalized = normalizeSearchFilesOptions(options);
+  const { signal, ...rest } = options;
+  const normalized = normalizeSearchFilesOptions(rest);
   if (!normalized.skipSymlinks) {
     throw new McpError(
       ErrorCode.E_INVALID_INPUT,
@@ -47,7 +48,7 @@ export async function searchFiles(
   );
 
   try {
-    await scanStream(stream, state, buildScanOptions(normalized));
+    await scanStream(stream, state, buildScanOptions(normalized), signal);
   } finally {
     safeDestroy(stream);
   }

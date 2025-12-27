@@ -14,6 +14,7 @@ export interface SearchFilesOptions {
   baseNameMatch?: boolean;
   skipSymlinks?: boolean;
   includeHidden?: boolean;
+  signal?: AbortSignal;
 }
 
 interface NormalizedSearchFilesOptions {
@@ -28,9 +29,9 @@ interface NormalizedSearchFilesOptions {
 }
 
 export function normalizeSearchFilesOptions(
-  options: SearchFilesOptions
+  options: Omit<SearchFilesOptions, 'signal'>
 ): NormalizedSearchFilesOptions {
-  const defaults: Required<Omit<SearchFilesOptions, 'maxDepth'>> & {
+  const defaults: Required<Omit<SearchFilesOptions, 'maxDepth' | 'signal'>> & {
     maxDepth: number | undefined;
   } = {
     maxResults: DEFAULT_MAX_RESULTS,

@@ -19,6 +19,7 @@ import {
 import { registerAllTools } from './tools/index.js';
 
 const SERVER_VERSION = packageJson.version;
+const ROOTS_TIMEOUT_MS = 5000;
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 let serverInstructions = `
@@ -161,7 +162,9 @@ async function recomputeAllowedDirectories(): Promise<void> {
 
 async function updateRootsFromClient(server: McpServer): Promise<void> {
   try {
-    const rootsResult = await server.server.listRoots();
+    const rootsResult = await server.server.listRoots(undefined, {
+      timeout: ROOTS_TIMEOUT_MS,
+    });
     const rawRoots = (rootsResult as unknown as { roots?: unknown }).roots;
     const roots = Array.isArray(rawRoots) ? rawRoots : [];
 

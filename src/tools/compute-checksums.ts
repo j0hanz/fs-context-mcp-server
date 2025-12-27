@@ -61,12 +61,14 @@ function getSummaryAlgorithm(result: ComputeChecksumsResult): string {
 }
 
 async function handleComputeChecksums(
-  args: ComputeChecksumsArgs
+  args: ComputeChecksumsArgs,
+  signal?: AbortSignal
 ): Promise<ToolResponse<ComputeChecksumsStructuredResult>> {
   const result = await computeChecksums(args.paths, {
     algorithm: args.algorithm,
     encoding: args.encoding,
     maxFileSize: args.maxFileSize,
+    signal,
   });
 
   return buildToolResponse(
@@ -94,10 +96,11 @@ const COMPUTE_CHECKSUMS_TOOL = {
 
 export function registerComputeChecksumsTool(server: McpServer): void {
   const handler = async (
-    args: ComputeChecksumsArgs
+    args: ComputeChecksumsArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<ComputeChecksumsStructuredResult>> => {
     try {
-      return await handleComputeChecksums(args);
+      return await handleComputeChecksums(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(error, ErrorCode.E_UNKNOWN);
     }

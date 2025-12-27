@@ -123,27 +123,30 @@ function buildTextResult(
   return textOutput;
 }
 
-async function handleListDirectory({
-  path: dirPath,
-  recursive,
-  includeHidden,
-  excludePatterns,
-  maxDepth,
-  maxEntries,
-  sortBy,
-  includeSymlinkTargets,
-  pattern,
-}: {
-  path: string;
-  recursive?: boolean;
-  includeHidden?: boolean;
-  excludePatterns?: string[];
-  maxDepth?: number;
-  maxEntries?: number;
-  sortBy?: 'name' | 'size' | 'modified' | 'type';
-  includeSymlinkTargets?: boolean;
-  pattern?: string;
-}): Promise<ToolResponse<ListDirectoryStructuredResult>> {
+async function handleListDirectory(
+  {
+    path: dirPath,
+    recursive,
+    includeHidden,
+    excludePatterns,
+    maxDepth,
+    maxEntries,
+    sortBy,
+    includeSymlinkTargets,
+    pattern,
+  }: {
+    path: string;
+    recursive?: boolean;
+    includeHidden?: boolean;
+    excludePatterns?: string[];
+    maxDepth?: number;
+    maxEntries?: number;
+    sortBy?: 'name' | 'size' | 'modified' | 'type';
+    includeSymlinkTargets?: boolean;
+    pattern?: string;
+  },
+  signal?: AbortSignal
+): Promise<ToolResponse<ListDirectoryStructuredResult>> {
   const result = await listDirectory(dirPath, {
     recursive,
     includeHidden,
@@ -153,6 +156,7 @@ async function handleListDirectory({
     sortBy,
     includeSymlinkTargets,
     pattern,
+    signal,
   });
   const structured = buildStructuredResult(result);
   const textOutput = buildTextResult(result);
@@ -161,10 +165,11 @@ async function handleListDirectory({
 
 export function registerListDirectoryTool(server: McpServer): void {
   const handler = async (
-    args: ListDirectoryArgs
+    args: ListDirectoryArgs,
+    extra: { signal: AbortSignal }
   ): Promise<ToolResult<ListDirectoryStructuredResult>> => {
     try {
-      return await handleListDirectory(args);
+      return await handleListDirectory(args, extra.signal);
     } catch (error: unknown) {
       return buildToolErrorResponse(
         error,
