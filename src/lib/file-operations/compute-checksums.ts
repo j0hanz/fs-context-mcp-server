@@ -2,6 +2,8 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import type { Stats } from 'node:fs';
+import { Writable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 import type {
   ChecksumAlgorithm,
@@ -24,11 +26,6 @@ interface ComputeChecksumsOptions {
 const DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 const DEFAULT_ALGORITHM: ChecksumAlgorithm = 'sha256';
 const DEFAULT_ENCODING: ChecksumEncoding = 'hex';
-
-interface StreamState {
-  bytesRead: number;
-  settled: boolean;
-}
 
 function normalizeComputeOptions(options: ComputeChecksumsOptions): {
   algorithm: ChecksumAlgorithm;
@@ -129,10 +126,47 @@ function createTooLargeError(
   );
 }
 
-function settleOnce(state: StreamState, action: () => void): void {
-  if (state.settled) return;
-  state.settled = true;
-  action();
+class HashSink extends Writable {
+  private bytesRead = 0;
+
+  constructor(
+    private readonly hash: crypto.Hash,
+    private readonly maxFileSize: number,
+    private readonly requestedPath: string
+  ) {
+    super();
+  }
+
+  override _write(
+    chunk: Buffer | string,
+    encoding: BufferEncoding,
+    callback: (error?: Error | null) => void
+  ): void {
+    const size =
+      typeof chunk === 'string'
+        ? Buffer.byteLength(chunk, encoding)
+        : chunk.length;
+    this.bytesRead += size;
+
+    if (this.bytesRead > this.maxFileSize) {
+      callback(
+        createTooLargeError(
+          this.bytesRead,
+          this.maxFileSize,
+          this.requestedPath
+        )
+      );
+      return;
+    }
+
+    if (typeof chunk === 'string') {
+      this.hash.update(chunk, encoding);
+    } else {
+      this.hash.update(chunk);
+    }
+
+    callback();
+  }
 }
 
 function computeHashStream(
@@ -141,42 +175,9 @@ function computeHashStream(
   maxFileSize: number,
   requestedPath: string
 ): Promise<crypto.Hash> {
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash(algorithm);
-    const stream = createReadStream(filePath);
-    const state: StreamState = { bytesRead: 0, settled: false };
-
-    stream.on('data', (chunk: Buffer | string) => {
-      const chunkSize =
-        typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
-      state.bytesRead += chunkSize;
-      if (state.bytesRead > maxFileSize) {
-        const error = createTooLargeError(
-          state.bytesRead,
-          maxFileSize,
-          requestedPath
-        );
-        settleOnce(state, () => {
-          stream.destroy(error);
-          reject(error);
-        });
-        return;
-      }
-      hash.update(chunk);
-    });
-
-    stream.on('end', () => {
-      settleOnce(state, () => {
-        resolve(hash);
-      });
-    });
-
-    stream.on('error', (error) => {
-      settleOnce(state, () => {
-        reject(error);
-      });
-    });
-  });
+  const hash = crypto.createHash(algorithm);
+  const sink = new HashSink(hash, maxFileSize, requestedPath);
+  return pipeline(createReadStream(filePath), sink).then(() => hash);
 }
 
 function calculateSummary(results: ChecksumResult[]): {

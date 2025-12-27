@@ -160,6 +160,7 @@ All configuration values have sensible defaults and are optional. Only configure
 
 | Variable                         | Default         | Range       | Description                              |
 | -------------------------------- | --------------- | ----------- | ---------------------------------------- |
+| `UV_THREADPOOL_SIZE`             | `4`             | 1-128       | libuv threadpool size (set before start) |
 | `FILESYSTEM_CONTEXT_CONCURRENCY` | Auto (2x cores) | 1-100       | Maximum parallel file operations         |
 | `TRAVERSAL_JOBS`                 | 8               | 1-50        | Directory traversal concurrency          |
 | `REGEX_TIMEOUT`                  | 100             | 50-1000     | Regex matching timeout (milliseconds)    |
