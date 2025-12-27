@@ -9,6 +9,7 @@ export interface SearchOptions {
   deadlineMs?: number;
   signal?: AbortSignal;
   currentMatchCount: number;
+  getCurrentMatchCount?: () => number;
   isLiteral?: boolean;
   searchString?: string;
   caseSensitive?: boolean;
@@ -25,6 +26,7 @@ export interface ScanResult {
   skippedTooLarge: boolean;
   skippedBinary: boolean;
   scanned: boolean;
+  hitMaxResults: boolean;
 }
 
 export interface SearchState {

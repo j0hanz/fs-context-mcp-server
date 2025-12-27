@@ -80,6 +80,10 @@ function updateState(state: SearchState, result: ScanResult): void {
     state.filesMatched++;
   }
   state.linesSkippedDueToRegexTimeout += result.linesSkippedDueToRegexTimeout;
+  if (result.hitMaxResults && !state.truncated) {
+    state.truncated = true;
+    state.stoppedReason = 'maxResults';
+  }
 }
 
 function buildProcessorBaseOptions(
@@ -193,6 +197,7 @@ function createProcessingTask(
       const result = await processFile(rawPath, matcher, {
         ...processorBaseOptions,
         currentMatchCount: state.matches.length,
+        getCurrentMatchCount: () => state.matches.length,
         signal,
       });
       updateState(state, result);

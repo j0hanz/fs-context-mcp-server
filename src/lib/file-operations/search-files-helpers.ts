@@ -136,6 +136,17 @@ async function toSearchResult(
   }
 }
 
+function getCachedSearchResult(
+  match: string,
+  cache: Map<string, Promise<SearchResult | { error: Error }>>
+): Promise<SearchResult | { error: Error }> {
+  const cached = cache.get(match);
+  if (cached) return cached;
+  const pending = toSearchResult(match);
+  cache.set(match, pending);
+  return pending;
+}
+
 function recordSettledResult(
   state: SearchFilesState,
   result: PromiseSettledResult<SearchResult | { error: Error }>
@@ -160,6 +171,7 @@ async function processBatch(
     maxFilesScanned?: number;
     maxResults: number;
   },
+  cache: Map<string, Promise<SearchResult | { error: Error }>>,
   signal?: AbortSignal
 ): Promise<void> {
   if (batch.length === 0) return;
@@ -168,7 +180,7 @@ async function processBatch(
 
   const toProcess = batch.splice(0, batch.length);
   const settled = await Promise.allSettled(
-    toProcess.map(async (match) => toSearchResult(match))
+    toProcess.map(async (match) => getCachedSearchResult(match, cache))
   );
 
   for (const result of settled) {
@@ -185,16 +197,24 @@ export async function scanStream(
   signal?: AbortSignal
 ): Promise<void> {
   const batch: string[] = [];
+  const cache = new Map<string, Promise<SearchResult | { error: Error }>>();
 
   for await (const entry of stream) {
     assertNotAborted(signal);
     if (shouldStopProcessing(state, options)) break;
-    const stop = await handleStreamEntry(entry, state, options, batch, signal);
+    const stop = await handleStreamEntry(
+      entry,
+      state,
+      options,
+      batch,
+      cache,
+      signal
+    );
     if (stop) break;
   }
 
   if (!state.truncated) {
-    await processBatch(batch, state, options, signal);
+    await processBatch(batch, state, options, cache, signal);
   }
 }
 
@@ -203,6 +223,7 @@ async function handleStreamEntry(
   state: SearchFilesState,
   options: ScanStreamOptions,
   batch: string[],
+  cache: Map<string, Promise<SearchResult | { error: Error }>>,
   signal?: AbortSignal
 ): Promise<boolean> {
   assertNotAborted(signal);
@@ -212,7 +233,7 @@ async function handleStreamEntry(
 
   batch.push(matchPath);
   if (batch.length >= PARALLEL_CONCURRENCY) {
-    await processBatch(batch, state, options, signal);
+    await processBatch(batch, state, options, cache, signal);
   }
 
   return false;

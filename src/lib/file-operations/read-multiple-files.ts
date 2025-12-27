@@ -1,8 +1,13 @@
 import * as fs from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 
 import { MAX_TEXT_FILE_SIZE, PARALLEL_CONCURRENCY } from '../constants.js';
 import { ErrorCode, McpError } from '../errors.js';
-import { processInParallel, readFile } from '../fs-helpers.js';
+import {
+  processInParallel,
+  readFile,
+  readFileWithStats,
+} from '../fs-helpers.js';
 import { validateExistingPath } from '../path-validation.js';
 
 interface ReadMultipleResult {
@@ -18,6 +23,13 @@ interface ReadMultipleResult {
   linesRead?: number;
   hasMoreLines?: boolean;
   error?: string;
+}
+
+interface ValidatedFileInfo {
+  index: number;
+  filePath: string;
+  validPath: string;
+  stats: Stats;
 }
 
 interface NormalizedReadMultipleOptions {
@@ -130,8 +142,12 @@ async function collectFileBudget(
   maxTotalSize: number,
   maxSize: number,
   signal?: AbortSignal
-): Promise<{ skippedBudget: Set<number> }> {
+): Promise<{
+  skippedBudget: Set<number>;
+  validated: Map<number, ValidatedFileInfo>;
+}> {
   const skippedBudget = new Set<number>();
+  const validated = new Map<number, ValidatedFileInfo>();
 
   // Gather file sizes
   const { results } = await processInParallel(
@@ -139,7 +155,7 @@ async function collectFileBudget(
     async ({ filePath, index }) => {
       const validPath = await validateExistingPath(filePath);
       const stats = await fs.stat(validPath);
-      return { filePath, index, size: stats.size };
+      return { filePath, index, validPath, stats };
     },
     PARALLEL_CONCURRENCY,
     signal
@@ -150,9 +166,15 @@ async function collectFileBudget(
   const orderedResults = [...results].sort((a, b) => a.index - b.index);
 
   for (const result of orderedResults) {
+    validated.set(result.index, {
+      index: result.index,
+      filePath: result.filePath,
+      validPath: result.validPath,
+      stats: result.stats,
+    });
     const estimatedSize = isPartialRead
-      ? Math.min(result.size, maxSize)
-      : result.size;
+      ? Math.min(result.stats.size, maxSize)
+      : result.stats.size;
     if (totalSize + estimatedSize > maxTotalSize) {
       skippedBudget.add(result.index);
       continue;
@@ -160,15 +182,31 @@ async function collectFileBudget(
     totalSize += estimatedSize;
   }
 
-  return { skippedBudget };
+  return { skippedBudget, validated };
 }
 
 function buildProcessTargets(
   filePaths: string[],
-  skippedBudget: Set<number>
-): { filePath: string; index: number }[] {
+  skippedBudget: Set<number>,
+  validated: Map<number, ValidatedFileInfo>
+): {
+  filePath: string;
+  index: number;
+  validPath?: string;
+  stats?: Stats;
+}[] {
   return filePaths
-    .map((filePath, index) => ({ filePath, index }))
+    .map((filePath, index) => {
+      const cached = validated.get(index);
+      return cached
+        ? {
+            filePath,
+            index,
+            validPath: cached.validPath,
+            stats: cached.stats,
+          }
+        : { filePath, index };
+    })
     .filter(({ index }) => !skippedBudget.has(index));
 }
 
@@ -221,7 +259,12 @@ function mapParallelErrors(
 }
 
 async function readFilesInParallel(
-  filesToProcess: { filePath: string; index: number }[],
+  filesToProcess: {
+    filePath: string;
+    index: number;
+    validPath?: string;
+    stats?: Stats;
+  }[],
   options: NormalizedReadMultipleOptions,
   signal?: AbortSignal
 ): Promise<{
@@ -230,14 +273,18 @@ async function readFilesInParallel(
 }> {
   return await processInParallel(
     filesToProcess,
-    async ({ filePath, index }) => {
-      const result = await readFile(filePath, {
+    async ({ filePath, index, validPath, stats }) => {
+      const readOptions = {
         encoding: options.encoding,
         maxSize: options.maxSize,
         head: options.head,
         tail: options.tail,
         lineRange: options.lineRange,
-      });
+      };
+      const result =
+        validPath && stats
+          ? await readFileWithStats(filePath, validPath, stats, readOptions)
+          : await readFile(filePath, readOptions);
 
       return {
         index,
@@ -277,7 +324,7 @@ export async function readMultipleFiles(
 
   const output = createOutputSkeleton(filePaths);
   const partialRead = isPartialRead(normalized);
-  const { skippedBudget } = await collectFileBudget(
+  const { skippedBudget, validated } = await collectFileBudget(
     filePaths,
     partialRead,
     normalized.maxTotalSize,
@@ -285,7 +332,11 @@ export async function readMultipleFiles(
     signal
   );
 
-  const filesToProcess = buildProcessTargets(filePaths, skippedBudget);
+  const filesToProcess = buildProcessTargets(
+    filePaths,
+    skippedBudget,
+    validated
+  );
 
   const { results, errors } = await readFilesInParallel(
     filesToProcess,

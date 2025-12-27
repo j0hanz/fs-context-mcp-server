@@ -7,6 +7,7 @@ interface ParallelResult<R> {
 
 interface WorkQueueState<T> {
   queue: T[];
+  head: number;
   inFlight: number;
   aborted: boolean;
   errors: Error[];
@@ -22,7 +23,7 @@ function createDonePromise(state: WorkQueueState<unknown>): Promise<void> {
 
 function resolveIfDone<T>(state: WorkQueueState<T>): void {
   if (state.inFlight !== 0) return;
-  if (state.queue.length === 0 || state.aborted) {
+  if (queueSize(state) === 0 || state.aborted) {
     state.doneResolve?.();
   }
 }
@@ -56,6 +57,17 @@ function createAbortHandler<T>(state: WorkQueueState<T>): () => void {
 function enqueueItem<T>(state: WorkQueueState<T>, item: T): void {
   if (state.aborted) return;
   state.queue.push(item);
+}
+
+function queueSize<T>(state: WorkQueueState<T>): number {
+  return state.queue.length - state.head;
+}
+
+function compactQueueIfNeeded<T>(state: WorkQueueState<T>): void {
+  if (state.head < 1024) return;
+  if (state.head * 2 < state.queue.length) return;
+  state.queue.splice(0, state.head);
+  state.head = 0;
 }
 
 function handleWorkerCompletion<T>(state: WorkQueueState<T>): void {
@@ -110,8 +122,10 @@ function createQueueProcessor<T>(
   const maybeStartNext = (): void => {
     if (state.aborted) return;
 
-    while (state.inFlight < concurrency && state.queue.length > 0) {
-      const next = state.queue.shift();
+    while (state.inFlight < concurrency && queueSize(state) > 0) {
+      const next = state.queue[state.head];
+      state.head += 1;
+      compactQueueIfNeeded(state);
       if (next === undefined) break;
       startWorker(state, next, worker, maybeStartNext);
     }
@@ -128,6 +142,7 @@ export async function runWorkQueue<T>(
 ): Promise<void> {
   const state: WorkQueueState<T> = {
     queue: [...initialItems],
+    head: 0,
     inFlight: 0,
     aborted: false,
     errors: [],

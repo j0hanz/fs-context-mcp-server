@@ -20,6 +20,7 @@ function createEmptyResult(overrides: Partial<ScanResult>): ScanResult {
     skippedTooLarge: false,
     skippedBinary: false,
     scanned: false,
+    hitMaxResults: false,
     ...overrides,
   };
 }
@@ -109,10 +110,17 @@ async function scanLines(
   matcher: Matcher,
   options: SearchOptions,
   contextManager: ContextManager
-): Promise<{ matches: ContentMatch[]; linesSkipped: number }> {
+): Promise<{
+  matches: ContentMatch[];
+  linesSkipped: number;
+  hitMaxResults: boolean;
+}> {
   const matches: ContentMatch[] = [];
   let linesSkipped = 0;
   let lineNumber = 0;
+  const getCurrentMatchCount =
+    options.getCurrentMatchCount ?? (() => options.currentMatchCount);
+  let hitMaxResults = false;
 
   for await (const line of iterateLines(
     stream,
@@ -122,10 +130,12 @@ async function scanLines(
     if (options.signal?.aborted) break;
     lineNumber++;
 
-    if (
-      (options.deadlineMs && Date.now() > options.deadlineMs) ||
-      options.currentMatchCount + matches.length >= options.maxResults
-    ) {
+    if (options.deadlineMs && Date.now() > options.deadlineMs) {
+      break;
+    }
+
+    if (getCurrentMatchCount() + matches.length >= options.maxResults) {
+      hitMaxResults = true;
       break;
     }
 
@@ -146,7 +156,7 @@ async function scanLines(
     );
   }
 
-  return { matches, linesSkipped };
+  return { matches, linesSkipped, hitMaxResults };
 }
 
 async function scanContent(
@@ -162,7 +172,7 @@ async function scanContent(
   });
 
   try {
-    const { matches, linesSkipped } = await scanLines(
+    const { matches, linesSkipped, hitMaxResults } = await scanLines(
       stream,
       displayPath,
       matcher,
@@ -176,6 +186,7 @@ async function scanContent(
       skippedTooLarge: false,
       skippedBinary: false,
       scanned: true,
+      hitMaxResults,
     };
   } finally {
     stream.destroy();

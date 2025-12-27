@@ -8,6 +8,8 @@ import { runWorkQueue } from '../fs-helpers.js';
 import { mergeDefined } from '../merge-defined.js';
 import { validateExistingDirectory } from '../path-validation.js';
 import {
+  buildExcludeMatchers,
+  buildPatternMatcher,
   createStopChecker,
   handleDirectory,
   initListState,
@@ -74,15 +76,19 @@ export async function listDirectory(
   const basePath = await validateExistingDirectory(dirPath);
   const state = initListState();
   const shouldStop = createStopChecker(normalized.maxEntries, state, signal);
+  const excludeMatchers = buildExcludeMatchers(normalized.excludePatterns);
+  const patternMatcher = buildPatternMatcher(normalized.pattern);
   const config: ListDirectoryConfig = {
     basePath,
     recursive: normalized.recursive,
     includeHidden: normalized.includeHidden,
     excludePatterns: normalized.excludePatterns,
+    excludeMatchers,
     maxDepth: normalized.maxDepth,
     maxEntries: normalized.maxEntries,
     includeSymlinkTargets: normalized.includeSymlinkTargets,
     pattern: normalized.pattern,
+    patternMatcher,
     signal,
   };
 

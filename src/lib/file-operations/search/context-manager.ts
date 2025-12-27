@@ -8,7 +8,9 @@ interface PendingMatch {
 export class ContextManager {
   private readonly contextLines: number;
   private readonly buffer: string[] = [];
+  private bufferStart = 0;
   private readonly pendingMatches: PendingMatch[] = [];
+  private pendingStart = 0;
 
   constructor(contextLines: number) {
     this.contextLines = contextLines;
@@ -34,8 +36,8 @@ export class ContextManager {
       matchCount,
     };
 
-    if (this.buffer.length > 0) {
-      match.contextBefore = [...this.buffer];
+    if (this.buffer.length > this.bufferStart) {
+      match.contextBefore = this.buffer.slice(this.bufferStart);
     }
 
     if (this.contextLines > 0) {
@@ -51,7 +53,9 @@ export class ContextManager {
   }
 
   private appendPendingContext(line: string): void {
-    for (const pending of this.pendingMatches) {
+    for (let i = this.pendingStart; i < this.pendingMatches.length; i++) {
+      const pending = this.pendingMatches[i];
+      if (!pending) continue;
       if (pending.afterNeeded <= 0) continue;
       pending.match.contextAfter ??= [];
       pending.match.contextAfter.push(line);
@@ -61,17 +65,28 @@ export class ContextManager {
 
   private pruneCompletedMatches(): void {
     while (
-      this.pendingMatches.length > 0 &&
-      this.pendingMatches[0]?.afterNeeded === 0
+      this.pendingStart < this.pendingMatches.length &&
+      this.pendingMatches[this.pendingStart]?.afterNeeded === 0
     ) {
-      this.pendingMatches.shift();
+      this.pendingStart++;
+    }
+    if (
+      this.pendingStart > 1024 &&
+      this.pendingStart * 2 > this.pendingMatches.length
+    ) {
+      this.pendingMatches.splice(0, this.pendingStart);
+      this.pendingStart = 0;
     }
   }
 
   private addToBuffer(line: string): void {
     this.buffer.push(line);
-    if (this.buffer.length > this.contextLines) {
-      this.buffer.shift();
+    if (this.buffer.length - this.bufferStart > this.contextLines) {
+      this.bufferStart++;
+    }
+    if (this.bufferStart > 1024 && this.bufferStart * 2 > this.buffer.length) {
+      this.buffer.splice(0, this.bufferStart);
+      this.bufferStart = 0;
     }
   }
 }

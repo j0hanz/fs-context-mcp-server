@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import type { Dir, Dirent } from 'node:fs';
 
 import { minimatch } from 'minimatch';
+import type { Minimatch } from 'minimatch';
 
 import type { DirectoryEntry } from '../../config/types.js';
 import { PARALLEL_CONCURRENCY } from '../constants.js';
@@ -30,10 +31,12 @@ export interface ListDirectoryConfig {
   recursive: boolean;
   includeHidden: boolean;
   excludePatterns: string[];
+  excludeMatchers: Minimatch[];
   maxDepth: number;
   maxEntries?: number;
   includeSymlinkTargets: boolean;
   pattern?: string;
+  patternMatcher?: Minimatch;
   signal?: AbortSignal;
 }
 
@@ -83,25 +86,42 @@ async function openDirectory(
   }
 }
 
+const EXCLUDE_MATCH_OPTIONS = {
+  dot: true,
+  nocase: process.platform === 'win32',
+  windowsPathsNoEscape: true,
+};
+
+const PATTERN_MATCH_OPTIONS = {
+  dot: true,
+};
+
+export function buildExcludeMatchers(excludePatterns: string[]): Minimatch[] {
+  if (excludePatterns.length === 0) return [];
+  return excludePatterns.map(
+    (pattern) => new minimatch.Minimatch(pattern, EXCLUDE_MATCH_OPTIONS)
+  );
+}
+
+export function buildPatternMatcher(
+  pattern: string | undefined
+): Minimatch | undefined {
+  if (!pattern) return undefined;
+  return new minimatch.Minimatch(pattern, PATTERN_MATCH_OPTIONS);
+}
+
 function shouldExcludeEntry(
   item: Dirent,
   currentPath: string,
   basePath: string,
-  excludePatterns: string[]
+  excludeMatchers: Minimatch[]
 ): boolean {
-  if (excludePatterns.length === 0) return false;
+  if (excludeMatchers.length === 0) return false;
   const relativePath =
     path.relative(basePath, path.join(currentPath, item.name)) || item.name;
   const normalizedRelative = relativePath.replace(/\\/g, '/');
-  const options = {
-    dot: true,
-    nocase: process.platform === 'win32',
-    windowsPathsNoEscape: true,
-  };
-  return excludePatterns.some(
-    (pattern) =>
-      minimatch(item.name, pattern, options) ||
-      minimatch(normalizedRelative, pattern, options)
+  return excludeMatchers.some(
+    (matcher) => matcher.match(item.name) || matcher.match(normalizedRelative)
   );
 }
 
@@ -109,7 +129,7 @@ async function* streamVisibleItems(
   currentPath: string,
   basePath: string,
   includeHidden: boolean,
-  excludePatterns: string[],
+  excludeMatchers: Minimatch[],
   onInaccessible: () => void,
   onScanned: () => void,
   onVisible: () => void
@@ -123,7 +143,7 @@ async function* streamVisibleItems(
       if (
         shouldIncludeEntry(item, currentPath, basePath, {
           includeHidden,
-          excludePatterns,
+          excludeMatchers,
         })
       ) {
         onVisible();
@@ -141,11 +161,11 @@ function shouldIncludeEntry(
   item: Dirent,
   currentPath: string,
   basePath: string,
-  options: { includeHidden: boolean; excludePatterns: string[] }
+  options: { includeHidden: boolean; excludeMatchers: Minimatch[] }
 ): boolean {
   if (!options.includeHidden && isHidden(item.name)) return false;
   if (
-    shouldExcludeEntry(item, currentPath, basePath, options.excludePatterns)
+    shouldExcludeEntry(item, currentPath, basePath, options.excludeMatchers)
   ) {
     return false;
   }
@@ -156,11 +176,11 @@ function applyDirectoryItemResult(
   result: DirectoryItemResult,
   state: ListDirectoryState,
   enqueue: (entry: { currentPath: string; depth: number }) => void,
-  pattern?: string
+  patternMatcher?: Minimatch
 ): void {
   const { entry, enqueueDir, skippedInaccessible, symlinkNotFollowed } = result;
 
-  if (!pattern || minimatch(entry.relativePath, pattern, { dot: true })) {
+  if (!patternMatcher || patternMatcher.match(entry.relativePath)) {
     state.entries.push(entry);
     applyEntryCounts(entry, state);
   }
@@ -198,11 +218,11 @@ function processResults(
   state: ListDirectoryState,
   enqueue: (entry: { currentPath: string; depth: number }) => void,
   shouldStop: () => boolean,
-  pattern?: string
+  patternMatcher?: Minimatch
 ): void {
   for (const result of results) {
     if (shouldStop()) break;
-    applyDirectoryItemResult(result, state, enqueue, pattern);
+    applyDirectoryItemResult(result, state, enqueue, patternMatcher);
   }
 }
 
@@ -232,7 +252,7 @@ async function flushBatch(
   );
 
   state.skippedInaccessible += errors.length;
-  processResults(results, state, enqueue, shouldStop, config.pattern);
+  processResults(results, state, enqueue, shouldStop, config.patternMatcher);
 }
 
 async function processItemStream(
@@ -268,7 +288,7 @@ export async function handleDirectory(
     params.currentPath,
     config.basePath,
     config.includeHidden,
-    config.excludePatterns,
+    config.excludeMatchers,
     () => {
       state.skippedInaccessible++;
     },

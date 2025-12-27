@@ -281,6 +281,36 @@ async function assertNotBinary(
   );
 }
 
+async function readFileWithStatsInternal(
+  filePath: string,
+  validPath: string,
+  stats: Stats,
+  normalized: NormalizedOptions
+): Promise<ReadFileResult> {
+  assertIsFile(stats, filePath);
+  assertSingleMode(normalized, filePath);
+  if (normalized.skipBinary) {
+    await assertNotBinary(validPath, filePath);
+  }
+
+  return await readByMode(validPath, filePath, stats, normalized);
+}
+
+export async function readFileWithStats(
+  filePath: string,
+  validPath: string,
+  stats: Stats,
+  options: ReadFileOptions = {}
+): Promise<ReadFileResult> {
+  const normalized = normalizeOptions(options);
+  return await readFileWithStatsInternal(
+    filePath,
+    validPath,
+    stats,
+    normalized
+  );
+}
+
 export async function readFile(
   filePath: string,
   options: ReadFileOptions = {}
@@ -289,11 +319,10 @@ export async function readFile(
   const validPath = await validateExistingPath(filePath);
   const stats = await fs.stat(validPath);
 
-  assertIsFile(stats, filePath);
-  assertSingleMode(normalized, filePath);
-  if (normalized.skipBinary) {
-    await assertNotBinary(validPath, filePath);
-  }
-
-  return await readByMode(validPath, filePath, stats, normalized);
+  return await readFileWithStatsInternal(
+    filePath,
+    validPath,
+    stats,
+    normalized
+  );
 }
