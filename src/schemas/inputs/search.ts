@@ -63,7 +63,12 @@ export const SearchFilesInputSchema = {
     .boolean()
     .optional()
     .default(true)
-    .describe('Skip symbolic links for security and performance'),
+    .refine((value) => value, {
+      message: 'Following symbolic links is not supported for security reasons',
+    })
+    .describe(
+      'Skip symbolic links for security and performance (must remain true)'
+    ),
   includeHidden: IncludeHiddenSchema.describe(
     'Include hidden files and directories (dotfiles) in the search'
   ),

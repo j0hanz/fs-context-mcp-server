@@ -1,4 +1,5 @@
 import type { SearchFilesResult } from '../../config/types.js';
+import { ErrorCode, McpError } from '../errors.js';
 import { safeDestroy } from '../fs-helpers.js';
 import { validateExistingDirectory } from '../path-validation.js';
 import { validateGlobPatternOrThrow } from './pattern-validator.js';
@@ -26,6 +27,13 @@ export async function searchFiles(
   validateGlobPatternOrThrow(pattern, validPath);
 
   const normalized = normalizeSearchFilesOptions(options);
+  if (!normalized.skipSymlinks) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Following symbolic links is not supported for security reasons',
+      basePath
+    );
+  }
 
   const state = initSearchFilesState();
   const stream = createSearchStream(

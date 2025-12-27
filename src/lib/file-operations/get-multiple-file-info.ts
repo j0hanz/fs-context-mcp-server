@@ -4,7 +4,6 @@ import type {
 } from '../../config/types.js';
 import { PARALLEL_CONCURRENCY } from '../constants.js';
 import { processInParallel } from '../fs-helpers.js';
-import { validateExistingPath } from '../path-validation.js';
 import { applyParallelResults, createOutputSkeleton } from './batch-results.js';
 import { getFileInfo } from './file-info.js';
 
@@ -13,10 +12,12 @@ interface GetMultipleFileInfoOptions {
 }
 
 async function processFileInfo(
-  filePath: string
+  filePath: string,
+  options: GetMultipleFileInfoOptions
 ): Promise<MultipleFileInfoResult> {
-  const validPath = await validateExistingPath(filePath);
-  const info = await getFileInfo(validPath);
+  const info = await getFileInfo(filePath, {
+    includeMimeType: options.includeMimeType,
+  });
 
   return {
     path: filePath,
@@ -53,8 +54,7 @@ function calculateSummary(results: MultipleFileInfoResult[]): {
 
 export async function getMultipleFileInfo(
   paths: string[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _options: GetMultipleFileInfoOptions = {}
+  options: GetMultipleFileInfoOptions = {}
 ): Promise<GetMultipleFileInfoResult> {
   if (paths.length === 0) {
     return {
@@ -71,7 +71,7 @@ export async function getMultipleFileInfo(
     paths.map((filePath, index) => ({ filePath, index })),
     async ({ filePath, index }) => ({
       index,
-      value: await processFileInfo(filePath),
+      value: await processFileInfo(filePath, options),
     }),
     PARALLEL_CONCURRENCY
   );

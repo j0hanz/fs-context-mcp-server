@@ -38,13 +38,17 @@ async function getSymlinkTarget(
   }
 }
 
-export async function getFileInfo(filePath: string): Promise<FileInfo> {
+export async function getFileInfo(
+  filePath: string,
+  options: { includeMimeType?: boolean } = {}
+): Promise<FileInfo> {
   const { requestedPath, resolvedPath, isSymlink } =
     await validateExistingPathDetailed(filePath);
 
   const name = path.basename(requestedPath);
   const ext = path.extname(name).toLowerCase();
-  const mimeType = ext ? getMimeType(ext) : undefined;
+  const includeMimeType = options.includeMimeType !== false;
+  const mimeType = includeMimeType && ext ? getMimeType(ext) : undefined;
   const symlinkTarget = isSymlink
     ? await getSymlinkTarget(requestedPath)
     : undefined;

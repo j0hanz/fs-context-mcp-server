@@ -96,12 +96,15 @@ async function buildRegularResult(
     modified: stats.mtime,
   };
 
-  const enqueueDir = await buildEnqueueDir(
-    fullPath,
-    options.depth,
-    options.maxDepth,
-    options.recursive
-  );
+  const enqueueDir =
+    type === 'directory'
+      ? await buildEnqueueDir(
+          fullPath,
+          options.depth,
+          options.maxDepth,
+          options.recursive
+        )
+      : undefined;
 
   return { entry, enqueueDir };
 }

@@ -1,6 +1,35 @@
 #!/usr/bin/env node
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
 import { setAllowedDirectoriesResolved } from './lib/path-validation.js';
 import { createServer, parseArgs, startServer } from './server.js';
+
+const SHUTDOWN_TIMEOUT_MS = 5000;
+let activeServer: McpServer | undefined;
+let shutdownStarted = false;
+
+async function shutdown(signal: string): Promise<void> {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+
+  const timer = setTimeout(() => {
+    process.exit(0);
+  }, SHUTDOWN_TIMEOUT_MS);
+
+  try {
+    if (activeServer) {
+      await activeServer.close();
+    }
+  } catch (error: unknown) {
+    console.error(
+      `Shutdown error (${signal}):`,
+      error instanceof Error ? error.message : String(error)
+    );
+  } finally {
+    clearTimeout(timer);
+    process.exit(0);
+  }
+}
 
 async function main(): Promise<void> {
   const { allowedDirs, allowCwd } = await parseArgs();
@@ -15,15 +44,16 @@ async function main(): Promise<void> {
   }
 
   const server = createServer({ allowCwd, cliAllowedDirs: allowedDirs });
+  activeServer = server;
   await startServer(server);
 }
 
 process.on('SIGTERM', () => {
-  process.exit(0);
+  void shutdown('SIGTERM');
 });
 
 process.on('SIGINT', () => {
-  process.exit(0);
+  void shutdown('SIGINT');
 });
 
 main().catch((error: unknown) => {
