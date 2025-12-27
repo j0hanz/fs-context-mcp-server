@@ -3,6 +3,7 @@ import {
   McpError as RpcMcpError,
 } from '@modelcontextprotocol/sdk/types.js';
 
+import { joinLines } from '../config/formatting.js';
 import { ErrorCode } from '../config/types.js';
 
 export { ErrorCode };
@@ -179,7 +180,7 @@ export function formatDetailedError(error: DetailedError): string {
     lines.push(`Suggestion: ${error.suggestion}`);
   }
 
-  return lines.join('\n');
+  return joinLines(lines);
 }
 
 export function getSuggestion(code: ErrorCode): string {

@@ -4,13 +4,19 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import {
+  formatBytes,
+  formatList,
+  formatOperationSummary,
+  formatSection,
+  joinLines,
+} from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations.js';
 import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
 } from '../schemas/index.js';
-import { formatBytes, formatOperationSummary } from './shared/formatting.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -35,46 +41,31 @@ function formatDirectoryListing(
 
   const dirs = entries.filter((e) => e.type === 'directory');
   const files = entries.filter((e) => e.type !== 'directory');
+
+  const dirLines = dirs.map((dir) => {
+    const symlink = dir.symlinkTarget ? ` -> ${dir.symlinkTarget}` : '';
+    return `[DIR]  ${dir.relativePath}${symlink}`;
+  });
+
+  const fileLines = files.map((file) => {
+    const size = file.size !== undefined ? ` (${formatBytes(file.size)})` : '';
+    const tag = file.type === 'symlink' ? '[LINK]' : '[FILE]';
+    const symlink = file.symlinkTarget ? ` -> ${file.symlinkTarget}` : '';
+    return `${tag} ${file.relativePath}${size}${symlink}`;
+  });
+
   const lines = [
     `Contents of ${basePath}:`,
     '',
-    ...formatDirectoryLines(dirs),
-    ...formatFileLines(files),
+    ...(dirs.length
+      ? [formatSection('Directories', formatList(dirLines))]
+      : []),
+    ...(files.length ? [formatSection('Files', formatList(fileLines))] : []),
     '',
     `Total: ${dirs.length} directories, ${files.length} files`,
   ];
 
-  return lines.join('\n');
-}
-
-function formatDirectoryLines(
-  dirs: Awaited<ReturnType<typeof listDirectory>>['entries']
-): string[] {
-  if (dirs.length === 0) return [];
-  return [
-    'Directories:',
-    ...dirs.map((dir) => {
-      const symlink = dir.symlinkTarget ? ` -> ${dir.symlinkTarget}` : '';
-      return `  [DIR]  ${dir.relativePath}${symlink}`;
-    }),
-    '',
-  ];
-}
-
-function formatFileLines(
-  files: Awaited<ReturnType<typeof listDirectory>>['entries']
-): string[] {
-  if (files.length === 0) return [];
-  return [
-    'Files:',
-    ...files.map((file) => {
-      const size =
-        file.size !== undefined ? ` (${formatBytes(file.size)})` : '';
-      const tag = file.type === 'symlink' ? '[LINK]' : '[FILE]';
-      const symlink = file.symlinkTarget ? ` -> ${file.symlinkTarget}` : '';
-      return `  ${tag} ${file.relativePath}${size}${symlink}`;
-    }),
-  ];
+  return joinLines(lines);
 }
 
 const LIST_DIRECTORY_TOOL = {
@@ -92,11 +83,6 @@ const LIST_DIRECTORY_TOOL = {
     idempotentHint: true,
     openWorldHint: true,
   },
-} as const;
-
-const LIST_DIRECTORY_TOOL_DEPRECATED = {
-  ...LIST_DIRECTORY_TOOL,
-  description: `${LIST_DIRECTORY_TOOL.description} (Deprecated: use listDirectory.)`,
 } as const;
 
 function buildStructuredResult(
@@ -195,10 +181,5 @@ export function registerListDirectoryTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'list_directory',
-    LIST_DIRECTORY_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('listDirectory', LIST_DIRECTORY_TOOL, handler);
+  server.registerTool('list_directory', LIST_DIRECTORY_TOOL, handler);
 }

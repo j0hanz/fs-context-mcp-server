@@ -80,11 +80,6 @@ const SEARCH_CONTENT_TOOL = {
   },
 } as const;
 
-const SEARCH_CONTENT_TOOL_DEPRECATED = {
-  ...SEARCH_CONTENT_TOOL,
-  description: `${SEARCH_CONTENT_TOOL.description} (Deprecated: use searchContent.)`,
-} as const;
-
 export function registerSearchContentTool(server: McpServer): void {
   const handler = async (
     args: SearchContentArgs,
@@ -97,10 +92,5 @@ export function registerSearchContentTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'search_content',
-    SEARCH_CONTENT_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('searchContent', SEARCH_CONTENT_TOOL, handler);
+  server.registerTool('search_content', SEARCH_CONTENT_TOOL, handler);
 }

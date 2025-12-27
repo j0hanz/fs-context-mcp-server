@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { joinLines } from '../config/formatting.js';
 import { ErrorCode, McpError } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
@@ -59,7 +60,7 @@ function buildTextResult(
   tail: number | undefined
 ): string {
   const note = buildReadFileNote(result, head, tail);
-  return note ? `${result.content}\n${note}` : result.content;
+  return note ? joinLines([result.content, note]) : result.content;
 }
 
 function buildReadFileNote(
@@ -150,11 +151,6 @@ const READ_FILE_TOOL = {
   },
 } as const;
 
-const READ_FILE_TOOL_DEPRECATED = {
-  ...READ_FILE_TOOL,
-  description: `${READ_FILE_TOOL.description} (Deprecated: use readFile.)`,
-} as const;
-
 export function registerReadFileTool(server: McpServer): void {
   const handler = async (
     args: ReadFileArgs
@@ -166,6 +162,5 @@ export function registerReadFileTool(server: McpServer): void {
     }
   };
 
-  server.registerTool('read_file', READ_FILE_TOOL_DEPRECATED, handler);
-  server.registerTool('readFile', READ_FILE_TOOL, handler);
+  server.registerTool('read_file', READ_FILE_TOOL, handler);
 }

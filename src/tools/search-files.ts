@@ -4,13 +4,19 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import {
+  formatBytes,
+  formatList,
+  formatOperationSummary,
+  formatSection,
+  joinLines,
+} from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations.js';
 import {
   SearchFilesInputSchema,
   SearchFilesOutputSchema,
 } from '../schemas/index.js';
-import { formatBytes, formatOperationSummary } from './shared/formatting.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -25,14 +31,17 @@ function formatSearchResults(
   results: Awaited<ReturnType<typeof searchFiles>>['results']
 ): string {
   if (results.length === 0) return 'No matches found';
-  const lines = [`Found ${results.length} matches:`, ''];
-  for (const result of results) {
+
+  const lines = results.map((result) => {
     const tag = result.type === 'directory' ? '[DIR]' : '[FILE]';
     const size =
       result.size !== undefined ? ` (${formatBytes(result.size)})` : '';
-    lines.push(`${tag} ${result.path}${size}`);
-  }
-  return lines.join('\n');
+    return `${tag} ${result.path}${size}`;
+  });
+
+  return joinLines([
+    formatSection(`Found ${results.length} matches`, formatList(lines)),
+  ]);
 }
 
 function buildStructuredResult(
@@ -161,11 +170,6 @@ const SEARCH_FILES_TOOL = {
   },
 } as const;
 
-const SEARCH_FILES_TOOL_DEPRECATED = {
-  ...SEARCH_FILES_TOOL,
-  description: `${SEARCH_FILES_TOOL.description} (Deprecated: use searchFiles.)`,
-} as const;
-
 export function registerSearchFilesTool(server: McpServer): void {
   const handler = async (
     args: SearchFilesArgs
@@ -181,6 +185,5 @@ export function registerSearchFilesTool(server: McpServer): void {
     }
   };
 
-  server.registerTool('search_files', SEARCH_FILES_TOOL_DEPRECATED, handler);
-  server.registerTool('searchFiles', SEARCH_FILES_TOOL, handler);
+  server.registerTool('search_files', SEARCH_FILES_TOOL, handler);
 }

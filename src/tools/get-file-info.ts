@@ -2,13 +2,13 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { formatBytes, formatDate, joinLines } from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getFileInfo } from '../lib/file-operations.js';
 import {
   GetFileInfoInputSchema,
   GetFileInfoOutputSchema,
 } from '../schemas/index.js';
-import { formatBytes, formatDate } from './shared/formatting.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -35,7 +35,7 @@ function formatFileInfo(info: Awaited<ReturnType<typeof getFileInfo>>): string {
   if (info.mimeType) lines.push(`MIME Type: ${info.mimeType}`);
   if (info.symlinkTarget) lines.push(`Symlink Target: ${info.symlinkTarget}`);
 
-  return lines.join('\n');
+  return joinLines(lines);
 }
 
 function buildStructuredResult(
@@ -85,11 +85,6 @@ const GET_FILE_INFO_TOOL = {
   },
 } as const;
 
-const GET_FILE_INFO_TOOL_DEPRECATED = {
-  ...GET_FILE_INFO_TOOL,
-  description: `${GET_FILE_INFO_TOOL.description} (Deprecated: use getFileInfo.)`,
-} as const;
-
 export function registerGetFileInfoTool(server: McpServer): void {
   const handler = async (
     args: GetFileInfoArgs
@@ -101,6 +96,5 @@ export function registerGetFileInfoTool(server: McpServer): void {
     }
   };
 
-  server.registerTool('get_file_info', GET_FILE_INFO_TOOL_DEPRECATED, handler);
-  server.registerTool('getFileInfo', GET_FILE_INFO_TOOL, handler);
+  server.registerTool('get_file_info', GET_FILE_INFO_TOOL, handler);
 }

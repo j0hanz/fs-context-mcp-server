@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { joinLines } from '../config/formatting.js';
 import type { SearchDefinitionsResult } from '../config/types.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchDefinitions } from '../lib/file-operations.js';
@@ -103,7 +104,7 @@ function formatTextResult(result: SearchDefinitionsResult): string {
     `Scanned ${summary.filesScanned} file(s), matched ${summary.filesMatched}.`
   );
 
-  return lines.join('\n');
+  return joinLines(lines);
 }
 
 /**
@@ -174,11 +175,6 @@ const SEARCH_DEFINITIONS_TOOL = {
   },
 } as const;
 
-const SEARCH_DEFINITIONS_TOOL_DEPRECATED = {
-  ...SEARCH_DEFINITIONS_TOOL,
-  description: `${SEARCH_DEFINITIONS_TOOL.description} (Deprecated: use searchDefinitions.)`,
-} as const;
-
 export function registerSearchDefinitionsTool(server: McpServer): void {
   const handler = async (
     args: SearchDefinitionsArgs,
@@ -191,10 +187,5 @@ export function registerSearchDefinitionsTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'search_definitions',
-    SEARCH_DEFINITIONS_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('searchDefinitions', SEARCH_DEFINITIONS_TOOL, handler);
+  server.registerTool('search_definitions', SEARCH_DEFINITIONS_TOOL, handler);
 }

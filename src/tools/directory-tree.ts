@@ -2,13 +2,17 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import {
+  formatBytes,
+  formatOperationSummary,
+  joinLines,
+} from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getDirectoryTree } from '../lib/file-operations.js';
 import {
   DirectoryTreeInputSchema,
   DirectoryTreeOutputSchema,
 } from '../schemas/index.js';
-import { formatBytes, formatOperationSummary } from './shared/formatting.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -23,7 +27,7 @@ function formatTreeEntry(
   entry: Awaited<ReturnType<typeof getDirectoryTree>>['tree'],
   indent = ''
 ): string {
-  return formatTreeEntryLines(entry, indent).join('\n');
+  return joinLines(formatTreeEntryLines(entry, indent));
 }
 
 function formatTreeEntryLines(
@@ -123,11 +127,6 @@ const DIRECTORY_TREE_TOOL = {
   },
 } as const;
 
-const DIRECTORY_TREE_TOOL_DEPRECATED = {
-  ...DIRECTORY_TREE_TOOL,
-  description: `${DIRECTORY_TREE_TOOL.description} (Deprecated: use directoryTree.)`,
-} as const;
-
 export function registerDirectoryTreeTool(server: McpServer): void {
   const handler = async (
     args: DirectoryTreeArgs,
@@ -144,10 +143,5 @@ export function registerDirectoryTreeTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'directory_tree',
-    DIRECTORY_TREE_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('directoryTree', DIRECTORY_TREE_TOOL, handler);
+  server.registerTool('directory_tree', DIRECTORY_TREE_TOOL, handler);
 }

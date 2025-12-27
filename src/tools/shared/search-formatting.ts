@@ -2,9 +2,9 @@ import * as pathModule from 'node:path';
 
 import type { z } from 'zod';
 
+import { formatOperationSummary, joinLines } from '../../config/formatting.js';
 import type { SearchContentResult } from '../../config/types.js';
 import type { SearchContentOutputSchema } from '../../schemas/index.js';
-import { formatOperationSummary } from './formatting.js';
 
 type SearchContentStructuredResult = z.infer<typeof SearchContentOutputSchema>;
 
@@ -73,7 +73,7 @@ function formatContentMatches(matches: SearchContentResult['matches']): string {
     lines.push(...formatFileMatches(file, fileMatches));
   }
 
-  return lines.join('\n');
+  return joinLines(lines);
 }
 
 export function buildStructuredResult(

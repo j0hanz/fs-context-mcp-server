@@ -12,6 +12,34 @@ export function formatDate(date: Date): string {
   return date.toISOString();
 }
 
+export function joinLines(lines: string[]): string {
+  return lines.join('\n');
+}
+
+export function indent(text: string, spaces = 2): string {
+  const padding = ' '.repeat(spaces);
+  return text
+    .split('\n')
+    .map((line) => `${padding}${line}`)
+    .join('\n');
+}
+
+export function formatList(items: string[], indentLevel = 0): string {
+  const padding = ' '.repeat(indentLevel * 2);
+  return items.map((item) => `${padding}- ${item}`).join('\n');
+}
+
+export function formatHeader(title: string, level = 1): string {
+  if (level === 1) {
+    return `=== ${title} ===`;
+  }
+  return `--- ${title} ---`;
+}
+
+export function formatSection(title: string, content: string): string {
+  return `${formatHeader(title)}\n${content}`;
+}
+
 export function formatOperationSummary(summary: {
   truncated?: boolean;
   truncatedReason?: string;
@@ -40,5 +68,5 @@ export function formatOperationSummary(summary: {
     summary.linesSkippedDueToRegexTimeout,
     'line(s) skipped (regex timeout).'
   );
-  return lines.join('\n');
+  return joinLines(lines);
 }

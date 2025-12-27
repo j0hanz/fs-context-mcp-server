@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { joinLines } from '../config/formatting.js';
 import { ErrorCode, McpError } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations.js';
 import {
@@ -42,7 +43,7 @@ function buildStructuredResult(
 function buildTextResult(
   results: Awaited<ReturnType<typeof readMultipleFiles>>
 ): string {
-  return results.map(formatReadMultipleResult).join('\n');
+  return joinLines(results.map(formatReadMultipleResult));
 }
 
 function formatReadMultipleResult(
@@ -50,9 +51,12 @@ function formatReadMultipleResult(
 ): string {
   if (result.content !== undefined) {
     const note = buildReadMultipleNote(result);
-    return `=== ${result.path} ===\n${result.content}${note}`;
+    return joinLines([`=== ${result.path} ===`, `${result.content}${note}`]);
   }
-  return `=== ${result.path} ===\n[Error: ${result.error ?? 'Unknown error'}]`;
+  return joinLines([
+    `=== ${result.path} ===`,
+    `[Error: ${result.error ?? 'Unknown error'}]`,
+  ]);
 }
 
 function buildReadMultipleNote(
@@ -125,11 +129,6 @@ const READ_MULTIPLE_FILES_TOOL = {
   },
 } as const;
 
-const READ_MULTIPLE_FILES_TOOL_DEPRECATED = {
-  ...READ_MULTIPLE_FILES_TOOL,
-  description: `${READ_MULTIPLE_FILES_TOOL.description} (Deprecated: use readMultipleFiles.)`,
-} as const;
-
 export function registerReadMultipleFilesTool(server: McpServer): void {
   const handler = async (
     args: ReadMultipleArgs
@@ -141,10 +140,5 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'read_multiple_files',
-    READ_MULTIPLE_FILES_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('readMultipleFiles', READ_MULTIPLE_FILES_TOOL, handler);
+  server.registerTool('read_multiple_files', READ_MULTIPLE_FILES_TOOL, handler);
 }

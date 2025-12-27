@@ -4,6 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { formatList, formatSection, joinLines } from '../config/formatting.js';
 import { ErrorCode, isNodeError } from '../lib/errors.js';
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import { ListAllowedDirectoriesOutputSchema } from '../schemas/index.js';
@@ -37,14 +38,13 @@ function formatAllowedDirectories(
     return 'No directories are currently allowed.';
   }
 
-  const lines = ['Allowed Directories:', ''];
-  for (const dir of dirs) {
+  const lines = dirs.map((dir) => {
     const access = accessStatus.find((a) => a.path === dir);
     const tag = buildAccessTag(access);
-    lines.push(tag ? `  - ${dir} ${tag}` : `  - ${dir}`);
-  }
+    return tag ? `${dir} ${tag}` : dir;
+  });
 
-  return lines.join('\n');
+  return joinLines([formatSection('Allowed Directories', formatList(lines))]);
 }
 
 function buildAccessTag(
@@ -132,11 +132,6 @@ const LIST_ALLOWED_DIRECTORIES_TOOL = {
   },
 } as const;
 
-const LIST_ALLOWED_DIRECTORIES_TOOL_DEPRECATED = {
-  ...LIST_ALLOWED_DIRECTORIES_TOOL,
-  description: `${LIST_ALLOWED_DIRECTORIES_TOOL.description} (Deprecated: use listAllowedDirectories.)`,
-} as const;
-
 export function registerListAllowedDirectoriesTool(server: McpServer): void {
   const handler = async (): Promise<
     ToolResult<ListAllowedDirectoriesStructuredResult>
@@ -150,11 +145,6 @@ export function registerListAllowedDirectoriesTool(server: McpServer): void {
 
   server.registerTool(
     'list_allowed_directories',
-    LIST_ALLOWED_DIRECTORIES_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool(
-    'listAllowedDirectories',
     LIST_ALLOWED_DIRECTORIES_TOOL,
     handler
   );

@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { joinLines } from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readMediaFile } from '../lib/file-operations.js';
 import {
@@ -39,7 +40,7 @@ function buildTextResult(
     `Size: ${result.size} bytes`,
     `Data: [base64 encoded, ${result.data.length} characters]`,
   ];
-  return textLines.join('\n');
+  return joinLines(textLines);
 }
 
 async function handleReadMediaFile({
@@ -71,11 +72,6 @@ const READ_MEDIA_FILE_TOOL = {
   },
 } as const;
 
-const READ_MEDIA_FILE_TOOL_DEPRECATED = {
-  ...READ_MEDIA_FILE_TOOL,
-  description: `${READ_MEDIA_FILE_TOOL.description} (Deprecated: use readMediaFile.)`,
-} as const;
-
 export function registerReadMediaFileTool(server: McpServer): void {
   const handler = async (
     args: ReadMediaArgs
@@ -87,10 +83,5 @@ export function registerReadMediaFileTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'read_media_file',
-    READ_MEDIA_FILE_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('readMediaFile', READ_MEDIA_FILE_TOOL, handler);
+  server.registerTool('read_media_file', READ_MEDIA_FILE_TOOL, handler);
 }

@@ -4,17 +4,20 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import {
+  formatBytes,
+  formatDate,
+  formatList,
+  formatOperationSummary,
+  formatSection,
+  joinLines,
+} from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
 import { analyzeDirectory } from '../lib/file-operations.js';
 import {
   AnalyzeDirectoryInputSchema,
   AnalyzeDirectoryOutputSchema,
 } from '../schemas/index.js';
-import {
-  formatBytes,
-  formatDate,
-  formatOperationSummary,
-} from './shared/formatting.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -46,25 +49,31 @@ function formatDirectoryAnalysis(
 
   const fileTypes = Object.entries(analysis.fileTypes)
     .sort((a, b) => b[1] - a[1])
-    .map(([ext, count]) => `  ${ext}: ${count}`);
+    .map(([ext, count]) => `${ext}: ${count}`);
 
   const largest = analysis.largestFiles.map(
     (file) =>
-      `  ${formatBytes(file.size)} - ${pathModule.relative(analysis.path, file.path)}`
+      `${formatBytes(file.size)} - ${pathModule.relative(analysis.path, file.path)}`
   );
   const recent = analysis.recentlyModified.map(
     (file) =>
-      `  ${formatDate(file.modified)} - ${pathModule.relative(analysis.path, file.path)}`
+      `${formatDate(file.modified)} - ${pathModule.relative(analysis.path, file.path)}`
   );
 
   const lines = [
     ...summary,
-    ...(fileTypes.length ? ['File Types:', ...fileTypes, ''] : []),
-    ...(largest.length ? ['Largest Files:', ...largest, ''] : []),
-    ...(recent.length ? ['Recently Modified:', ...recent] : []),
+    ...(fileTypes.length
+      ? [formatSection('File Types', formatList(fileTypes))]
+      : []),
+    ...(largest.length
+      ? [formatSection('Largest Files', formatList(largest))]
+      : []),
+    ...(recent.length
+      ? [formatSection('Recently Modified', formatList(recent))]
+      : []),
   ];
 
-  return lines.join('\n');
+  return joinLines(lines);
 }
 
 function buildStructuredResult(
@@ -153,11 +162,6 @@ const ANALYZE_DIRECTORY_TOOL = {
   },
 } as const;
 
-const ANALYZE_DIRECTORY_TOOL_DEPRECATED = {
-  ...ANALYZE_DIRECTORY_TOOL,
-  description: `${ANALYZE_DIRECTORY_TOOL.description} (Deprecated: use analyzeDirectory.)`,
-} as const;
-
 export function registerAnalyzeDirectoryTool(server: McpServer): void {
   const handler = async (
     args: AnalyzeDirectoryArgs,
@@ -174,10 +178,5 @@ export function registerAnalyzeDirectoryTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'analyze_directory',
-    ANALYZE_DIRECTORY_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('analyzeDirectory', ANALYZE_DIRECTORY_TOOL, handler);
+  server.registerTool('analyze_directory', ANALYZE_DIRECTORY_TOOL, handler);
 }

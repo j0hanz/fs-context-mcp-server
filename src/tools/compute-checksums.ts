@@ -2,6 +2,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import {
+  formatBytes,
+  formatList,
+  formatSection,
+  joinLines,
+} from '../config/formatting.js';
 import type { ComputeChecksumsResult } from '../config/types.js';
 import { ErrorCode } from '../lib/errors.js';
 import { computeChecksums } from '../lib/file-operations.js';
@@ -9,7 +15,6 @@ import {
   ComputeChecksumsInputSchema,
   ComputeChecksumsOutputSchema,
 } from '../schemas/index.js';
-import { formatBytes } from './shared/formatting.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -41,23 +46,23 @@ function buildStructuredResult(
 }
 
 function buildTextResult(result: ComputeChecksumsResult): string {
-  const lines: string[] = [];
+  const checksumLines = result.results.map(formatChecksumLine);
 
-  lines.push(`Checksums (${result.summary.total} files):`);
-  lines.push('');
+  const summaryLines = [
+    `Algorithm: ${getSummaryAlgorithm(result)}`,
+    `Total: ${result.summary.total}`,
+    `Succeeded: ${result.summary.succeeded}`,
+    `Failed: ${result.summary.failed}`,
+  ];
 
-  for (const item of result.results) {
-    lines.push(formatChecksumLine(item));
-  }
-
-  lines.push('');
-  lines.push('Summary:');
-  lines.push(`  Algorithm: ${getSummaryAlgorithm(result)}`);
-  lines.push(`  Total: ${result.summary.total}`);
-  lines.push(`  Succeeded: ${result.summary.succeeded}`);
-  lines.push(`  Failed: ${result.summary.failed}`);
-
-  return lines.join('\n');
+  return joinLines([
+    formatSection(
+      `Checksums (${result.summary.total} files)`,
+      formatList(checksumLines)
+    ),
+    '',
+    formatSection('Summary', formatList(summaryLines)),
+  ]);
 }
 
 function formatChecksumLine(
@@ -106,11 +111,6 @@ const COMPUTE_CHECKSUMS_TOOL = {
   },
 } as const;
 
-const COMPUTE_CHECKSUMS_TOOL_DEPRECATED = {
-  ...COMPUTE_CHECKSUMS_TOOL,
-  description: `${COMPUTE_CHECKSUMS_TOOL.description} (Deprecated: use computeChecksums.)`,
-} as const;
-
 export function registerComputeChecksumsTool(server: McpServer): void {
   const handler = async (
     args: ComputeChecksumsArgs
@@ -122,10 +122,5 @@ export function registerComputeChecksumsTool(server: McpServer): void {
     }
   };
 
-  server.registerTool(
-    'compute_checksums',
-    COMPUTE_CHECKSUMS_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool('computeChecksums', COMPUTE_CHECKSUMS_TOOL, handler);
+  server.registerTool('compute_checksums', COMPUTE_CHECKSUMS_TOOL, handler);
 }

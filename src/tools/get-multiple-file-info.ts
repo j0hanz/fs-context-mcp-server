@@ -2,6 +2,12 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import {
+  formatBytes,
+  formatList,
+  formatSection,
+  joinLines,
+} from '../config/formatting.js';
 import type { GetMultipleFileInfoResult } from '../config/types.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getMultipleFileInfo } from '../lib/file-operations.js';
@@ -9,7 +15,6 @@ import {
   GetMultipleFileInfoInputSchema,
   GetMultipleFileInfoOutputSchema,
 } from '../schemas/index.js';
-import { formatBytes } from './shared/formatting.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -53,22 +58,22 @@ function buildStructuredResult(
 }
 
 function buildTextResult(result: GetMultipleFileInfoResult): string {
-  const lines: string[] = [];
+  const fileBlocks = result.results.flatMap(formatFileInfoBlock);
 
-  lines.push(`File Information (${result.summary.total} files):`);
-  lines.push('');
+  const summaryLines = [
+    `Total: ${result.summary.total}`,
+    `Succeeded: ${result.summary.succeeded}`,
+    `Failed: ${result.summary.failed}`,
+    `Total Size: ${formatBytes(result.summary.totalSize)}`,
+  ];
 
-  for (const item of result.results) {
-    lines.push(...formatFileInfoBlock(item));
-  }
-
-  lines.push('Summary:');
-  lines.push(`  Total: ${result.summary.total}`);
-  lines.push(`  Succeeded: ${result.summary.succeeded}`);
-  lines.push(`  Failed: ${result.summary.failed}`);
-  lines.push(`  Total Size: ${formatBytes(result.summary.totalSize)}`);
-
-  return lines.join('\n');
+  return joinLines([
+    formatSection(
+      `File Information (${result.summary.total} files)`,
+      joinLines(fileBlocks)
+    ),
+    formatSection('Summary', formatList(summaryLines)),
+  ]);
 }
 
 function formatFileInfoBlock(
@@ -113,7 +118,7 @@ const GET_MULTIPLE_FILE_INFO_TOOL = {
   description:
     'Retrieve detailed metadata about multiple files or directories in a single operation (parallel processing). ' +
     'More efficient than calling get_file_info repeatedly. ' +
-    'Individual file errors do not fail the entire operation—each file reports success or error independently. ' +
+    'Individual file errors do not fail the entire operation-each file reports success or error independently. ' +
     'Returns: name, path, type, size, timestamps, permissions, MIME type, and symlink target for each path.',
   inputSchema: GetMultipleFileInfoInputSchema,
   outputSchema: GetMultipleFileInfoOutputSchema.shape,
@@ -122,11 +127,6 @@ const GET_MULTIPLE_FILE_INFO_TOOL = {
     idempotentHint: true,
     openWorldHint: true,
   },
-} as const;
-
-const GET_MULTIPLE_FILE_INFO_TOOL_DEPRECATED = {
-  ...GET_MULTIPLE_FILE_INFO_TOOL,
-  description: `${GET_MULTIPLE_FILE_INFO_TOOL.description} (Deprecated: use getMultipleFileInfo.)`,
 } as const;
 
 export function registerGetMultipleFileInfoTool(server: McpServer): void {
@@ -142,11 +142,6 @@ export function registerGetMultipleFileInfoTool(server: McpServer): void {
 
   server.registerTool(
     'get_multiple_file_info',
-    GET_MULTIPLE_FILE_INFO_TOOL_DEPRECATED,
-    handler
-  );
-  server.registerTool(
-    'getMultipleFileInfo',
     GET_MULTIPLE_FILE_INFO_TOOL,
     handler
   );
