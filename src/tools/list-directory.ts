@@ -6,9 +6,7 @@ import type { z } from 'zod';
 
 import {
   formatBytes,
-  formatList,
   formatOperationSummary,
-  formatSection,
   joinLines,
 } from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
@@ -37,14 +35,14 @@ function formatDirectoryListing(
   entries: Awaited<ReturnType<typeof listDirectory>>['entries'],
   basePath: string
 ): string {
-  if (entries.length === 0) return 'Directory is empty';
+  if (entries.length === 0) return 'Empty directory';
 
   const dirs = entries.filter((e) => e.type === 'directory');
   const files = entries.filter((e) => e.type !== 'directory');
 
   const dirLines = dirs.map((dir) => {
     const symlink = dir.symlinkTarget ? ` -> ${dir.symlinkTarget}` : '';
-    return `[DIR]  ${dir.relativePath}${symlink}`;
+    return `[DIR] ${dir.relativePath}${symlink}`;
   });
 
   const fileLines = files.map((file) => {
@@ -55,14 +53,9 @@ function formatDirectoryListing(
   });
 
   const lines = [
-    `Contents of ${basePath}:`,
-    '',
-    ...(dirs.length
-      ? [formatSection('Directories', formatList(dirLines))]
-      : []),
-    ...(files.length ? [formatSection('Files', formatList(fileLines))] : []),
-    '',
-    `Total: ${dirs.length} directories, ${files.length} files`,
+    `${basePath} (${dirs.length} dirs, ${files.length} files):`,
+    ...dirLines,
+    ...fileLines,
   ];
 
   return joinLines(lines);

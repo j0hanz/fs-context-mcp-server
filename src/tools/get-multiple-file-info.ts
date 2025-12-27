@@ -2,12 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
-import {
-  formatBytes,
-  formatList,
-  formatSection,
-  joinLines,
-} from '../config/formatting.js';
+import { formatBytes, joinLines } from '../config/formatting.js';
 import type { GetMultipleFileInfoResult } from '../config/types.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getMultipleFileInfo } from '../lib/file-operations.js';
@@ -59,45 +54,20 @@ function buildStructuredResult(
 
 function buildTextResult(result: GetMultipleFileInfoResult): string {
   const fileBlocks = result.results.flatMap(formatFileInfoBlock);
-
-  const summaryLines = [
-    `Total: ${result.summary.total}`,
-    `Succeeded: ${result.summary.succeeded}`,
-    `Failed: ${result.summary.failed}`,
-    `Total Size: ${formatBytes(result.summary.totalSize)}`,
-  ];
-
-  return joinLines([
-    formatSection(
-      `File Information (${result.summary.total} files)`,
-      joinLines(fileBlocks)
-    ),
-    formatSection('Summary', formatList(summaryLines)),
-  ]);
+  const summary = `${result.summary.succeeded}/${result.summary.total} ok | ${formatBytes(result.summary.totalSize)}`;
+  return joinLines([`File info (${summary}):`, ...fileBlocks]);
 }
 
 function formatFileInfoBlock(
   item: GetMultipleFileInfoResult['results'][number]
 ): string[] {
   if (!item.info) {
-    return [
-      `=== ${item.path} ===`,
-      `  [Error: ${item.error ?? 'Unknown error'}]`,
-      '',
-    ];
+    return [`${item.path} [error: ${item.error ?? 'unknown'}]`];
   }
-
-  const lines = [
-    `=== ${item.path} ===`,
-    `  Type: ${item.info.type}`,
-    `  Size: ${formatBytes(item.info.size)}`,
-    `  Modified: ${item.info.modified.toISOString()}`,
+  const mime = item.info.mimeType ? ` | ${item.info.mimeType}` : '';
+  return [
+    `${item.path} | ${item.info.type} | ${formatBytes(item.info.size)}${mime}`,
   ];
-  if (item.info.mimeType) {
-    lines.push(`  MIME: ${item.info.mimeType}`);
-  }
-  lines.push('');
-  return lines;
 }
 
 async function handleGetMultipleFileInfo(

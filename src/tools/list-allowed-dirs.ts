@@ -4,7 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
-import { formatList, formatSection, joinLines } from '../config/formatting.js';
+import { joinLines } from '../config/formatting.js';
 import { ErrorCode, isNodeError } from '../lib/errors.js';
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import { ListAllowedDirectoriesOutputSchema } from '../schemas/index.js';
@@ -35,7 +35,7 @@ function formatAllowedDirectories(
   accessStatus: DirectoryAccess[]
 ): string {
   if (dirs.length === 0) {
-    return 'No directories are currently allowed.';
+    return 'No directories allowed.';
   }
 
   const lines = dirs.map((dir) => {
@@ -44,7 +44,7 @@ function formatAllowedDirectories(
     return tag ? `${dir} ${tag}` : dir;
   });
 
-  return joinLines([formatSection('Allowed Directories', formatList(lines))]);
+  return joinLines([`Allowed directories (${dirs.length}):`, ...lines]);
 }
 
 function buildAccessTag(

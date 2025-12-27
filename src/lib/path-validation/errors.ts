@@ -1,4 +1,3 @@
-import { joinLines } from '../../config/formatting.js';
 import { ErrorCode, McpError } from '../errors.js';
 import { getAllowedDirectories } from './allowed-directories.js';
 
@@ -15,8 +14,8 @@ function createMcpError(
 function buildAllowedDirectoriesHint(): string {
   const allowedDirs = getAllowedDirectories();
   return allowedDirs.length > 0
-    ? `Allowed directories:\n${joinLines(allowedDirs.map((d) => `  - ${d}`))}`
-    : 'No allowed directories configured. Use CLI arguments or MCP roots protocol.';
+    ? `Allowed: ${allowedDirs.join(', ')}`
+    : 'No allowed directories configured.';
 }
 
 const NODE_ERROR_MAP: Readonly<

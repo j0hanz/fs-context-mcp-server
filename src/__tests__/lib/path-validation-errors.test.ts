@@ -42,7 +42,7 @@ it('toAccessDeniedWithHint includes allowed directories', () => {
   const result = toAccessDeniedWithHint('/requested', '/resolved', allowed);
 
   expect(result.code).toBe(ErrorCode.E_ACCESS_DENIED);
-  expect(result.message).toContain('Allowed directories');
+  expect(result.message).toContain('Allowed:');
   expect(result.message).toContain(allowed);
   expect(result.details?.resolvedPath).toBe('/resolved');
   expect(result.details?.normalizedResolvedPath).toBe(allowed);

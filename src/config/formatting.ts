@@ -16,30 +16,6 @@ export function joinLines(lines: string[]): string {
   return lines.join('\n');
 }
 
-export function indent(text: string, spaces = 2): string {
-  const padding = ' '.repeat(spaces);
-  return text
-    .split('\n')
-    .map((line) => `${padding}${line}`)
-    .join('\n');
-}
-
-export function formatList(items: string[], indentLevel = 0): string {
-  const padding = ' '.repeat(indentLevel * 2);
-  return items.map((item) => `${padding}- ${item}`).join('\n');
-}
-
-export function formatHeader(title: string, level = 1): string {
-  if (level === 1) {
-    return `=== ${title} ===`;
-  }
-  return `--- ${title} ---`;
-}
-
-export function formatSection(title: string, content: string): string {
-  return `${formatHeader(title)}\n${content}`;
-}
-
 export function formatOperationSummary(summary: {
   truncated?: boolean;
   truncatedReason?: string;
@@ -50,23 +26,21 @@ export function formatOperationSummary(summary: {
   skippedBinary?: number;
   linesSkippedDueToRegexTimeout?: number;
 }): string {
-  const lines: string[] = [];
+  const notes: string[] = [];
   if (summary.truncated) {
-    lines.push(
-      `!! PARTIAL RESULTS: ${summary.truncatedReason ?? 'results truncated'}`
-    );
-    if (summary.tip) lines.push(`Tip: ${summary.tip}`);
+    notes.push(`[truncated: ${summary.truncatedReason ?? 'limit reached'}]`);
+    if (summary.tip) notes.push(`[tip: ${summary.tip}]`);
   }
-  const note = (count: number | undefined, msg: string): void => {
-    if (count && count > 0) lines.push(`Note: ${count} ${msg}`);
+  const addNote = (count: number | undefined, label: string): void => {
+    if (count && count > 0) notes.push(`[${count} ${label}]`);
   };
-  note(summary.skippedTooLarge, 'file(s) skipped (too large).');
-  note(summary.skippedBinary, 'file(s) skipped (binary).');
-  note(summary.skippedInaccessible, 'item(s) were inaccessible and skipped.');
-  note(summary.symlinksNotFollowed, 'symlink(s) were not followed (security).');
-  note(
+  addNote(summary.skippedTooLarge, 'skipped: too large');
+  addNote(summary.skippedBinary, 'skipped: binary');
+  addNote(summary.skippedInaccessible, 'skipped: inaccessible');
+  addNote(summary.symlinksNotFollowed, 'symlinks not followed');
+  addNote(
     summary.linesSkippedDueToRegexTimeout,
-    'line(s) skipped (regex timeout).'
+    'lines skipped: regex timeout'
   );
-  return joinLines(lines);
+  return notes.length > 0 ? `\n${notes.join(' ')}` : '';
 }

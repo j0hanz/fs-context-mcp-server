@@ -2,12 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
-import {
-  formatBytes,
-  formatList,
-  formatSection,
-  joinLines,
-} from '../config/formatting.js';
+import { formatBytes, joinLines } from '../config/formatting.js';
 import type { ComputeChecksumsResult } from '../config/types.js';
 import { ErrorCode } from '../lib/errors.js';
 import { computeChecksums } from '../lib/file-operations.js';
@@ -47,22 +42,8 @@ function buildStructuredResult(
 
 function buildTextResult(result: ComputeChecksumsResult): string {
   const checksumLines = result.results.map(formatChecksumLine);
-
-  const summaryLines = [
-    `Algorithm: ${getSummaryAlgorithm(result)}`,
-    `Total: ${result.summary.total}`,
-    `Succeeded: ${result.summary.succeeded}`,
-    `Failed: ${result.summary.failed}`,
-  ];
-
-  return joinLines([
-    formatSection(
-      `Checksums (${result.summary.total} files)`,
-      formatList(checksumLines)
-    ),
-    '',
-    formatSection('Summary', formatList(summaryLines)),
-  ]);
+  const summary = `${getSummaryAlgorithm(result)} | ${result.summary.succeeded}/${result.summary.total} ok`;
+  return joinLines([`Checksums (${summary}):`, ...checksumLines]);
 }
 
 function formatChecksumLine(

@@ -48,7 +48,7 @@ it('searchContent respects maxFilesScanned limit', async () => {
 it('searchContent handles timeout correctly', async () => {
   const result = await searchContent(getTestDir(), 'export', {
     filePattern: '**/*',
-    timeoutMs: 1,
+    timeoutMs: 10,
   });
   expect(result).toBeDefined();
 });

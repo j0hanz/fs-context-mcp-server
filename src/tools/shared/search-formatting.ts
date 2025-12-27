@@ -65,10 +65,10 @@ function formatFileMatches(
 }
 
 function formatContentMatches(matches: SearchContentResult['matches']): string {
-  if (matches.length === 0) return 'No matches found';
+  if (matches.length === 0) return 'No matches';
 
   const byFile = groupMatchesByFile(matches);
-  const lines: string[] = [`Found ${matches.length} matches:`, ''];
+  const lines: string[] = [`Found ${matches.length}:`];
   for (const [file, fileMatches] of byFile) {
     lines.push(...formatFileMatches(file, fileMatches));
   }

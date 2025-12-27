@@ -6,9 +6,7 @@ import type { z } from 'zod';
 
 import {
   formatBytes,
-  formatList,
   formatOperationSummary,
-  formatSection,
   joinLines,
 } from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
@@ -30,7 +28,7 @@ type SearchFilesStructuredResult = z.infer<typeof SearchFilesOutputSchema>;
 function formatSearchResults(
   results: Awaited<ReturnType<typeof searchFiles>>['results']
 ): string {
-  if (results.length === 0) return 'No matches found';
+  if (results.length === 0) return 'No matches';
 
   const lines = results.map((result) => {
     const tag = result.type === 'directory' ? '[DIR]' : '[FILE]';
@@ -39,9 +37,7 @@ function formatSearchResults(
     return `${tag} ${result.path}${size}`;
   });
 
-  return joinLines([
-    formatSection(`Found ${results.length} matches`, formatList(lines)),
-  ]);
+  return joinLines([`Found ${results.length}:`, ...lines]);
 }
 
 function buildStructuredResult(

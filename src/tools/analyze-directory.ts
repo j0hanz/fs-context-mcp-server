@@ -7,9 +7,7 @@ import type { z } from 'zod';
 import {
   formatBytes,
   formatDate,
-  formatList,
   formatOperationSummary,
-  formatSection,
   joinLines,
 } from '../config/formatting.js';
 import { ErrorCode } from '../lib/errors.js';
@@ -35,43 +33,33 @@ type AnalyzeDirectoryStructuredResult = z.infer<
 function formatDirectoryAnalysis(
   analysis: Awaited<ReturnType<typeof analyzeDirectory>>['analysis']
 ): string {
-  const summary = [
-    `Directory Analysis: ${analysis.path}`,
-    '='.repeat(50),
-    '',
-    'Summary:',
-    `  Total Files: ${analysis.totalFiles}`,
-    `  Total Directories: ${analysis.totalDirectories}`,
-    `  Total Size: ${formatBytes(analysis.totalSize)}`,
-    `  Max Depth: ${analysis.maxDepth}`,
-    '',
+  const lines = [
+    `Path: ${analysis.path}`,
+    `Files: ${analysis.totalFiles} | Dirs: ${analysis.totalDirectories} | Size: ${formatBytes(analysis.totalSize)} | Depth: ${analysis.maxDepth}`,
   ];
 
   const fileTypes = Object.entries(analysis.fileTypes)
     .sort((a, b) => b[1] - a[1])
     .map(([ext, count]) => `${ext}: ${count}`);
+  if (fileTypes.length) {
+    lines.push(`File types: ${fileTypes.join(', ')}`);
+  }
 
   const largest = analysis.largestFiles.map(
     (file) =>
-      `${formatBytes(file.size)} - ${pathModule.relative(analysis.path, file.path)}`
+      `${formatBytes(file.size)} ${pathModule.relative(analysis.path, file.path)}`
   );
+  if (largest.length) {
+    lines.push(`Largest: ${largest.join(', ')}`);
+  }
+
   const recent = analysis.recentlyModified.map(
     (file) =>
-      `${formatDate(file.modified)} - ${pathModule.relative(analysis.path, file.path)}`
+      `${formatDate(file.modified)} ${pathModule.relative(analysis.path, file.path)}`
   );
-
-  const lines = [
-    ...summary,
-    ...(fileTypes.length
-      ? [formatSection('File Types', formatList(fileTypes))]
-      : []),
-    ...(largest.length
-      ? [formatSection('Largest Files', formatList(largest))]
-      : []),
-    ...(recent.length
-      ? [formatSection('Recently Modified', formatList(recent))]
-      : []),
-  ];
+  if (recent.length) {
+    lines.push(`Recent: ${recent.join(', ')}`);
+  }
 
   return joinLines(lines);
 }
