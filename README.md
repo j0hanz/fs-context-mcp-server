@@ -1,6 +1,6 @@
 # Filesystem Context MCP Server
 
-  <img src="docs/logo.png" alt="Filesystem Context MCP Server Logo" width="125">
+<img src="docs/logo.png" alt="Filesystem Context MCP Server Logo" width="125">
 
 A secure, read-only MCP server for filesystem scanning, searching, and analysis with comprehensive security validation.
 
@@ -16,21 +16,20 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 
 [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=filesystem-context&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZmlsZXN5c3RlbS1jb250ZXh0LW1jcEBsYXRlc3QiLCIke3dvcmtzcGFjZUZvbGRlcn0iXX0=)
 
-## ✨ Features
+## Features
 
-| Feature                    | Description                                                            |
-| -------------------------- | ---------------------------------------------------------------------- |
-| 📂 **Directory Listing**   | List and explore directory contents with recursive support             |
-| 🔍 **File Search**         | Find files using glob patterns like `**/*.ts`                          |
-| 📝 **Content Search**      | Search text within files using regex with context lines                |
-| 📊 **Directory Analysis**  | Get statistics, file types, largest files, and recently modified files |
-| 🌳 **Directory Tree**      | JSON tree structure optimized for AI parsing                           |
-| 📄 **File Reading**        | Read single or multiple files with head/tail and line range support    |
-| 🖼️ **Media File Support**  | Read binary files (images, audio, video) as base64                     |
-| 🔒 **Security First**      | Path validation, symlink escape protection, and access control         |
-| ⚡ **Parallel Operations** | Efficient batch file reading with configurable concurrency             |
+- Directory listing with recursive support
+- File search with glob patterns
+- Content search with regex and context lines
+- Directory analysis (counts, sizes, largest/recent files)
+- Directory tree optimized for AI parsing
+- File reading with head/tail/line ranges
+- Batch reads and metadata lookups in parallel
+- Checksum computation (md5/sha1/sha256/sha512)
+- Media/binary file reading as base64
+- Security: path validation, symlink escape protection, read-only operations
 
-## 🎯 When to Use
+## When to Use
 
 | Task                             | Tool                       |
 | -------------------------------- | -------------------------- |
@@ -48,24 +47,27 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 | Read images or binary files      | `read_media_file`          |
 | Check available directories      | `list_allowed_directories` |
 
-## 🚀 Quick Start
+## Quick Start
 
-### NPX (Recommended - Zero Config)
+### NPX (recommended)
 
-```bash
-# Works in current directory automatically!
-npx -y @j0hanz/filesystem-context-mcp@latest
-```
-
-Or specify directories explicitly:
+Allow the current working directory explicitly:
 
 ```bash
-npx -y @j0hanz/filesystem-context-mcp@latest /path/to/your/project
+npx -y @j0hanz/filesystem-context-mcp@latest --allow-cwd
 ```
 
-### VS Code (with workspace folder)
+Or pass explicit directories:
 
-Add to your VS Code settings (`.vscode/mcp.json`):
+```bash
+npx -y @j0hanz/filesystem-context-mcp@latest /path/to/project /path/to/docs
+```
+
+If your MCP client supports the Roots protocol, you can omit directory arguments and let the client provide allowed directories. Otherwise, pass explicit directories or use `--allow-cwd`.
+
+### VS Code (workspace folder)
+
+Add to `.vscode/mcp.json`:
 
 ```json
 {
@@ -82,41 +84,22 @@ Add to your VS Code settings (`.vscode/mcp.json`):
 }
 ```
 
-> **Tip:** `${workspaceFolder}` automatically uses your current VS Code workspace. You can also omit it and the server will use its current working directory.
+## Installation
 
-### Claude Desktop
-
-Add to your Claude Desktop configuration (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "filesystem-context": {
-      "command": "npx",
-      "args": ["-y", "@j0hanz/filesystem-context-mcp@latest"]
-    }
-  }
-}
-```
-
-> **Note:** Claude Desktop will use the current working directory automatically. No path arguments needed!
-
-## 📦 Installation
-
-### NPX (No Installation)
+### NPX (no install)
 
 ```bash
 npx -y @j0hanz/filesystem-context-mcp@latest /path/to/dir1 /path/to/dir2
 ```
 
-### Global Installation
+### Global installation
 
 ```bash
 npm install -g @j0hanz/filesystem-context-mcp
 filesystem-context-mcp /path/to/your/project
 ```
 
-### From Source
+### From source
 
 ```bash
 git clone https://github.com/j0hanz/filesystem-context-mcp-server.git
@@ -126,90 +109,80 @@ npm run build
 node dist/index.js /path/to/your/project
 ```
 
-## ⚙️ Configuration
+## Directory Access and Resolution
 
-### Directory Resolution (Priority Order)
+Access is always restricted to explicitly allowed directories.
 
-The server determines which directories to access in this order:
+1. CLI directories are validated and added first (if provided).
+2. `--allow-cwd` optionally adds the current working directory.
+3. MCP Roots from the client are used next:
+   - If CLI and/or `--allow-cwd` are provided, only roots inside those baseline directories are accepted.
+   - If no baseline is provided, roots become the allowed directories.
+4. If nothing is configured and the client provides no roots, the server has no access and logs a warning.
 
-1. **CLI Arguments** - Explicitly passed paths take highest priority
-2. **MCP Roots Protocol** - Directories provided by the MCP client
-3. **Current Working Directory** - Automatic fallback for plug-and-play experience
+Notes:
 
-This means you can run the server with zero configuration and it will work!
+- Windows drive-relative paths like `C:path` are rejected. Use `C:\path` or `C:/path`.
+- Reserved Windows device names (e.g., `CON`, `NUL`) are blocked.
 
-### Command Line Arguments
+## Configuration
 
-Optionally specify one or more directory paths as arguments:
-
-```bash
-filesystem-context-mcp /home/user/project /home/user/docs
-```
-
-### MCP Roots Protocol
-
-If no CLI arguments are provided, the server will use the MCP Roots protocol to receive allowed directories from the client (if supported).
-
-### Zero-Config Mode
-
-If neither CLI arguments nor MCP Roots provide directories, the server automatically uses the current working directory. This makes it truly plug-and-play!
+All configuration is optional. Values are integers unless noted. Sizes are in bytes, timeouts in milliseconds.
 
 ### Environment Variables
 
-All configuration values have sensible defaults and are optional. Only configure if you need to tune performance or resource usage.
+| Variable                         | Default                 | Range       | Description                                                                  |
+| -------------------------------- | ----------------------- | ----------- | ---------------------------------------------------------------------------- |
+| `UV_THREADPOOL_SIZE`             | (unset)                 | 1-1024      | libuv threadpool size. If set, caps parallelism.                             |
+| `FILESYSTEM_CONTEXT_CONCURRENCY` | Auto (2x cores, cap 50) | 1-100       | Parallel file operations. Further capped by `UV_THREADPOOL_SIZE`             |
+| `TRAVERSAL_JOBS`                 | 8                       | 1-50        | Directory traversal concurrency                                              |
+| `REGEX_TIMEOUT`                  | 100                     | 50-1000     | Regex timeout per line (prevents ReDoS)                                      |
+| `MAX_FILE_SIZE`                  | 10MB                    | 1MB-100MB   | Max text file size (`read_file`, `read_multiple_files`)                      |
+| `MAX_MEDIA_SIZE`                 | 50MB                    | 1MB-500MB   | Max media size (`read_media_file`)                                           |
+| `MAX_SEARCH_SIZE`                | 1MB                     | 100KB-10MB  | Max file size for content search (`search_content`)                          |
+| `DEFAULT_DEPTH`                  | 10                      | 1-100       | Default max depth (`list_directory`, `search_files`, `analyze_directory`)    |
+| `DEFAULT_RESULTS`                | 100                     | 10-10000    | Default max results (`search_files`, `search_content`, `search_definitions`) |
+| `DEFAULT_LIST_MAX_ENTRIES`       | 10000                   | 100-100000  | Default max entries (`list_directory`)                                       |
+| `DEFAULT_SEARCH_MAX_FILES`       | 20000                   | 100-100000  | Default max files scanned (`search_files`, `search_content`)                 |
+| `DEFAULT_SEARCH_TIMEOUT`         | 30000                   | 100-3600000 | Default search timeout (`search_files`, `search_content`)                    |
+| `DEFAULT_TOP`                    | 10                      | 1-1000      | Default top N (`analyze_directory`)                                          |
+| `DEFAULT_ANALYZE_MAX_ENTRIES`    | 20000                   | 100-100000  | Default max entries (`analyze_directory`)                                    |
+| `DEFAULT_TREE`                   | 5                       | 1-50        | Default tree depth (`directory_tree`)                                        |
+| `DEFAULT_TREE_MAX_FILES`         | 5000                    | 100-200000  | Default max files (`directory_tree`)                                         |
 
-| Variable                         | Default         | Range       | Description                              |
-| -------------------------------- | --------------- | ----------- | ---------------------------------------- |
-| `UV_THREADPOOL_SIZE`             | `4`             | 1-128       | libuv threadpool size (set before start) |
-| `FILESYSTEM_CONTEXT_CONCURRENCY` | Auto (2x cores) | 1-100       | Maximum parallel file operations         |
-| `TRAVERSAL_JOBS`                 | 8               | 1-50        | Directory traversal concurrency          |
-| `REGEX_TIMEOUT`                  | 100             | 50-1000     | Regex matching timeout (milliseconds)    |
-| `MAX_FILE_SIZE`                  | 10MB            | 1MB-100MB   | Maximum text file size (bytes)           |
-| `MAX_MEDIA_SIZE`                 | 50MB            | 1MB-500MB   | Maximum media file size (bytes)          |
-| `MAX_SEARCH_SIZE`                | 1MB             | 100KB-10MB  | Maximum file size for content search     |
-| `DEFAULT_DEPTH`                  | 10              | 1-100       | Default maximum recursion depth          |
-| `DEFAULT_RESULTS`                | 100             | 10-10000    | Default maximum search results           |
-| `DEFAULT_LIST_MAX_ENTRIES`       | 10000           | 100-100000  | Default max entries for list_directory   |
-| `DEFAULT_SEARCH_MAX_FILES`       | 20000           | 100-100000  | Default max files to scan in searches    |
-| `DEFAULT_SEARCH_TIMEOUT`         | 30000           | 100-3600000 | Default search timeout (milliseconds)    |
-| `DEFAULT_TOP`                    | 10              | 1-1000      | Default top N items in analysis          |
-| `DEFAULT_ANALYZE_MAX_ENTRIES`    | 20000           | 100-100000  | Default max entries in analyze_directory |
-| `DEFAULT_TREE`                   | 5               | 1-50        | Default directory tree depth             |
-| `DEFAULT_TREE_MAX_FILES`         | 5000            | 100-200000  | Default max files in directory tree      |
+See [CONFIGURATION.md](CONFIGURATION.md) for profiles and examples.
 
-> **💡 Tip:** See [CONFIGURATION.md](CONFIGURATION.md) for detailed environment variable usage examples, configuration profiles, and best practices for different use cases.
-
-## 🔧 Tools
+## Tools
 
 ### `list_allowed_directories`
 
-List all directories that this server is allowed to access.
+List all directories that this server can access.
 
-| Parameter | Type | Required | Default | Description            |
-| --------- | ---- | -------- | ------- | ---------------------- |
-| _(none)_  | -    | -        | -       | No parameters required |
+| Parameter | Type | Required | Default | Description |
+| --------- | ---- | -------- | ------- | ----------- |
+| (none)    | -    | -        | -       | -           |
 
-**Returns:** Array of allowed directory paths.
+Returns: Array of allowed directory paths.
 
 ---
 
 ### `list_directory`
 
-List contents of a directory with optional recursive listing.
+List contents of a directory with optional recursion.
 
-| Parameter               | Type     | Required | Default | Description                                 |
-| ----------------------- | -------- | -------- | ------- | ------------------------------------------- |
-| `path`                  | string   | ?        | -       | Directory path to list                      |
-| `recursive`             | boolean  | ?        | `false` | List recursively                            |
-| `includeHidden`         | boolean  | ?        | `false` | Include hidden files                        |
-| `excludePatterns`       | string[] | ?        | `[]`    | Patterns to exclude                         |
-| `pattern`               | string   | ?        | -       | Glob pattern to include                     |
-| `maxDepth`              | number   | ?        | `10`    | Maximum depth for recursive listing (0-100) |
-| `maxEntries`            | number   | ?        | `10000` | Maximum entries to return (1-100,000)       |
-| `sortBy`                | string   | ?        | `name`  | Sort by: `name`, `size`, `modified`, `type` |
-| `includeSymlinkTargets` | boolean  | ?        | `false` | Include symlink target paths                |
+| Parameter               | Type     | Required | Default | Description                                              |
+| ----------------------- | -------- | -------- | ------- | -------------------------------------------------------- |
+| `path`                  | string   | Yes      | -       | Directory path to list                                   |
+| `recursive`             | boolean  | No       | `false` | List subdirectories recursively                          |
+| `includeHidden`         | boolean  | No       | `false` | Include hidden files and directories                     |
+| `excludePatterns`       | string[] | No       | `[]`    | Glob patterns to exclude                                 |
+| `pattern`               | string   | No       | -       | Glob pattern to include (relative, no `..`)              |
+| `maxDepth`              | number   | No       | `10`    | Maximum depth for recursive listing (0-100)              |
+| `maxEntries`            | number   | No       | `10000` | Maximum entries to return (1-100000)                     |
+| `sortBy`                | string   | No       | `name`  | Sort by: `name`, `size`, `modified`, `type`              |
+| `includeSymlinkTargets` | boolean  | No       | `false` | Include symlink target paths (symlinks are not followed) |
 
-**Returns:** List of entries with name, type, size, and modified date.
+Returns: List of entries with name, type, size, modified time, and relative path.
 
 ---
 
@@ -217,28 +190,21 @@ List contents of a directory with optional recursive listing.
 
 Search for files (not directories) using glob patterns.
 
-| Parameter         | Type     | Required | Default | Description                                   |
-| ----------------- | -------- | -------- | ------- | --------------------------------------------- |
-| `path`            | string   | ✅       | -       | Base directory to search from                 |
-| `pattern`         | string   | ✅       | -       | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`) |
-| `excludePatterns` | string[] | ❌       | `[]`    | Patterns to exclude                           |
-| `maxResults`      | number   | ❌       | `100`   | Maximum matches to return (1-10,000)          |
-| `sortBy`          | string   | ❌       | `path`  | Sort by: `name`, `size`, `modified`, `path`   |
-| `maxDepth`        | number   | ❌       | -       | Maximum directory depth to search (1-100)     |
-| `maxFilesScanned` | number   | ❌       | `20000` | Maximum files to scan before stopping         |
-| `timeoutMs`       | number   | ❌       | `30000` | Timeout in milliseconds (100-3,600,000)       |
+| Parameter         | Type     | Required | Default               | Description                                                  |
+| ----------------- | -------- | -------- | --------------------- | ------------------------------------------------------------ |
+| `path`            | string   | Yes      | -                     | Base directory to search from                                |
+| `pattern`         | string   | Yes      | -                     | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`)                |
+| `excludePatterns` | string[] | No       | built-in exclude list | Glob patterns to exclude                                     |
+| `maxResults`      | number   | No       | `100`                 | Maximum matches to return (1-10000)                          |
+| `sortBy`          | string   | No       | `path`                | Sort by: `name`, `size`, `modified`, `path`                  |
+| `maxDepth`        | number   | No       | `10`                  | Maximum directory depth to search (0-100)                    |
+| `maxFilesScanned` | number   | No       | `20000`               | Maximum files to scan before stopping                        |
+| `timeoutMs`       | number   | No       | `30000`               | Timeout in milliseconds                                      |
+| `baseNameMatch`   | boolean  | No       | `false`               | Match patterns without slashes against basenames             |
+| `skipSymlinks`    | boolean  | No       | `true`                | Must remain true; symlink traversal is disabled for security |
+| `includeHidden`   | boolean  | No       | `false`               | Include hidden files and directories                         |
 
-**Returns:** List of matching files with path, type, size, and modified date.
-
-**Example:**
-
-```json
-{
-  "path": "/project",
-  "pattern": "**/*.ts",
-  "excludePatterns": ["node_modules/**", "dist/**"]
-}
-```
+Returns: List of matching files with path, type, size, and modified date.
 
 ---
 
@@ -246,88 +212,42 @@ Search for files (not directories) using glob patterns.
 
 Read the contents of a text file.
 
-| Parameter    | Type    | Required | Default | Description                                                |
-| ------------ | ------- | -------- | ------- | ---------------------------------------------------------- |
-| `path`       | string  | ?        | -       | File path to read                                          |
-| `encoding`   | string  | ?        | `utf-8` | File encoding (`utf-8`, `ascii`, `base64`, etc.)           |
-| `maxSize`    | number  | ?        | 10MB    | Maximum file size in bytes                                 |
-| `skipBinary` | boolean | ?        | `false` | Reject binary files (use `read_media_file` instead)        |
-| `lineStart`  | number  | ?        | -       | Start line (1-indexed, min 1) for reading a range          |
-| `lineEnd`    | number  | ?        | -       | End line (1-indexed, inclusive, min 1) for reading a range |
-| `head`       | number  | ?        | -       | Read only first N lines                                    |
-| `tail`       | number  | ?        | -       | Read only last N lines                                     |
+| Parameter    | Type    | Required | Default | Description                                                 |
+| ------------ | ------- | -------- | ------- | ----------------------------------------------------------- |
+| `path`       | string  | Yes      | -       | File path to read                                           |
+| `encoding`   | string  | No       | `utf-8` | File encoding (`utf-8`, `ascii`, `base64`, `hex`, `latin1`) |
+| `maxSize`    | number  | No       | 10MB    | Maximum file size in bytes (capped by `MAX_FILE_SIZE`)      |
+| `skipBinary` | boolean | No       | `true`  | Reject likely-binary files (use `read_media_file` instead)  |
+| `lineStart`  | number  | No       | -       | Start line (1-indexed) for range reading                    |
+| `lineEnd`    | number  | No       | -       | End line (inclusive) for range reading                      |
+| `head`       | number  | No       | -       | Read only first N lines                                     |
+| `tail`       | number  | No       | -       | Read only last N lines                                      |
 
-> **Note:** Cannot specify both `head` and `tail` simultaneously. Use `lineStart`/`lineEnd` for range reading.
+Notes:
 
-**Returns:** File contents as text.
+- `head`, `tail`, and `lineStart/lineEnd` are mutually exclusive.
 
 ---
 
 ### `read_multiple_files`
 
-Read multiple files in parallel for efficient batch operations.
+Read multiple files in parallel.
 
-| Parameter      | Type     | Required | Default | Description                                |
-| -------------- | -------- | -------- | ------- | ------------------------------------------ |
-| `paths`        | string[] | ✅       | -       | Array of file paths to read (max 100)      |
-| `encoding`     | string   | ❌       | `utf-8` | File encoding                              |
-| `maxSize`      | number   | ❌       | 10MB    | Maximum size per file in bytes             |
-| `maxTotalSize` | number   | ❌       | 100MB   | Maximum total size for all files combined  |
-| `head`         | number   | ❌       | -       | Read only first N lines of each file       |
-| `tail`         | number   | ❌       | -       | Read only last N lines of each file        |
-| `lineStart`    | number   | ❌       | -       | Start line (1-indexed) for reading a range |
-| `lineEnd`      | number   | ❌       | -       | End line (inclusive) for reading a range   |
+| Parameter      | Type     | Required | Default | Description                                                |
+| -------------- | -------- | -------- | ------- | ---------------------------------------------------------- |
+| `paths`        | string[] | Yes      | -       | Array of file paths (max 100)                              |
+| `encoding`     | string   | No       | `utf-8` | File encoding                                              |
+| `maxSize`      | number   | No       | 10MB    | Maximum size per file in bytes (capped by `MAX_FILE_SIZE`) |
+| `maxTotalSize` | number   | No       | 100MB   | Maximum total size across all files                        |
+| `head`         | number   | No       | -       | Read only first N lines of each file                       |
+| `tail`         | number   | No       | -       | Read only last N lines of each file                        |
+| `lineStart`    | number   | No       | -       | Start line (1-indexed) for each file                       |
+| `lineEnd`      | number   | No       | -       | End line (inclusive) for each file                         |
 
-**Returns:** Array of file contents with individual success/error status.
+Notes:
 
----
-
-### `get_multiple_file_info`
-
-Get metadata for multiple files/directories in parallel.
-
-| Parameter         | Type     | Required | Default | Description                       |
-| ----------------- | -------- | -------- | ------- | --------------------------------- |
-| `paths`           | string[] | ✅       | -       | Array of paths to query (max 100) |
-| `includeMimeType` | boolean  | ❌       | `true`  | Include MIME type detection       |
-
-**Returns:** Array of file info (name, path, type, size, timestamps, permissions, mimeType) with individual success/error status, plus summary.
-
----
-
-### `compute_checksums`
-
-Compute cryptographic checksums for files using memory-efficient streaming.
-
-| Parameter     | Type     | Required | Default  | Description                                       |
-| ------------- | -------- | -------- | -------- | ------------------------------------------------- |
-| `paths`       | string[] | ✅       | -        | Array of file paths (max 50)                      |
-| `algorithm`   | string   | ❌       | `sha256` | Hash algorithm: `md5`, `sha1`, `sha256`, `sha512` |
-| `encoding`    | string   | ❌       | `hex`    | Output encoding: `hex` or `base64`                |
-| `maxFileSize` | number   | ❌       | 100MB    | Skip files larger than this                       |
-
-**Returns:** Array of checksums with file sizes, plus summary (total, succeeded, failed).
-
-**Use cases:**
-
-- Verify file integrity after transfers
-- Detect duplicate files by comparing hashes
-- Generate checksums for release artifacts
-
----
-
-| Parameter      | Type     | Required | Default | Description                               |
-| -------------- | -------- | -------- | ------- | ----------------------------------------- |
-| `paths`        | string[] | ✅       | -       | Array of file paths (max 100)             |
-| `encoding`     | string   | ❌       | `utf-8` | File encoding                             |
-| `maxSize`      | number   | ❌       | 10MB    | Maximum file size per file                |
-| `maxTotalSize` | number   | ❌       | 100MB   | Maximum total size for all files combined |
-| `head`         | number   | ❌       | -       | Read only first N lines of each file      |
-| `tail`         | number   | ❌       | -       | Read only last N lines of each file       |
-
-> **Note:** Use `read_file` for single files with line ranges (`lineStart`/`lineEnd`). Use `read_multiple_files` for batch operations with `head`/`tail` parameters. The batch API does not support line ranges per file.
-
-**Returns:** Array of results with content or error for each file.
+- `lineStart` and `lineEnd` must be provided together.
+- `head`, `tail`, and `lineStart/lineEnd` are mutually exclusive.
 
 ---
 
@@ -337,9 +257,37 @@ Get detailed metadata about a file or directory.
 
 | Parameter | Type   | Required | Default | Description               |
 | --------- | ------ | -------- | ------- | ------------------------- |
-| `path`    | string | ✅       | -       | Path to file or directory |
+| `path`    | string | Yes      | -       | Path to file or directory |
 
-**Returns:** Metadata including name, type, size, created/modified/accessed timestamps, permissions, MIME type, and symlink target (if applicable).
+Returns: name, path, type, size, created/modified/accessed timestamps, permissions, MIME type, and symlink target (if applicable).
+
+---
+
+### `get_multiple_file_info`
+
+Get metadata for multiple files/directories in parallel.
+
+| Parameter         | Type     | Required | Default | Description                       |
+| ----------------- | -------- | -------- | ------- | --------------------------------- |
+| `paths`           | string[] | Yes      | -       | Array of paths to query (max 100) |
+| `includeMimeType` | boolean  | No       | `true`  | Include MIME type detection       |
+
+Returns: Array of file info with individual success/error status, plus summary.
+
+---
+
+### `compute_checksums`
+
+Compute cryptographic checksums for files using streaming.
+
+| Parameter     | Type     | Required | Default | Description                          |
+| ------------- | -------- | -------- | ------- | ------------------------------------ |
+| `paths`       | string[] | Yes      | -       | Array of file paths (max 50)         |
+| `algorithm`   | string   | No       | sha256  | `md5`, `sha1`, `sha256`, `sha512`    |
+| `encoding`    | string   | No       | hex     | `hex` or `base64`                    |
+| `maxFileSize` | number   | No       | 100MB   | Skip files larger than this (1B-1GB) |
+
+Returns: Checksums with file sizes and summary (total/succeeded/failed).
 
 ---
 
@@ -347,84 +295,43 @@ Get detailed metadata about a file or directory.
 
 Search for text content within files using regular expressions.
 
-| Parameter         | Type     | Required | Default | Description                                      |
-| ----------------- | -------- | -------- | ------- | ------------------------------------------------ |
-| `path`            | string   | ✅       | -       | Base directory to search in                      |
-| `pattern`         | string   | ✅       | -       | Regex pattern to search for                      |
-| `filePattern`     | string   | ❌       | `**/*`  | Glob pattern to filter files                     |
-| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude                         |
-| `caseSensitive`   | boolean  | ❌       | `false` | Case-sensitive search                            |
-| `maxResults`      | number   | ❌       | `100`   | Maximum number of results (1-10,000)             |
-| `maxFileSize`     | number   | ❌       | 1MB     | Maximum file size to scan                        |
-| `maxFilesScanned` | number   | ❌       | `20000` | Maximum files to scan before stopping            |
-| `timeoutMs`       | number   | ❌       | `30000` | Timeout in milliseconds (100-3,600,000)          |
-| `skipBinary`      | boolean  | ❌       | `true`  | Skip binary files                                |
-| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories             |
-| `contextLines`    | number   | ❌       | `0`     | Lines of context before/after match (0-10)       |
-| `wholeWord`       | boolean  | ❌       | `false` | Match whole words only                           |
-| `isLiteral`       | boolean  | ❌       | `false` | Treat pattern as literal string (escape special) |
+| Parameter                | Type     | Required | Default               | Description                                                |
+| ------------------------ | -------- | -------- | --------------------- | ---------------------------------------------------------- |
+| `path`                   | string   | Yes      | -                     | Base directory to search in                                |
+| `pattern`                | string   | Yes      | -                     | Regex pattern to search for                                |
+| `filePattern`            | string   | No       | `**/*`                | Glob pattern to filter files                               |
+| `excludePatterns`        | string[] | No       | built-in exclude list | Glob patterns to exclude                                   |
+| `caseSensitive`          | boolean  | No       | `false`               | Case-sensitive search                                      |
+| `maxResults`             | number   | No       | `100`                 | Maximum number of results                                  |
+| `maxFileSize`            | number   | No       | 1MB                   | Maximum file size to scan (default from `MAX_SEARCH_SIZE`) |
+| `maxFilesScanned`        | number   | No       | `20000`               | Maximum files to scan before stopping                      |
+| `timeoutMs`              | number   | No       | `30000`               | Timeout in milliseconds                                    |
+| `skipBinary`             | boolean  | No       | `true`                | Skip likely-binary files                                   |
+| `includeHidden`          | boolean  | No       | `false`               | Include hidden files and directories                       |
+| `contextLines`           | number   | No       | `0`                   | Lines of context before/after match (0-10)                 |
+| `wholeWord`              | boolean  | No       | `false`               | Match whole words only                                     |
+| `isLiteral`              | boolean  | No       | `false`               | Treat pattern as literal string (escape regex chars)       |
+| `baseNameMatch`          | boolean  | No       | `false`               | Match file patterns without slashes against basenames      |
+| `caseSensitiveFileMatch` | boolean  | No       | `true`                | Case-sensitive filename matching                           |
 
-**Returns:** Matching lines with file path, line number, content, and optional context.
-
-**Example:**
-
-```json
-{
-  "path": "/project/src",
-  "pattern": "TODO|FIXME",
-  "filePattern": "**/*.ts",
-  "contextLines": 2
-}
-```
+Returns: Matching lines with file path, line number, content, and optional context.
 
 ---
 
 ### `search_definitions`
 
-Find code definitions (classes, functions, interfaces, types, enums, variables) in TypeScript/JavaScript files without manual regex construction.
+Find code definitions (classes, functions, interfaces, types, enums, variables).
 
-| Parameter         | Type     | Required | Default | Description                                                                           |
-| ----------------- | -------- | -------- | ------- | ------------------------------------------------------------------------------------- |
-| `path`            | string   | ❌       | -       | Base directory to search in                                                           |
-| `name`            | string   | ❌       | -       | Definition name to search for                                                         |
-| `type`            | string   | ❌       | -       | Definition type to find: `class`, `function`, `interface`, `type`, `enum`, `variable` |
-| `caseSensitive`   | boolean  | ❌       | `true`  | Case-sensitive name matching                                                          |
-| `maxResults`      | number   | ❌       | `100`   | Maximum number of results (1-10,000)                                                  |
-| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude                                                              |
-| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories                                                  |
-| `contextLines`    | number   | ❌       | `0`     | Lines of context before/after match (0-10)                                            |
-
-**Returns:** List of definitions with name, type (class/function/interface/type/enum/variable), file path, line number, exported status, and code preview.
-
-**Use cases:**
-
-- **Find by name:** Search for a specific definition like `UserService`
-- **Discovery mode:** Find all definitions of a type (e.g., all interfaces)
-- **Combined:** Find definitions matching a name pattern and type
-
-**Examples:**
-
-```json
-{
-  "path": "/project/src",
-  "name": "UserService"
-}
-```
-
-```json
-{
-  "path": "/project/src",
-  "type": "interface"
-}
-```
-
-```json
-{
-  "path": "/project/src",
-  "name": "Handler",
-  "type": "class"
-}
-```
+| Parameter         | Type     | Required | Default               | Description                                                  |
+| ----------------- | -------- | -------- | --------------------- | ------------------------------------------------------------ |
+| `path`            | string   | Yes      | -                     | Base directory to search                                     |
+| `name`            | string   | No       | -                     | Definition name to find                                      |
+| `type`            | string   | No       | -                     | `class`, `function`, `interface`, `type`, `enum`, `variable` |
+| `caseSensitive`   | boolean  | No       | `true`                | Case-sensitive name matching                                 |
+| `maxResults`      | number   | No       | `100`                 | Maximum number of definitions to return                      |
+| `excludePatterns` | string[] | No       | built-in exclude list | Glob patterns to exclude                                     |
+| `includeHidden`   | boolean  | No       | `false`               | Include hidden files and directories                         |
+| `contextLines`    | number   | No       | `0`                   | Lines of context before/after match (0-10)                   |
 
 ---
 
@@ -432,50 +339,52 @@ Find code definitions (classes, functions, interfaces, types, enums, variables) 
 
 Analyze a directory structure and return statistics.
 
-| Parameter         | Type     | Required | Default | Description                              |
-| ----------------- | -------- | -------- | ------- | ---------------------------------------- |
-| `path`            | string   | ✅       | -       | Directory to analyze                     |
-| `maxDepth`        | number   | ❌       | `10`    | Maximum depth to analyze (0-100)         |
-| `topN`            | number   | ❌       | `10`    | Number of top items to return (max 1000) |
-| `maxEntries`      | number   | ?        | `20000` | Maximum entries to scan (1-100,000)      |
-| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude                 |
-| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories     |
+| Parameter         | Type     | Required | Default               | Description                            |
+| ----------------- | -------- | -------- | --------------------- | -------------------------------------- |
+| `path`            | string   | Yes      | -                     | Directory to analyze                   |
+| `maxDepth`        | number   | No       | `10`                  | Maximum depth to analyze (0-100)       |
+| `topN`            | number   | No       | `10`                  | Number of top items to return (1-1000) |
+| `maxEntries`      | number   | No       | `20000`               | Maximum entries to scan (1-100000)     |
+| `excludePatterns` | string[] | No       | built-in exclude list | Glob patterns to exclude               |
+| `includeHidden`   | boolean  | No       | `false`               | Include hidden files and directories   |
 
-**Returns:** Statistics including total files/directories, total size, file type distribution, largest files, and recently modified files.
+Returns: File/dir counts, total size, type distribution, largest files, and recently modified files.
 
 ---
 
 ### `directory_tree`
 
-Get a JSON tree structure of a directory, optimized for AI parsing.
+Get a JSON tree structure of a directory.
 
-| Parameter         | Type     | Required | Default | Description                                  |
-| ----------------- | -------- | -------- | ------- | -------------------------------------------- |
-| `path`            | string   | ✅       | -       | Directory path to build tree from            |
-| `maxDepth`        | number   | ❌       | `5`     | Maximum depth to traverse (0-50)             |
-| `excludePatterns` | string[] | ❌       | `[]`    | Glob patterns to exclude                     |
-| `includeHidden`   | boolean  | ❌       | `false` | Include hidden files and directories         |
-| `includeSize`     | boolean  | ❌       | `false` | Include file sizes in the tree               |
-| `maxFiles`        | number   | ❌       | -       | Maximum total files to include (max 100,000) |
+| Parameter         | Type     | Required | Default               | Description                          |
+| ----------------- | -------- | -------- | --------------------- | ------------------------------------ |
+| `path`            | string   | Yes      | -                     | Directory path to build tree from    |
+| `maxDepth`        | number   | No       | `5`                   | Maximum depth to traverse (0-50)     |
+| `excludePatterns` | string[] | No       | built-in exclude list | Glob patterns to exclude             |
+| `includeHidden`   | boolean  | No       | `false`               | Include hidden files and directories |
+| `includeSize`     | boolean  | No       | `false`               | Include file sizes in the tree       |
+| `maxFiles`        | number   | No       | `5000`                | Maximum total files to include       |
 
-**Returns:** Hierarchical tree structure with file/directory nodes.
+Returns: Tree structure plus summary (files scanned, truncated, skipped, etc.).
 
 ---
 
 ### `read_media_file`
 
-Read a binary/media file and return it as base64-encoded data.
+Read a binary/media file and return base64-encoded data.
 
-| Parameter | Type   | Required | Default | Description                            |
-| --------- | ------ | -------- | ------- | -------------------------------------- |
-| `path`    | string | ✅       | -       | Path to the media file                 |
-| `maxSize` | number | ❌       | 50MB    | Maximum file size in bytes (max 500MB) |
+| Parameter | Type   | Required | Default | Description                                             |
+| --------- | ------ | -------- | ------- | ------------------------------------------------------- |
+| `path`    | string | Yes      | -       | Path to the media file                                  |
+| `maxSize` | number | No       | 50MB    | Maximum file size in bytes (capped by `MAX_MEDIA_SIZE`) |
 
-**Supported formats:** Images (PNG, JPG, GIF, WebP, SVG, etc.), Audio (MP3, WAV, FLAC, etc.), Video (MP4, WebM, etc.), Fonts (TTF, WOFF, etc.), PDFs, and more.
+Supported formats include images, audio, video, fonts, PDFs, and more.
 
-**Returns:** Base64-encoded data with MIME type and size.
+---
 
-## 🔌 Client Configuration
+Built-in exclude list: common dependency/build/output directories (e.g., `node_modules`, `dist`, `build`, `coverage`, `.git`, `.vscode`). Pass `excludePatterns: []` to disable it.
+
+## Client Configuration
 
 <details>
 <summary><b>VS Code</b></summary>
@@ -497,8 +406,6 @@ Add to `.vscode/mcp.json` (recommended) or `.vscode/settings.json`:
 }
 ```
 
-> **Note:** `${workspaceFolder}` is expanded by VS Code to the current workspace path.
-
 </details>
 
 <details>
@@ -512,11 +419,17 @@ Add to `.vscode/mcp.json` (recommended) or `.vscode/settings.json`:
   "mcpServers": {
     "filesystem-context": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/filesystem-context-mcp@latest"]
+      "args": [
+        "-y",
+        "@j0hanz/filesystem-context-mcp@latest",
+        "C:\\path\\to\\project"
+      ]
     }
   }
 }
 ```
+
+If your client supports MCP Roots, you can omit the path. Otherwise, pass a path or `--allow-cwd`.
 
 </details>
 
@@ -530,7 +443,11 @@ Add to Cursor's MCP configuration:
   "mcpServers": {
     "filesystem-context": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/filesystem-context-mcp@latest"]
+      "args": [
+        "-y",
+        "@j0hanz/filesystem-context-mcp@latest",
+        "${workspaceFolder}"
+      ]
     }
   }
 }
@@ -543,31 +460,13 @@ Add to Cursor's MCP configuration:
 
 Add to `~/.codex/config.toml`:
 
-**Basic Configuration (auto-detects current directory):**
-
-```toml
-[mcp_servers.filesystem-context]
-command = "npx"
-args = ["-y", "@j0hanz/filesystem-context-mcp@latest"]
-```
-
-**Configuration with Explicit Directory:**
-
 ```toml
 [mcp_servers.filesystem-context]
 command = "npx"
 args = ["-y", "@j0hanz/filesystem-context-mcp@latest", "/path/to/your/project"]
 ```
 
-**Configuration with Multiple Directories:**
-
-```toml
-[mcp_servers.filesystem-context]
-command = "npx"
-args = ["-y", "@j0hanz/filesystem-context-mcp@latest", "/path/to/project1", "/path/to/project2"]
-```
-
-> **Note:** You can access the config file via Codex IDE by clicking the gear icon → "Codex Settings > Open config.toml". If no directories are specified, it will use the current working directory automatically.
+If your client supports MCP Roots, you can omit the path. Otherwise, pass a path or `--allow-cwd`.
 
 </details>
 
@@ -581,7 +480,11 @@ Add to Windsurf's MCP configuration:
   "mcpServers": {
     "filesystem-context": {
       "command": "npx",
-      "args": ["-y", "@j0hanz/filesystem-context-mcp@latest"]
+      "args": [
+        "-y",
+        "@j0hanz/filesystem-context-mcp@latest",
+        "${workspaceFolder}"
+      ]
     }
   }
 }
@@ -589,55 +492,21 @@ Add to Windsurf's MCP configuration:
 
 </details>
 
-## 🔒 Security
+## Security
 
 This server implements multiple layers of security:
 
-| Protection                    | Description                                                               |
-| ----------------------------- | ------------------------------------------------------------------------- |
-| **Access Control**            | Only explicitly allowed directories are accessible                        |
-| **Path Validation**           | All paths are validated before any filesystem operation                   |
-| **Symlink Protection**        | Symlinks that resolve outside allowed directories are blocked             |
-| **Path Traversal Prevention** | Attempts to escape via `../` are detected and blocked                     |
-| **Read-Only Operations**      | Server only performs read operations—no writes, deletes, or modifications |
-| **Safe Regex**                | Regular expressions are validated to prevent ReDoS attacks                |
-| **Size Limits**               | Configurable limits prevent resource exhaustion                           |
+| Protection                | Description                                                   |
+| ------------------------- | ------------------------------------------------------------- |
+| Access control            | Only explicitly allowed directories are accessible            |
+| Path validation           | All paths are validated before any filesystem operation       |
+| Symlink protection        | Symlinks that resolve outside allowed directories are blocked |
+| Path traversal prevention | Attempts to escape via `..` are detected and blocked          |
+| Read-only operations      | No writes, deletes, or modifications                          |
+| Safe regex                | Regex validation and timeouts prevent ReDoS                   |
+| Size limits               | Configurable limits prevent resource exhaustion               |
 
-### Security Model
-
-```text
-┌─────────────────────────────────────────────────────────┐
-│                    MCP Client                           │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│            Filesystem Context MCP Server                │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │              Path Validation Layer                │  │
-│  │  • Normalize paths                                │  │
-│  │  • Check against allowed directories              │  │
-│  │  • Resolve and validate symlinks                  │  │
-│  │  • Block traversal attempts                       │  │
-│  └───────────────────────────────────────────────────┘  │
-│                         │                               │
-│                         ▼                               │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │            Read-Only File Operations              │  │
-│  └───────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                      │
-                      ▼
-┌─────────────────────────────────────────────────────────┐
-│              Allowed Directories Only                   │
-│  /home/user/project  ✅                                 │
-│  /home/user/docs     ✅                                 │
-│  /etc/passwd         ❌ (blocked)                       │
-│  ../../../etc        ❌ (blocked)                       │
-└─────────────────────────────────────────────────────────┘
-```
-
-## 🛠️ Development
+## Development
 
 ### Prerequisites
 
@@ -657,107 +526,36 @@ This server implements multiple layers of security:
 | `npm run lint`          | Run ESLint                       |
 | `npm run format`        | Format code with Prettier        |
 | `npm run type-check`    | TypeScript type checking         |
+| `npm run bench`         | Run benchmarks                   |
 | `npm run inspector`     | Test with MCP Inspector          |
 
 ### Project Structure
 
 ```text
 src/
-├── index.ts              # Entry point, CLI argument parsing
-├── server.ts             # MCP server setup, roots protocol handling
-├── instructions.md       # AI instructions for tool usage (bundled with dist)
-├── config/
-│   └── types.ts          # Shared TypeScript types
-├── lib/
-│   ├── constants.ts      # Configuration constants and limits
-│   ├── errors.ts         # Error handling utilities
-│   ├── file-operations.ts# Core filesystem operations (exports)
-│   ├── path-utils.ts     # Path manipulation utilities
-│   ├── path-validation.ts# Security: path validation layer
-│   ├── fs-helpers.ts     # Low-level filesystem helpers (exports)
-│   ├── file-operations/  # Core filesystem operations
-│   │   ├── analyze-directory.ts
-│   │   ├── directory-helpers.ts
-│   │   ├── directory-tree.ts
-│   │   ├── file-info.ts
-│   │   ├── list-directory.ts
-│   │   ├── pattern-validator.ts
-│   │   ├── read-media-file.ts
-│   │   ├── read-multiple-files.ts
-│   │   ├── search-content.ts
-│   │   ├── search-definitions.ts
-│   │   ├── search-files.ts
-│   │   └── sorting.ts
-│   ├── fs-helpers/       # Low-level filesystem helpers
-│   │   ├── binary-detect.ts
-│   │   ├── concurrency.ts
-│   │   ├── fs-utils.ts
-│   │   ├── readers.ts
-│   │   └── readers/      # File reading utilities
-│   │       ├── head-file.ts
-│   │       ├── line-range.ts
-│   │       ├── read-file.ts
-│   │       ├── tail-file.ts
-│   │       └── utf8.ts
-│   └── path-validation/  # Security: path validation
-│       ├── allowed-directories.ts
-│       ├── errors.ts
-│       ├── roots.ts
-│       └── validators.ts
-├── schemas/
-│   ├── common.ts         # Shared Zod schemas
-│   ├── input-helpers.ts  # Input validation helpers
-│   ├── inputs.ts         # Input validation schemas
-│   ├── output-helpers.ts # Output formatting helpers
-│   ├── outputs.ts        # Output validation schemas
-│   └── index.ts          # Schema exports
-├── tools/
-│   ├── analyze-directory.ts
-│   ├── directory-tree.ts
-│   ├── get-file-info.ts
-│   ├── list-allowed-dirs.ts
-│   ├── list-directory.ts
-│   ├── read-file.ts
-│   ├── read-media-file.ts
-│   ├── read-multiple-files.ts
-│   ├── search-content.ts
-│   ├── search-definitions.ts
-│   ├── search-files.ts
-│   ├── tool-response.ts  # Tool response formatting
-│   └── index.ts          # Tool registration
-└── __tests__/            # Test files
-    ├── lib/
-    │   ├── errors.test.ts
-    │   ├── file-operations.test.ts
-    │   ├── fs-helpers.test.ts
-    │   └── path-validation.test.ts
-    ├── schemas/
-    │   └── validators.test.ts
-    └── security/
-        └── filesystem-boundary.test.ts
+  index.ts                 # CLI entry point
+  server.ts                # MCP server wiring and roots handling
+  instructions.md          # Tool usage instructions (bundled in dist)
+  config/                  # Shared types and formatting helpers
+  lib/                     # Core logic and filesystem operations
+  schemas/                 # Zod input/output schemas
+  tools/                   # MCP tool registration
+  __tests__/               # Vitest tests
 ```
 
-### Testing with MCP Inspector
+## Troubleshooting
 
-```bash
-npm run inspector
-```
+| Issue                    | Solution                                                                                 |
+| ------------------------ | ---------------------------------------------------------------------------------------- |
+| "Access denied" error    | Ensure the path is within an allowed directory. Use `list_allowed_directories` to check. |
+| "Path does not exist"    | Verify the path exists. Use `list_directory` to explore available files.                 |
+| "File too large"         | Use `head`/`tail` or increase `maxSize`.                                                 |
+| "Binary file" warning    | Use `read_media_file` or set `skipBinary=false` in `read_file`.                          |
+| No directories available | Pass explicit paths, use `--allow-cwd`, or ensure the client provides MCP Roots.         |
+| Symlink blocked          | Symlinks that resolve outside allowed directories are blocked.                           |
+| Regex timeout            | Simplify the regex or increase `REGEX_TIMEOUT`.                                          |
 
-This launches the MCP Inspector for interactive testing of all tools.
-
-## ❓ Troubleshooting
-
-| Issue                       | Solution                                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------- |
-| "Access denied" error       | Ensure the path is within an allowed directory. Use `list_allowed_directories` to check. |
-| "Path does not exist" error | Verify the path exists. Use `list_directory` to explore available files.                 |
-| "File too large" error      | Use `head` or `tail` parameters for partial reading, or increase `maxSize`.              |
-| "Binary file" warning       | Use `read_media_file` for binary files, or set `skipBinary=false` in content search.     |
-| Unexpected directory access | Server defaults to CWD if no args/roots provided. Pass explicit paths to restrict.       |
-| Symlink blocked             | Symlinks that resolve outside allowed directories are blocked for security.              |
-| Regex timeout               | Simplify the regex pattern or use `isLiteral=true` for literal string search.            |
-
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please follow these steps:
 
