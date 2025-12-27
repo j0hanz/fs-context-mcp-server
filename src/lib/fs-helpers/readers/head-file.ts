@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import { StringDecoder } from 'node:string_decoder';
 
 import { validateExistingPath } from '../../path-validation.js';
+import { assertNotAborted } from '../abort.js';
 
 interface HeadReadState {
   lines: string[];
@@ -61,11 +62,13 @@ async function readHeadChunks(
   handle: fs.FileHandle,
   state: HeadReadState,
   numLines: number,
-  maxBytesRead: number | undefined
+  maxBytesRead: number | undefined,
+  signal?: AbortSignal
 ): Promise<void> {
   const chunk = Buffer.alloc(CHUNK_SIZE);
 
   while (state.lines.length < numLines) {
+    assertNotAborted(signal);
     if (maxBytesRead !== undefined && state.bytesRead >= maxBytesRead) break;
 
     const maxChunk = maxChunkSize(maxBytesRead, state.bytesRead);
@@ -85,14 +88,16 @@ export async function headFile(
   filePath: string,
   numLines: number,
   encoding: BufferEncoding = 'utf-8',
-  maxBytesRead?: number
+  maxBytesRead?: number,
+  signal?: AbortSignal
 ): Promise<string> {
+  assertNotAborted(signal);
   const validPath = await validateExistingPath(filePath);
   const handle = await fs.open(validPath, 'r');
 
   try {
     const state = initHeadState(encoding);
-    await readHeadChunks(handle, state, numLines, maxBytesRead);
+    await readHeadChunks(handle, state, numLines, maxBytesRead, signal);
     return state.lines.slice(0, numLines).join('\n');
   } finally {
     await handle.close();

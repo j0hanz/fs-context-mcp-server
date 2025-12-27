@@ -56,6 +56,14 @@ process.on('SIGINT', () => {
   void shutdown('SIGINT');
 });
 
+process.stdin.on('end', () => {
+  void shutdown('stdin end');
+});
+
+process.stdin.on('close', () => {
+  void shutdown('stdin close');
+});
+
 main().catch((error: unknown) => {
   console.error(
     'Fatal error:',

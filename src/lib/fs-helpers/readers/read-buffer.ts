@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 
 import { ErrorCode, McpError } from '../../errors.js';
+import { createAbortError } from '../abort.js';
 
 const STREAM_CHUNK_SIZE = 64 * 1024;
 
@@ -20,7 +21,8 @@ function createTooLargeError(
 export async function readFileBufferWithLimit(
   filePath: string,
   maxSize: number,
-  requestedPath: string = filePath
+  requestedPath: string = filePath,
+  signal?: AbortSignal
 ): Promise<Buffer> {
   return await new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -35,6 +37,9 @@ export async function readFileBufferWithLimit(
       stream.removeListener('data', onData);
       stream.removeListener('end', onEnd);
       stream.removeListener('error', onError);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
     };
 
     const fail = (error: Error): void => {
@@ -43,6 +48,10 @@ export async function readFileBufferWithLimit(
       cleanup();
       stream.destroy();
       reject(error);
+    };
+
+    const onAbort = (): void => {
+      fail(createAbortError());
     };
 
     const onData = (chunk: Buffer | string): void => {
@@ -66,6 +75,12 @@ export async function readFileBufferWithLimit(
     const onError = (error: unknown): void => {
       fail(error instanceof Error ? error : new Error(String(error)));
     };
+
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     stream.on('data', onData);
     stream.on('end', onEnd);

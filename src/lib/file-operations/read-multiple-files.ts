@@ -280,6 +280,7 @@ async function readFilesInParallel(
         head: options.head,
         tail: options.tail,
         lineRange: options.lineRange,
+        signal,
       };
       const result =
         validPath && stats

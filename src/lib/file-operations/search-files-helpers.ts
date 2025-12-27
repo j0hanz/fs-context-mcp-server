@@ -4,7 +4,7 @@ import fg from 'fast-glob';
 
 import type { SearchFilesResult, SearchResult } from '../../config/types.js';
 import { PARALLEL_CONCURRENCY } from '../constants.js';
-import { getFileType } from '../fs-helpers.js';
+import { getFileType, safeDestroy } from '../fs-helpers.js';
 import { validateExistingPathDetailed } from '../path-validation.js';
 import type { SearchFilesOptions } from './search-files-options.js';
 import { sortSearchResults } from './sorting.js';
@@ -24,6 +24,7 @@ interface ScanStreamOptions {
 }
 
 type SearchStopReason = SearchFilesResult['summary']['stoppedReason'];
+type StreamStopReason = 'timeout' | 'abort' | null;
 
 export function initSearchFilesState(): SearchFilesState {
   return {
@@ -190,6 +191,64 @@ async function processBatch(
   }
 }
 
+function attachStreamGuards(
+  stream: AsyncIterable<string | Buffer>,
+  state: SearchFilesState,
+  options: ScanStreamOptions,
+  signal?: AbortSignal
+): { getStopReason: () => StreamStopReason; cleanup: () => void } {
+  let stopReason: StreamStopReason = null;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const destroyStream = (): void => {
+    safeDestroy(stream as unknown);
+  };
+
+  const onAbort = (): void => {
+    if (stopReason === null) {
+      const isTimeout =
+        options.deadlineMs !== undefined && Date.now() >= options.deadlineMs;
+      if (isTimeout) {
+        stopReason = 'timeout';
+        state.truncated = true;
+        state.stoppedReason = 'timeout';
+      } else {
+        stopReason = 'abort';
+      }
+    }
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+    destroyStream();
+  };
+
+  if (signal?.aborted) {
+    onAbort();
+  } else if (signal) {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  if (options.deadlineMs !== undefined) {
+    const delay = Math.max(0, options.deadlineMs - Date.now());
+    timeoutId = setTimeout(() => {
+      if (stopReason === 'abort') return;
+      stopReason = 'timeout';
+      state.truncated = true;
+      state.stoppedReason = 'timeout';
+      destroyStream();
+    }, delay);
+  }
+
+  return {
+    getStopReason: () => stopReason,
+    cleanup: () => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      if (timeoutId) clearTimeout(timeoutId);
+    },
+  };
+}
+
 export async function scanStream(
   stream: AsyncIterable<string | Buffer>,
   state: SearchFilesState,
@@ -198,23 +257,37 @@ export async function scanStream(
 ): Promise<void> {
   const batch: string[] = [];
   const cache = new Map<string, Promise<SearchResult | { error: Error }>>();
+  const guard = attachStreamGuards(stream, state, options, signal);
 
-  for await (const entry of stream) {
-    assertNotAborted(signal);
-    if (shouldStopProcessing(state, options)) break;
-    const stop = await handleStreamEntry(
-      entry,
-      state,
-      options,
-      batch,
-      cache,
-      signal
-    );
-    if (stop) break;
-  }
+  try {
+    for await (const entry of stream) {
+      assertNotAborted(signal);
+      if (shouldStopProcessing(state, options)) break;
+      const stop = await handleStreamEntry(
+        entry,
+        state,
+        options,
+        batch,
+        cache,
+        signal
+      );
+      if (stop) break;
+    }
 
-  if (!state.truncated) {
-    await processBatch(batch, state, options, cache, signal);
+    if (!state.truncated) {
+      await processBatch(batch, state, options, cache, signal);
+    }
+  } catch (error) {
+    const reason = guard.getStopReason();
+    if (reason === 'timeout') return;
+    if (reason === 'abort') {
+      const abortError = new Error('Search aborted');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
+    throw error;
+  } finally {
+    guard.cleanup();
   }
 }
 

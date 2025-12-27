@@ -1,6 +1,7 @@
 import fg from 'fast-glob';
 
 import { PARALLEL_CONCURRENCY } from '../../constants.js';
+import { safeDestroy } from '../../fs-helpers.js';
 import type { SearchOptions } from './engine-options.js';
 import { processFile } from './file-processor.js';
 import type { Matcher } from './match-strategy.js';
@@ -23,6 +24,65 @@ interface StreamProcessingState {
   active: Set<Promise<void>>;
   inFlight: number;
   processorBaseOptions: ProcessorBaseOptions;
+}
+
+type StreamStopReason = 'timeout' | 'abort' | null;
+
+function attachStreamGuards(
+  stream: AsyncIterable<string | Buffer>,
+  searchState: SearchState,
+  deadlineMs: number | undefined,
+  signal?: AbortSignal
+): { getStopReason: () => StreamStopReason; cleanup: () => void } {
+  let stopReason: StreamStopReason = null;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const destroyStream = (): void => {
+    safeDestroy(stream as unknown);
+  };
+
+  const onAbort = (): void => {
+    if (stopReason === null) {
+      const isTimeout = deadlineMs !== undefined && Date.now() >= deadlineMs;
+      if (isTimeout) {
+        stopReason = 'timeout';
+        searchState.truncated = true;
+        searchState.stoppedReason = 'timeout';
+      } else {
+        stopReason = 'abort';
+      }
+    }
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = undefined;
+    }
+    destroyStream();
+  };
+
+  if (signal?.aborted) {
+    onAbort();
+  } else if (signal) {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  if (deadlineMs !== undefined) {
+    const delay = Math.max(0, deadlineMs - Date.now());
+    timeoutId = setTimeout(() => {
+      if (stopReason === 'abort') return;
+      stopReason = 'timeout';
+      searchState.truncated = true;
+      searchState.stoppedReason = 'timeout';
+      destroyStream();
+    }, delay);
+  }
+
+  return {
+    getStopReason: () => stopReason,
+    cleanup: () => {
+      if (signal) signal.removeEventListener('abort', onAbort);
+      if (timeoutId) clearTimeout(timeoutId);
+    },
+  };
 }
 
 export function createStream(
@@ -217,22 +277,37 @@ export async function processStream(
   signal?: AbortSignal
 ): Promise<void> {
   const processing = createProcessingState(options, deadlineMs, searchPattern);
+  const guard = attachStreamGuards(stream, searchState, deadlineMs, signal);
 
-  for await (const entry of stream) {
-    if (signal?.aborted) break;
-    const action = await handleStreamEntry(
-      entry,
-      searchState,
-      processing,
-      matcher,
-      options,
-      deadlineMs,
-      signal
-    );
-    if (action === 'stop') break;
+  try {
+    for await (const entry of stream) {
+      if (signal?.aborted) break;
+      const action = await handleStreamEntry(
+        entry,
+        searchState,
+        processing,
+        matcher,
+        options,
+        deadlineMs,
+        signal
+      );
+      if (action === 'stop') break;
+    }
+  } catch (error) {
+    const reason = guard.getStopReason();
+    if (reason === 'timeout') {
+      // fall through to finalize below
+    } else if (reason === 'abort') {
+      const abortError = new Error('Search aborted');
+      abortError.name = 'AbortError';
+      throw abortError;
+    } else {
+      throw error;
+    }
+  } finally {
+    guard.cleanup();
+    await Promise.all(processing.active);
   }
-
-  await Promise.all(processing.active);
   if (deadlineMs && Date.now() > deadlineMs && !searchState.truncated) {
     searchState.truncated = true;
     searchState.stoppedReason = 'timeout';

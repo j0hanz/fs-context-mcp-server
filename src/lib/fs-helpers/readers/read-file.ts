@@ -4,6 +4,7 @@ import type { Stats } from 'node:fs';
 import { MAX_TEXT_FILE_SIZE } from '../../constants.js';
 import { ErrorCode, McpError } from '../../errors.js';
 import { validateExistingPath } from '../../path-validation.js';
+import { assertNotAborted } from '../abort.js';
 import { isProbablyBinary } from '../binary-detect.js';
 import {
   readFullContent,
@@ -19,6 +20,7 @@ interface NormalizedOptions {
   head?: number;
   tail?: number;
   skipBinary: boolean;
+  signal?: AbortSignal;
 }
 
 interface ReadFileOptions {
@@ -28,6 +30,7 @@ interface ReadFileOptions {
   head?: number;
   tail?: number;
   skipBinary?: boolean;
+  signal?: AbortSignal;
 }
 
 interface ReadFileResult {
@@ -57,6 +60,7 @@ function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
     head: options.head,
     tail: options.tail,
     skipBinary: options.skipBinary ?? false,
+    signal: options.signal,
   };
 }
 
@@ -174,6 +178,7 @@ async function readLineRangeResult(
     await readLineRangeContent(validPath, lineRange, {
       encoding: normalized.encoding,
       maxSize: normalized.maxSize,
+      signal: normalized.signal,
     });
   return buildReadResult(validPath, content, truncated, undefined, {
     readMode: 'lineRange',
@@ -196,6 +201,7 @@ async function readTailResult(
     {
       encoding: normalized.encoding,
       maxSize: normalized.maxSize,
+      signal: normalized.signal,
     }
   );
   return buildReadResult(validPath, content, truncated, undefined, {
@@ -218,6 +224,7 @@ async function readHeadResult(
     {
       encoding: normalized.encoding,
       maxSize: normalized.maxSize,
+      signal: normalized.signal,
     }
   );
   return buildReadResult(validPath, content, truncated, undefined, {
@@ -239,7 +246,8 @@ async function readFullResult(
     validPath,
     normalized.encoding,
     normalized.maxSize,
-    filePath
+    filePath,
+    normalized.signal
   );
   return buildReadResult(validPath, content, false, totalLines, {
     readMode: 'full',
@@ -287,12 +295,14 @@ async function readFileWithStatsInternal(
   stats: Stats,
   normalized: NormalizedOptions
 ): Promise<ReadFileResult> {
+  assertNotAborted(normalized.signal);
   assertIsFile(stats, filePath);
   assertSingleMode(normalized, filePath);
   if (normalized.skipBinary) {
     await assertNotBinary(validPath, filePath);
   }
 
+  assertNotAborted(normalized.signal);
   return await readByMode(validPath, filePath, stats, normalized);
 }
 
@@ -303,6 +313,7 @@ export async function readFileWithStats(
   options: ReadFileOptions = {}
 ): Promise<ReadFileResult> {
   const normalized = normalizeOptions(options);
+  assertNotAborted(normalized.signal);
   return await readFileWithStatsInternal(
     filePath,
     validPath,
@@ -316,7 +327,9 @@ export async function readFile(
   options: ReadFileOptions = {}
 ): Promise<ReadFileResult> {
   const normalized = normalizeOptions(options);
+  assertNotAborted(normalized.signal);
   const validPath = await validateExistingPath(filePath);
+  assertNotAborted(normalized.signal);
   const stats = await fs.stat(validPath);
 
   return await readFileWithStatsInternal(

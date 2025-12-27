@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 
 import { validateExistingPath } from '../../path-validation.js';
+import { assertNotAborted } from '../abort.js';
 import { findUTF8Boundary } from './utf8.js';
 
 interface TailReadState {
@@ -143,8 +144,10 @@ async function readTailChunk(
   state: TailReadState,
   numLines: number,
   encoding: BufferEncoding,
-  maxBytesRead: number | undefined
+  maxBytesRead: number | undefined,
+  signal?: AbortSignal
 ): Promise<void> {
+  assertNotAborted(signal);
   const window = clampWindow(
     state.position,
     maxBytesRead,
@@ -179,8 +182,10 @@ export async function tailFile(
   filePath: string,
   numLines: number,
   encoding: BufferEncoding = 'utf-8',
-  maxBytesRead?: number
+  maxBytesRead?: number,
+  signal?: AbortSignal
 ): Promise<string> {
+  assertNotAborted(signal);
   const validPath = await validateExistingPath(filePath);
   const stats = await fs.stat(validPath);
   if (stats.size === 0) return '';
@@ -190,7 +195,14 @@ export async function tailFile(
     const state = initTailState(stats.size);
 
     while (shouldContinue(state, numLines)) {
-      await readTailChunk(handle, state, numLines, encoding, maxBytesRead);
+      await readTailChunk(
+        handle,
+        state,
+        numLines,
+        encoding,
+        maxBytesRead,
+        signal
+      );
     }
 
     return state.lines.join('\n');

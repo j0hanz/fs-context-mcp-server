@@ -7,6 +7,7 @@ import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
+import { createTimedAbortSignal } from './shared/abort.js';
 import {
   assertNoMixedRangeOptions,
   buildLineRange,
@@ -18,6 +19,8 @@ import {
   type ToolResult,
   withToolErrorHandling,
 } from './tool-response.js';
+
+const READ_FILE_TIMEOUT_MS = 30000;
 
 function buildTextResult(
   result: Awaited<ReturnType<typeof readFile>>,
@@ -81,16 +84,19 @@ function buildRangeNote(
 type ReadFileArgs = z.infer<z.ZodObject<typeof ReadFileInputSchema>>;
 type ReadFileStructuredResult = z.infer<typeof ReadFileOutputSchema>;
 
-async function handleReadFile(args: {
-  path: string;
-  encoding?: BufferEncoding;
-  maxSize?: number;
-  lineStart?: number;
-  lineEnd?: number;
-  head?: number;
-  tail?: number;
-  skipBinary?: boolean;
-}): Promise<ToolResponse<ReadFileStructuredResult>> {
+async function handleReadFile(
+  args: {
+    path: string;
+    encoding?: BufferEncoding;
+    maxSize?: number;
+    lineStart?: number;
+    lineEnd?: number;
+    head?: number;
+    tail?: number;
+    skipBinary?: boolean;
+  },
+  signal?: AbortSignal
+): Promise<ToolResponse<ReadFileStructuredResult>> {
   const hasHeadTail = args.head !== undefined || args.tail !== undefined;
   const hasLineRange =
     args.lineStart !== undefined || args.lineEnd !== undefined;
@@ -111,6 +117,7 @@ async function handleReadFile(args: {
     head: effectiveOptions.head,
     tail: effectiveOptions.tail,
     skipBinary: effectiveOptions.skipBinary,
+    signal,
   });
 
   const structured: ReadFileStructuredResult = {
@@ -160,10 +167,21 @@ const READ_FILE_TOOL = {
 
 export function registerReadFileTool(server: McpServer): void {
   const handler = (
-    args: ReadFileArgs
+    args: ReadFileArgs,
+    extra: { signal?: AbortSignal }
   ): Promise<ToolResult<ReadFileStructuredResult>> =>
     withToolErrorHandling(
-      () => handleReadFile(args),
+      async () => {
+        const { signal, cleanup } = createTimedAbortSignal(
+          extra.signal,
+          READ_FILE_TIMEOUT_MS
+        );
+        try {
+          return await handleReadFile(args, signal);
+        } finally {
+          cleanup();
+        }
+      },
       (error) => buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, args.path)
     );
 

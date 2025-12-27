@@ -1,6 +1,8 @@
 import * as readline from 'node:readline';
 import { createReadStream } from 'node:fs';
 
+import { assertNotAborted, createAbortError } from '../abort.js';
+
 interface LineRangeState {
   lines: string[];
   lineNumber: number;
@@ -43,9 +45,11 @@ async function scanLineRange(
   startLine: number,
   endLine: number,
   maxBytesRead: number | undefined,
-  getBytesRead: () => number
+  getBytesRead: () => number,
+  signal?: AbortSignal
 ): Promise<void> {
   for await (const line of rl) {
+    if (signal?.aborted) break;
     state.lineNumber++;
 
     if (state.lineNumber >= startLine && state.lineNumber <= endLine) {
@@ -72,8 +76,10 @@ export async function readLineRange(
   startLine: number,
   endLine: number,
   encoding: BufferEncoding,
-  maxBytesRead?: number
+  maxBytesRead?: number,
+  signal?: AbortSignal
 ): Promise<LineRangeResult> {
+  assertNotAborted(signal);
   const fileStream = createReadStream(filePath, { encoding });
   const rl = readline.createInterface({
     input: fileStream,
@@ -81,6 +87,14 @@ export async function readLineRange(
   });
 
   const state = initLineRangeState();
+  const onAbort = (): void => {
+    fileStream.destroy(createAbortError());
+  };
+  if (signal?.aborted) {
+    onAbort();
+  } else {
+    signal?.addEventListener('abort', onAbort, { once: true });
+  }
 
   try {
     await scanLineRange(
@@ -89,10 +103,12 @@ export async function readLineRange(
       startLine,
       endLine,
       maxBytesRead,
-      () => fileStream.bytesRead
+      () => fileStream.bytesRead,
+      signal
     );
     return buildLineRangeResult(state);
   } finally {
+    signal?.removeEventListener('abort', onAbort);
     rl.close();
     fileStream.destroy();
   }

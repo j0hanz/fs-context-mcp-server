@@ -6,7 +6,7 @@ import { tailFile } from './tail-file.js';
 export async function readLineRangeContent(
   filePath: string,
   lineRange: { start: number; end: number },
-  options: { encoding: BufferEncoding; maxSize: number }
+  options: { encoding: BufferEncoding; maxSize: number; signal?: AbortSignal }
 ): Promise<{
   content: string;
   truncated: boolean;
@@ -19,7 +19,8 @@ export async function readLineRangeContent(
     lineRange.start,
     lineRange.end,
     options.encoding,
-    options.maxSize
+    options.maxSize,
+    options.signal
   );
 
   const expectedLines = lineRange.end - lineRange.start + 1;
@@ -45,7 +46,7 @@ function countLines(content: string): number {
 export async function readHeadContent(
   filePath: string,
   head: number,
-  options: { encoding: BufferEncoding; maxSize: number }
+  options: { encoding: BufferEncoding; maxSize: number; signal?: AbortSignal }
 ): Promise<{
   content: string;
   truncated: boolean;
@@ -56,7 +57,8 @@ export async function readHeadContent(
     filePath,
     head,
     options.encoding,
-    options.maxSize
+    options.maxSize,
+    options.signal
   );
   const linesRead = countLines(content);
   return {
@@ -70,7 +72,7 @@ export async function readHeadContent(
 export async function readTailContent(
   filePath: string,
   tail: number,
-  options: { encoding: BufferEncoding; maxSize: number }
+  options: { encoding: BufferEncoding; maxSize: number; signal?: AbortSignal }
 ): Promise<{
   content: string;
   truncated: boolean;
@@ -81,7 +83,8 @@ export async function readTailContent(
     filePath,
     tail,
     options.encoding,
-    options.maxSize
+    options.maxSize,
+    options.signal
   );
   const linesRead = countLines(content);
   return {
@@ -96,12 +99,14 @@ export async function readFullContent(
   filePath: string,
   encoding: BufferEncoding,
   maxSize: number,
-  requestedPath: string = filePath
+  requestedPath: string = filePath,
+  signal?: AbortSignal
 ): Promise<{ content: string; totalLines: number }> {
   const buffer = await readFileBufferWithLimit(
     filePath,
     maxSize,
-    requestedPath
+    requestedPath,
+    signal
   );
   const content = buffer.toString(encoding);
   return { content, totalLines: content.split('\n').length };

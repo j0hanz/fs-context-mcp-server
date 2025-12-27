@@ -10,6 +10,7 @@ import {
   ReadMultipleFilesInputSchema,
   ReadMultipleFilesOutputSchema,
 } from '../schemas/index.js';
+import { createTimedAbortSignal } from './shared/abort.js';
 import {
   assertLineRangeComplete,
   assertNoMixedRangeOptions,
@@ -21,6 +22,8 @@ import {
   type ToolResult,
   withToolErrorHandling,
 } from './tool-response.js';
+
+const READ_MULTIPLE_TIMEOUT_MS = 30000;
 
 type ReadMultipleArgs = z.infer<
   z.ZodObject<typeof ReadMultipleFilesInputSchema>
@@ -173,10 +176,20 @@ const READ_MULTIPLE_FILES_TOOL = {
 export function registerReadMultipleFilesTool(server: McpServer): void {
   const handler = (
     args: ReadMultipleArgs,
-    extra: { signal: AbortSignal }
+    extra: { signal?: AbortSignal }
   ): Promise<ToolResult<ReadMultipleStructuredResult>> =>
     withToolErrorHandling(
-      () => handleReadMultipleFiles(args, extra.signal),
+      async () => {
+        const { signal, cleanup } = createTimedAbortSignal(
+          extra.signal,
+          READ_MULTIPLE_TIMEOUT_MS
+        );
+        try {
+          return await handleReadMultipleFiles(args, signal);
+        } finally {
+          cleanup();
+        }
+      },
       (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN)
     );
 
