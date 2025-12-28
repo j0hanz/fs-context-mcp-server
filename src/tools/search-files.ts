@@ -18,6 +18,7 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations.js';
+import { mergeDefined } from '../lib/merge-defined.js';
 import {
   SearchFilesInputSchema,
   SearchFilesOutputSchema,
@@ -30,8 +31,40 @@ import {
   withToolErrorHandling,
 } from './tool-response.js';
 
-type SearchFilesArgs = z.infer<z.ZodObject<typeof SearchFilesInputSchema>>;
+type SearchFilesArgs = z.infer<typeof SearchFilesInputSchema>;
 type SearchFilesStructuredResult = z.infer<typeof SearchFilesOutputSchema>;
+
+type SearchSort = 'name' | 'size' | 'modified' | 'path';
+
+interface SearchOptions {
+  excludePatterns: string[];
+  maxResults: number;
+  sortBy: SearchSort;
+  maxDepth: number;
+  maxFilesScanned: number;
+  timeoutMs: number;
+  baseNameMatch: boolean;
+  skipSymlinks: boolean;
+  includeHidden: boolean;
+}
+
+const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
+  excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
+  maxResults: DEFAULT_MAX_RESULTS,
+  sortBy: 'path',
+  maxDepth: DEFAULT_MAX_DEPTH,
+  maxFilesScanned: DEFAULT_SEARCH_MAX_FILES,
+  timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
+  baseNameMatch: false,
+  skipSymlinks: true,
+  includeHidden: false,
+};
+
+function buildEffectiveSearchOptions(
+  overrides: Partial<SearchOptions>
+): SearchOptions {
+  return mergeDefined(DEFAULT_SEARCH_OPTIONS, overrides);
+}
 
 function formatSearchResults(
   results: Awaited<ReturnType<typeof searchFiles>>['results'],
@@ -153,33 +186,23 @@ async function handleSearchFiles(
   },
   signal?: AbortSignal
 ): Promise<ToolResponse<SearchFilesStructuredResult>> {
-  const effectiveOptions = {
-    excludePatterns: excludePatterns ?? DEFAULT_EXCLUDE_PATTERNS,
-    maxResults: maxResults ?? DEFAULT_MAX_RESULTS,
-    sortBy: sortBy ?? 'path',
-    maxDepth: maxDepth ?? DEFAULT_MAX_DEPTH,
-    maxFilesScanned: maxFilesScanned ?? DEFAULT_SEARCH_MAX_FILES,
-    timeoutMs: timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
-    baseNameMatch: baseNameMatch ?? false,
-    skipSymlinks: skipSymlinks ?? true,
-    includeHidden: includeHidden ?? false,
-  };
-  const result = await searchFiles(
-    searchBasePath,
-    pattern,
-    effectiveOptions.excludePatterns,
-    {
-      maxResults: effectiveOptions.maxResults,
-      sortBy: effectiveOptions.sortBy,
-      maxDepth: effectiveOptions.maxDepth,
-      maxFilesScanned: effectiveOptions.maxFilesScanned,
-      timeoutMs: effectiveOptions.timeoutMs,
-      baseNameMatch: effectiveOptions.baseNameMatch,
-      skipSymlinks: effectiveOptions.skipSymlinks,
-      includeHidden: effectiveOptions.includeHidden,
-      signal,
-    }
-  );
+  const effectiveOptions = buildEffectiveSearchOptions({
+    excludePatterns,
+    maxResults,
+    sortBy,
+    maxDepth,
+    maxFilesScanned,
+    timeoutMs,
+    baseNameMatch,
+    skipSymlinks,
+    includeHidden,
+  });
+  const { excludePatterns: effectiveExclude, ...searchOptions } =
+    effectiveOptions;
+  const result = await searchFiles(searchBasePath, pattern, effectiveExclude, {
+    ...searchOptions,
+    signal,
+  });
   const structured = buildStructuredResult(result);
   structured.effectiveOptions = effectiveOptions;
   return buildToolResponse(buildTextResult(result), structured);
@@ -194,7 +217,7 @@ const SEARCH_FILES_TOOL = {
     'excludePatterns defaults to common dependency/build dirs (pass [] to disable). ' +
     'Symlink traversal is disabled (skipSymlinks must remain true).',
   inputSchema: SearchFilesInputSchema,
-  outputSchema: SearchFilesOutputSchema.shape,
+  outputSchema: SearchFilesOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

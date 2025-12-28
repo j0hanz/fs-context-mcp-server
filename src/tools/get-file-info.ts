@@ -21,7 +21,7 @@ import {
   withToolErrorHandling,
 } from './tool-response.js';
 
-type GetFileInfoArgs = z.infer<z.ZodObject<typeof GetFileInfoInputSchema>>;
+type GetFileInfoArgs = z.infer<typeof GetFileInfoInputSchema>;
 type GetFileInfoStructuredResult = z.infer<typeof GetFileInfoOutputSchema>;
 
 const GET_FILE_INFO_TIMEOUT_MS = 30000;
@@ -56,7 +56,7 @@ const GET_FILE_INFO_TOOL = {
     'MIME type (for files), hidden status, and symlink target (if applicable). ' +
     'Use this to check file properties before reading large files.',
   inputSchema: GetFileInfoInputSchema,
-  outputSchema: GetFileInfoOutputSchema.shape,
+  outputSchema: GetFileInfoOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

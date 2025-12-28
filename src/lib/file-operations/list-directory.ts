@@ -4,16 +4,19 @@ import {
   DEFAULT_MAX_DEPTH,
   DIR_TRAVERSAL_CONCURRENCY,
 } from '../constants.js';
+import { createAbortError } from '../fs-helpers/abort.js';
 import { mergeDefined } from '../merge-defined.js';
 import { validateExistingDirectory } from '../path-validation.js';
 import {
-  buildExcludeMatchers,
-  buildPatternMatcher,
   createStopChecker,
   handleDirectory,
   initListState,
   type ListDirectoryConfig,
 } from './list-directory-helpers.js';
+import {
+  buildExcludeMatchers,
+  buildPatternMatcher,
+} from './list-directory-matching.js';
 import { sortByField } from './sorting.js';
 
 interface ListDirectoryOptions {
@@ -37,90 +40,156 @@ interface DirectoryQueueItem {
   depth: number;
 }
 
-function createAbortError(): Error {
-  const error = new Error('Operation aborted');
-  error.name = 'AbortError';
-  return error;
+interface QueueState {
+  queue: DirectoryQueueItem[];
+  index: number;
+  aborted: boolean;
+  abortReason?: Error;
+  errors: Error[];
+  inFlight: Set<Promise<void>>;
+}
+
+type QueueWorker = (
+  item: DirectoryQueueItem,
+  enqueue: (item: DirectoryQueueItem) => void
+) => Promise<void>;
+
+function createQueueState(
+  initialItems: DirectoryQueueItem[],
+  signal?: AbortSignal
+): QueueState {
+  return {
+    queue: [...initialItems],
+    index: 0,
+    aborted: Boolean(signal?.aborted),
+    abortReason: signal?.aborted ? createAbortError() : undefined,
+    errors: [],
+    inFlight: new Set<Promise<void>>(),
+  };
+}
+
+function normalizeQueueError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function recordQueueError(state: QueueState, error: Error): void {
+  state.errors.push(error);
+  state.aborted = true;
+  state.abortReason ??= error;
+}
+
+function attachAbortListener(
+  state: QueueState,
+  signal?: AbortSignal
+): () => void {
+  if (!signal || signal.aborted) return () => {};
+
+  const onAbort = (): void => {
+    if (state.aborted) return;
+    state.aborted = true;
+    state.abortReason = createAbortError();
+  };
+
+  signal.addEventListener('abort', onAbort, { once: true });
+
+  return (): void => {
+    signal.removeEventListener('abort', onAbort);
+  };
+}
+
+function enqueueItem(state: QueueState, item: DirectoryQueueItem): void {
+  if (state.aborted) return;
+  state.queue.push(item);
+}
+
+function canStartNext(state: QueueState, concurrency: number): boolean {
+  return (
+    !state.aborted &&
+    state.inFlight.size < concurrency &&
+    state.index < state.queue.length
+  );
+}
+
+function createWorkerTask(
+  state: QueueState,
+  item: DirectoryQueueItem,
+  worker: QueueWorker
+): Promise<void> {
+  return (async (): Promise<void> => {
+    try {
+      await worker(item, (next) => {
+        enqueueItem(state, next);
+      });
+    } catch (error) {
+      recordQueueError(state, normalizeQueueError(error));
+    }
+  })();
+}
+
+function queueNextTask(state: QueueState, worker: QueueWorker): void {
+  const item = state.queue[state.index];
+  state.index += 1;
+  if (!item) return;
+
+  const task = createWorkerTask(state, item, worker);
+  state.inFlight.add(task);
+  void task.finally(() => {
+    state.inFlight.delete(task);
+  });
+}
+
+function startNextTasks(
+  state: QueueState,
+  worker: QueueWorker,
+  concurrency: number
+): void {
+  while (canStartNext(state, concurrency)) {
+    queueNextTask(state, worker);
+  }
+}
+
+async function drainQueue(
+  state: QueueState,
+  worker: QueueWorker,
+  concurrency: number
+): Promise<void> {
+  startNextTasks(state, worker, concurrency);
+  while (state.inFlight.size > 0) {
+    await Promise.race(state.inFlight);
+    startNextTasks(state, worker, concurrency);
+  }
+}
+
+function throwIfQueueFailed(state: QueueState): void {
+  if (state.errors.length === 1) {
+    const [firstError] = state.errors;
+    if (firstError) throw firstError;
+    throw new Error('Work queue failed');
+  }
+  if (state.errors.length > 1) {
+    throw new AggregateError(state.errors, 'Work queue failed');
+  }
+  if (state.abortReason) {
+    throw state.abortReason;
+  }
 }
 
 async function runDirectoryQueue(
   initialItems: DirectoryQueueItem[],
-  worker: (
-    item: DirectoryQueueItem,
-    enqueue: (item: DirectoryQueueItem) => void
-  ) => Promise<void>,
+  worker: QueueWorker,
   concurrency: number,
   signal?: AbortSignal
 ): Promise<void> {
-  const queue: DirectoryQueueItem[] = [...initialItems];
-  let index = 0;
-  let aborted = Boolean(signal?.aborted);
-  let abortReason: Error | undefined = aborted ? createAbortError() : undefined;
-  const errors: Error[] = [];
-  const inFlight = new Set<Promise<void>>();
+  const state = createQueueState(initialItems, signal);
+  const detachAbort = attachAbortListener(state, signal);
 
-  const onAbort = (): void => {
-    if (!aborted) {
-      aborted = true;
-      abortReason = createAbortError();
-    }
-  };
-
-  if (signal && !signal.aborted) {
-    signal.addEventListener('abort', onAbort, { once: true });
+  try {
+    await drainQueue(state, worker, concurrency);
+  } finally {
+    detachAbort();
   }
 
-  const enqueue = (item: DirectoryQueueItem): void => {
-    if (aborted) return;
-    queue.push(item);
-  };
-
-  const startNext = (): void => {
-    while (!aborted && inFlight.size < concurrency && index < queue.length) {
-      const item = queue.at(index);
-      index += 1;
-      if (!item) break;
-      const task = (async (): Promise<void> => {
-        try {
-          await worker(item, enqueue);
-        } catch (error) {
-          const normalized =
-            error instanceof Error ? error : new Error(String(error));
-          errors.push(normalized);
-          aborted = true;
-          abortReason ??= normalized;
-        }
-      })();
-      inFlight.add(task);
-      void task.finally(() => {
-        inFlight.delete(task);
-      });
-    }
-  };
-
-  startNext();
-  while (inFlight.size > 0) {
-    await Promise.race(inFlight);
-    startNext();
-  }
-
-  if (signal) {
-    signal.removeEventListener('abort', onAbort);
-  }
-
-  if (errors.length === 1) {
-    const [firstError] = errors;
-    if (firstError) {
-      throw firstError;
-    }
-    throw new Error('Work queue failed');
-  }
-  if (errors.length > 1) {
-    throw new AggregateError(errors, 'Work queue failed');
-  }
-  if (abortReason) {
-    throw abortReason;
-  }
+  throwIfQueueFailed(state);
 }
 
 function normalizeListDirectoryOptions(
@@ -156,6 +225,39 @@ function buildSummary(
   };
 }
 
+function buildTraversalContext(
+  basePath: string,
+  normalized: NormalizedListDirectoryOptions,
+  signal?: AbortSignal
+): {
+  config: ListDirectoryConfig;
+  state: ReturnType<typeof initListState>;
+  shouldStop: ReturnType<typeof createStopChecker>;
+} {
+  const state = initListState();
+  const shouldStop = createStopChecker(normalized.maxEntries, state, signal);
+  const excludeMatchers = buildExcludeMatchers(normalized.excludePatterns);
+  const patternMatcher = buildPatternMatcher(normalized.pattern);
+
+  return {
+    config: {
+      basePath,
+      recursive: normalized.recursive,
+      includeHidden: normalized.includeHidden,
+      excludePatterns: normalized.excludePatterns,
+      excludeMatchers,
+      maxDepth: normalized.maxDepth,
+      maxEntries: normalized.maxEntries,
+      includeSymlinkTargets: normalized.includeSymlinkTargets,
+      pattern: normalized.pattern,
+      patternMatcher,
+      signal,
+    },
+    state,
+    shouldStop,
+  };
+}
+
 export async function listDirectory(
   dirPath: string,
   options: ListDirectoryOptions = {}
@@ -164,23 +266,11 @@ export async function listDirectory(
   const normalized = normalizeListDirectoryOptions(rest);
 
   const basePath = await validateExistingDirectory(dirPath);
-  const state = initListState();
-  const shouldStop = createStopChecker(normalized.maxEntries, state, signal);
-  const excludeMatchers = buildExcludeMatchers(normalized.excludePatterns);
-  const patternMatcher = buildPatternMatcher(normalized.pattern);
-  const config: ListDirectoryConfig = {
+  const { config, state, shouldStop } = buildTraversalContext(
     basePath,
-    recursive: normalized.recursive,
-    includeHidden: normalized.includeHidden,
-    excludePatterns: normalized.excludePatterns,
-    excludeMatchers,
-    maxDepth: normalized.maxDepth,
-    maxEntries: normalized.maxEntries,
-    includeSymlinkTargets: normalized.includeSymlinkTargets,
-    pattern: normalized.pattern,
-    patternMatcher,
-    signal,
-  };
+    normalized,
+    signal
+  );
 
   await runDirectoryQueue(
     [{ currentPath: basePath, depth: 0 }],

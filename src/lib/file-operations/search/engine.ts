@@ -60,6 +60,43 @@ function assertNotAborted(signal?: AbortSignal): void {
   }
 }
 
+function attachSignalAbort(
+  signal: AbortSignal | undefined,
+  controller: AbortController
+): () => void {
+  if (!signal) return () => {};
+
+  const onAbort = (): void => {
+    controller.abort();
+  };
+
+  if (signal.aborted) {
+    onAbort();
+  } else {
+    signal.addEventListener('abort', onAbort, { once: true });
+  }
+
+  return (): void => {
+    signal.removeEventListener('abort', onAbort);
+  };
+}
+
+function attachTimeoutAbort(
+  deadlineMs: number | undefined,
+  controller: AbortController
+): () => void {
+  if (!deadlineMs) return () => {};
+
+  const delay = Math.max(0, deadlineMs - Date.now());
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, delay);
+
+  return (): void => {
+    clearTimeout(timeoutId);
+  };
+}
+
 function createSearchSignal(
   signal: AbortSignal | undefined,
   deadlineMs: number | undefined
@@ -69,31 +106,49 @@ function createSearchSignal(
   }
 
   const controller = new AbortController();
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const onAbort = (): void => {
-    controller.abort();
-  };
-
-  if (signal?.aborted) {
-    controller.abort();
-  } else if (signal) {
-    signal.addEventListener('abort', onAbort, { once: true });
-  }
-
-  if (deadlineMs) {
-    const delay = Math.max(0, deadlineMs - Date.now());
-    timeoutId = setTimeout(() => {
-      controller.abort();
-    }, delay);
-  }
+  const detachSignal = attachSignalAbort(signal, controller);
+  const clearTimeout = attachTimeoutAbort(deadlineMs, controller);
 
   return {
     signal: controller.signal,
     cleanup: (): void => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (signal) signal.removeEventListener('abort', onAbort);
+      clearTimeout();
+      detachSignal();
     },
+  };
+}
+
+async function ensureSearchBasePath(
+  basePath: string,
+  options: SearchOptions,
+  signal?: AbortSignal
+): Promise<string> {
+  assertNotAborted(signal);
+  const validPath = await validateExistingDirectory(basePath);
+  validateGlobPatternOrThrow(options.filePattern, validPath);
+  return validPath;
+}
+
+function buildMatcherForSearch(
+  validPath: string,
+  searchPattern: string,
+  options: SearchOptions
+): ReturnType<typeof createMatcher> {
+  return createMatcher(searchPattern, {
+    isLiteral: options.isLiteral,
+    wholeWord: options.wholeWord,
+    caseSensitive: options.caseSensitive,
+    basePath: validPath,
+  });
+}
+
+function createSearchStreamState(
+  validPath: string,
+  options: SearchOptions
+): { state: SearchState; stream: AsyncIterable<string | Buffer> } {
+  return {
+    state: createInitialState(),
+    stream: createStream(validPath, options),
   };
 }
 
@@ -110,20 +165,13 @@ export async function executeSearch(
     signal,
     deadlineMs
   );
-
-  assertNotAborted(combinedSignal);
-  const validPath = await validateExistingDirectory(basePath);
-  validateGlobPatternOrThrow(options.filePattern, validPath);
-
-  const matcher = createMatcher(searchPattern, {
-    isLiteral: options.isLiteral,
-    wholeWord: options.wholeWord,
-    caseSensitive: options.caseSensitive,
-    basePath: validPath,
-  });
-
-  const state = createInitialState();
-  const stream = createStream(validPath, options);
+  const validPath = await ensureSearchBasePath(
+    basePath,
+    options,
+    combinedSignal
+  );
+  const matcher = buildMatcherForSearch(validPath, searchPattern, options);
+  const { state, stream } = createSearchStreamState(validPath, options);
 
   try {
     assertNotAborted(combinedSignal);

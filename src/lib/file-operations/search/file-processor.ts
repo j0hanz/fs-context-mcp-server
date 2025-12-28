@@ -9,8 +9,16 @@ import {
 import { isProbablyBinary } from '../../fs-helpers.js';
 import { validateExistingPathDetailed } from '../../path-validation.js';
 import { ContextManager } from './context-manager.js';
+import { iterateLines } from './line-iterator.js';
 import type { Matcher } from './match-strategy.js';
 import type { ScanResult, SearchOptions } from './types.js';
+
+interface LineScanState {
+  matches: ContentMatch[];
+  linesSkipped: number;
+  lineNumber: number;
+  hitMaxResults: boolean;
+}
 
 function createEmptyResult(overrides: Partial<ScanResult>): ScanResult {
   return {
@@ -25,83 +33,114 @@ function createEmptyResult(overrides: Partial<ScanResult>): ScanResult {
   };
 }
 
-function attachAbortHandler(
-  stream: ReadStream,
-  signal?: AbortSignal
-): () => void {
-  if (!signal) return () => {};
-
-  const onAbort = (): void => {
-    stream.destroy();
-  };
-
-  if (signal.aborted) {
-    onAbort();
-  } else {
-    signal.addEventListener('abort', onAbort, { once: true });
-  }
-
-  return (): void => {
-    signal.removeEventListener('abort', onAbort);
+function createLineState(): LineScanState {
+  return {
+    matches: [],
+    linesSkipped: 0,
+    lineNumber: 0,
+    hitMaxResults: false,
   };
 }
 
-function* processChunk(
-  text: string,
-  state: { buffer: string; overflow: boolean },
-  maxLineLength: number
-): Generator<string> {
-  let cursor = 0;
-  while (cursor < text.length) {
-    const newlineIndex = text.indexOf('\n', cursor);
-    const segmentEnd = newlineIndex === -1 ? text.length : newlineIndex;
-    const segment = text.slice(cursor, segmentEnd);
-
-    if (!state.overflow) {
-      if (state.buffer.length + segment.length > maxLineLength) {
-        const remaining = Math.max(0, maxLineLength - state.buffer.length);
-        if (remaining > 0) {
-          state.buffer += segment.slice(0, remaining);
-        }
-        state.overflow = true;
-      } else {
-        state.buffer += segment;
-      }
-    }
-
-    if (newlineIndex !== -1) {
-      yield state.buffer.replace(/\r$/, '');
-      state.buffer = '';
-      state.overflow = false;
-      cursor = newlineIndex + 1;
-    } else {
-      cursor = segmentEnd;
-    }
-  }
+function isDeadlineExceeded(deadlineMs: number | undefined): boolean {
+  return deadlineMs !== undefined && Date.now() > deadlineMs;
 }
 
-async function* iterateLines(
-  stream: ReadStream,
-  maxLineLength: number,
-  signal?: AbortSignal
-): AsyncGenerator<string> {
-  const state = { buffer: '', overflow: false };
-  const detachAbort = attachAbortHandler(stream, signal);
-  const iterableStream = stream as AsyncIterable<string | Buffer>;
+function hasReachedMatchLimit(
+  maxResults: number,
+  matches: ContentMatch[],
+  getCurrentMatchCount: () => number
+): boolean {
+  return getCurrentMatchCount() + matches.length >= maxResults;
+}
 
-  try {
-    for await (const chunk of iterableStream) {
-      if (signal?.aborted) break;
-      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
-      yield* processChunk(text, state, maxLineLength);
-    }
+function getLinePreview(line: string): string {
+  return line.trimEnd().substring(0, MAX_LINE_CONTENT_LENGTH);
+}
 
-    if (!signal?.aborted && state.buffer.length > 0) {
-      yield state.buffer.replace(/\r$/, '');
-    }
-  } finally {
-    detachAbort();
+function updateContextLine(
+  contextManager: ContextManager,
+  line: string,
+  needsContext: boolean
+): string | undefined {
+  if (!needsContext) return undefined;
+  const trimmed = getLinePreview(line);
+  contextManager.pushLine(trimmed);
+  return trimmed;
+}
+
+function recordMatch(
+  state: LineScanState,
+  displayPath: string,
+  line: string,
+  trimmed: string | undefined,
+  matchCount: number,
+  contextManager: ContextManager
+): void {
+  const content = trimmed ?? getLinePreview(line);
+  state.matches.push(
+    contextManager.createMatch(
+      displayPath,
+      state.lineNumber,
+      content,
+      matchCount
+    )
+  );
+}
+
+function handleMatchCount(
+  matchCount: number,
+  state: LineScanState,
+  displayPath: string,
+  line: string,
+  trimmed: string | undefined,
+  contextManager: ContextManager
+): void {
+  if (matchCount < 0) {
+    state.linesSkipped++;
+    return;
   }
+  if (matchCount === 0) return;
+  recordMatch(state, displayPath, line, trimmed, matchCount, contextManager);
+}
+
+function processLine(
+  line: string,
+  state: LineScanState,
+  displayPath: string,
+  matcher: Matcher,
+  options: SearchOptions,
+  contextManager: ContextManager,
+  getCurrentMatchCount: () => number,
+  needsContext: boolean
+): boolean {
+  if (options.signal?.aborted) return false;
+  state.lineNumber++;
+
+  if (isDeadlineExceeded(options.deadlineMs)) return false;
+  if (
+    hasReachedMatchLimit(
+      options.maxResults,
+      state.matches,
+      getCurrentMatchCount
+    )
+  ) {
+    state.hitMaxResults = true;
+    return false;
+  }
+
+  const trimmed = updateContextLine(contextManager, line, needsContext);
+  const matchCount = matcher(line);
+  handleMatchCount(
+    matchCount,
+    state,
+    displayPath,
+    line,
+    trimmed,
+    contextManager
+  );
+
+  return true;
 }
 
 async function scanLines(
@@ -115,53 +154,34 @@ async function scanLines(
   linesSkipped: number;
   hitMaxResults: boolean;
 }> {
-  const matches: ContentMatch[] = [];
-  let linesSkipped = 0;
-  let lineNumber = 0;
+  const state = createLineState();
   const needsContext = options.contextLines > 0;
   const getCurrentMatchCount =
     options.getCurrentMatchCount ?? (() => options.currentMatchCount);
-  let hitMaxResults = false;
 
   for await (const line of iterateLines(
     stream,
     MAX_SEARCH_LINE_LENGTH,
     options.signal
   )) {
-    if (options.signal?.aborted) break;
-    lineNumber++;
-
-    if (options.deadlineMs && Date.now() > options.deadlineMs) {
-      break;
-    }
-
-    if (getCurrentMatchCount() + matches.length >= options.maxResults) {
-      hitMaxResults = true;
-      break;
-    }
-
-    let trimmed: string | undefined;
-    if (needsContext) {
-      trimmed = line.trimEnd().substring(0, MAX_LINE_CONTENT_LENGTH);
-      contextManager.pushLine(trimmed);
-    }
-
-    const matchCount = matcher(line);
-    if (matchCount < 0) {
-      linesSkipped++;
-      continue;
-    }
-    if (matchCount === 0) {
-      continue;
-    }
-
-    trimmed ??= line.trimEnd().substring(0, MAX_LINE_CONTENT_LENGTH);
-    matches.push(
-      contextManager.createMatch(displayPath, lineNumber, trimmed, matchCount)
+    const shouldContinue = processLine(
+      line,
+      state,
+      displayPath,
+      matcher,
+      options,
+      contextManager,
+      getCurrentMatchCount,
+      needsContext
     );
+    if (!shouldContinue) break;
   }
 
-  return { matches, linesSkipped, hitMaxResults };
+  return {
+    matches: state.matches,
+    linesSkipped: state.linesSkipped,
+    hitMaxResults: state.hitMaxResults,
+  };
 }
 
 async function scanContent(

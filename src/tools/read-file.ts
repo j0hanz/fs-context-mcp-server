@@ -6,12 +6,9 @@ import { joinLines } from '../config/formatting.js';
 import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
+import { assertLineRangeOptions, buildLineRange } from '../lib/line-range.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
 import { createTimedAbortSignal } from './shared/abort.js';
-import {
-  assertNoMixedRangeOptions,
-  buildLineRange,
-} from './shared/read-range.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -84,43 +81,35 @@ function buildRangeNote(
 type ReadFileArgs = z.infer<typeof ReadFileInputSchema>;
 type ReadFileStructuredResult = z.infer<typeof ReadFileOutputSchema>;
 
-async function handleReadFile(
-  args: {
-    path: string;
-    encoding?: BufferEncoding;
-    maxSize?: number;
-    lineStart?: number;
-    lineEnd?: number;
-    head?: number;
-    tail?: number;
-    skipBinary?: boolean;
-  },
-  signal?: AbortSignal
-): Promise<ToolResponse<ReadFileStructuredResult>> {
-  const hasHeadTail = args.head !== undefined || args.tail !== undefined;
-  const hasLineRange =
-    args.lineStart !== undefined || args.lineEnd !== undefined;
-  assertNoMixedRangeOptions(hasHeadTail, hasLineRange, args.path);
-  const lineRange = buildLineRange(args.lineStart, args.lineEnd, args.path);
-  const effectiveOptions = {
-    encoding: args.encoding ?? 'utf-8',
-    maxSize: Math.min(args.maxSize ?? MAX_TEXT_FILE_SIZE, MAX_TEXT_FILE_SIZE),
-    skipBinary: args.skipBinary ?? true,
+interface EffectiveReadOptions {
+  encoding: BufferEncoding;
+  maxSize: number;
+  skipBinary: boolean;
+  lineRange?: { start: number; end: number };
+  head?: number;
+  tail?: number;
+}
+
+function buildEffectiveReadOptions(
+  args: ReadFileArgs,
+  lineRange: { start: number; end: number } | undefined
+): EffectiveReadOptions {
+  return {
+    encoding: args.encoding,
+    maxSize: Math.min(args.maxSize, MAX_TEXT_FILE_SIZE),
+    skipBinary: args.skipBinary,
     lineRange,
     head: args.head,
     tail: args.tail,
   };
-  const result = await readFile(args.path, {
-    encoding: effectiveOptions.encoding,
-    maxSize: effectiveOptions.maxSize,
-    lineRange: effectiveOptions.lineRange,
-    head: effectiveOptions.head,
-    tail: effectiveOptions.tail,
-    skipBinary: effectiveOptions.skipBinary,
-    signal,
-  });
+}
 
-  const structured: ReadFileStructuredResult = {
+function buildStructuredReadResult(
+  result: Awaited<ReturnType<typeof readFile>>,
+  args: ReadFileArgs,
+  effectiveOptions: EffectiveReadOptions
+): ReadFileStructuredResult {
+  return {
     ok: true,
     path: args.path,
     content: result.content,
@@ -143,9 +132,38 @@ async function handleReadFile(
       tail: args.tail,
     },
   };
+}
+
+async function handleReadFile(
+  args: ReadFileArgs,
+  signal?: AbortSignal
+): Promise<ToolResponse<ReadFileStructuredResult>> {
+  assertLineRangeOptions(
+    {
+      lineStart: args.lineStart,
+      lineEnd: args.lineEnd,
+      head: args.head,
+      tail: args.tail,
+    },
+    args.path
+  );
+  const lineRange = buildLineRange(args.lineStart, args.lineEnd);
+  const effectiveOptions = buildEffectiveReadOptions(args, lineRange);
+  const result = await readFile(args.path, {
+    encoding: effectiveOptions.encoding,
+    maxSize: effectiveOptions.maxSize,
+    lineRange: effectiveOptions.lineRange,
+    head: effectiveOptions.head,
+    tail: effectiveOptions.tail,
+    skipBinary: effectiveOptions.skipBinary,
+    signal,
+  });
 
   const text = buildTextResult(result, args.head, args.tail);
-  return buildToolResponse(text, structured);
+  return buildToolResponse(
+    text,
+    buildStructuredReadResult(result, args, effectiveOptions)
+  );
 }
 
 const READ_FILE_TOOL = {
@@ -157,7 +175,7 @@ const READ_FILE_TOOL = {
     'Use skipBinary=true to reject binary files. ' +
     'For multiple files, use read_multiple_files for efficiency.',
   inputSchema: ReadFileInputSchema,
-  outputSchema: ReadFileOutputSchema.shape,
+  outputSchema: ReadFileOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

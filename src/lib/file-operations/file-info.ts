@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import type { FileInfo } from '../../config/types.js';
 import { getMimeType } from '../constants.js';
 import { getFileType, isHidden } from '../fs-helpers.js';
-import { assertNotAborted, createAbortError } from '../fs-helpers/abort.js';
+import { assertNotAborted, withAbort } from '../fs-helpers/abort.js';
 import { validateExistingPathDetailed } from '../path-validation.js';
 
 const PERM_STRINGS = [
@@ -91,39 +91,13 @@ async function getSymlinkTarget(
   try {
     return await withAbort(fs.readlink(pathToRead), signal);
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw error;
-    }
+    handleSymlinkError(error);
     return undefined;
   }
 }
 
-function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) {
-    throw getAbortError(signal);
+function handleSymlinkError(error: unknown): void {
+  if (error instanceof Error && error.name === 'AbortError') {
+    throw error;
   }
-
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => {
-      reject(getAbortError(signal));
-    };
-
-    signal.addEventListener('abort', onAbort, { once: true });
-
-    promise
-      .then((value) => {
-        signal.removeEventListener('abort', onAbort);
-        resolve(value);
-      })
-      .catch((error: unknown) => {
-        signal.removeEventListener('abort', onAbort);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      });
-  });
-}
-
-function getAbortError(signal: AbortSignal): Error {
-  const { reason } = signal as { reason?: unknown };
-  return reason instanceof Error ? reason : createAbortError();
 }

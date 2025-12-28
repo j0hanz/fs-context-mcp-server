@@ -6,15 +6,12 @@ import { joinLines } from '../config/formatting.js';
 import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations.js';
+import { assertLineRangeOptions } from '../lib/line-range.js';
 import {
   ReadMultipleFilesInputSchema,
   ReadMultipleFilesOutputSchema,
 } from '../schemas/index.js';
 import { createTimedAbortSignal } from './shared/abort.js';
-import {
-  assertLineRangeComplete,
-  assertNoMixedRangeOptions,
-} from './shared/read-range.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -93,21 +90,41 @@ function buildReadMultipleNote(
   return '[Truncated]';
 }
 
+type ReadMultipleResult = Awaited<ReturnType<typeof readMultipleFiles>>[number];
+type ReadMode = NonNullable<ReadMultipleResult['readMode']>;
+
+function buildLineRangeNote(result: ReadMultipleResult): string | undefined {
+  if (result.lineStart === undefined || result.lineEnd === undefined) {
+    return undefined;
+  }
+  return `Showing lines ${result.lineStart}-${result.lineEnd}`;
+}
+
+function buildHeadNote(result: ReadMultipleResult): string | undefined {
+  if (result.head === undefined) return undefined;
+  return `Showing first ${String(result.head)} lines`;
+}
+
+function buildTailNote(result: ReadMultipleResult): string | undefined {
+  if (result.tail === undefined) return undefined;
+  return `Showing last ${String(result.tail)} lines`;
+}
+
+const RANGE_NOTE_BUILDERS: Record<
+  ReadMode,
+  (result: ReadMultipleResult) => string | undefined
+> = {
+  lineRange: buildLineRangeNote,
+  head: buildHeadNote,
+  tail: buildTailNote,
+  full: () => undefined,
+};
+
 function buildReadMultipleRangeNote(
-  result: Awaited<ReturnType<typeof readMultipleFiles>>[number]
+  result: ReadMultipleResult
 ): string | undefined {
-  if (result.readMode === 'lineRange') {
-    if (result.lineStart !== undefined && result.lineEnd !== undefined) {
-      return `Showing lines ${result.lineStart}-${result.lineEnd}`;
-    }
-  }
-  if (result.readMode === 'head' && result.head !== undefined) {
-    return `Showing first ${String(result.head)} lines`;
-  }
-  if (result.readMode === 'tail' && result.tail !== undefined) {
-    return `Showing last ${String(result.tail)} lines`;
-  }
-  return undefined;
+  if (!result.readMode) return undefined;
+  return RANGE_NOTE_BUILDERS[result.readMode](result);
 }
 
 async function handleReadMultipleFiles(
@@ -124,11 +141,15 @@ async function handleReadMultipleFiles(
   signal?: AbortSignal
 ): Promise<ToolResponse<ReadMultipleStructuredResult>> {
   const pathLabel = args.paths[0] ?? '<paths>';
-  const hasHeadTail = args.head !== undefined || args.tail !== undefined;
-  const hasLineRange =
-    args.lineStart !== undefined || args.lineEnd !== undefined;
-  assertLineRangeComplete(args.lineStart, args.lineEnd, pathLabel);
-  assertNoMixedRangeOptions(hasHeadTail, hasLineRange, pathLabel);
+  assertLineRangeOptions(
+    {
+      lineStart: args.lineStart,
+      lineEnd: args.lineEnd,
+      head: args.head,
+      tail: args.tail,
+    },
+    pathLabel
+  );
   const effectiveOptions = {
     encoding: args.encoding ?? 'utf-8',
     maxSize: Math.min(args.maxSize ?? MAX_TEXT_FILE_SIZE, MAX_TEXT_FILE_SIZE),
@@ -163,7 +184,7 @@ const READ_MULTIPLE_FILES_TOOL = {
     'Individual file errors do not fail the entire operation; each file reports success or error independently. ' +
     'Supports head/tail or lineStart/lineEnd for reading partial content from all files (mutually exclusive).',
   inputSchema: ReadMultipleFilesInputSchema,
-  outputSchema: ReadMultipleFilesOutputSchema.shape,
+  outputSchema: ReadMultipleFilesOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

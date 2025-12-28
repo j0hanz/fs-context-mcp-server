@@ -10,6 +10,8 @@ import {
   MAX_SEARCHABLE_FILE_SIZE,
   MAX_TEXT_FILE_SIZE,
 } from '../lib/constants.js';
+import type { LineRangeOptions } from '../lib/line-range.js';
+import { validateLineRange } from '../lib/line-range.js';
 
 export function isSafeGlobPattern(value: string): boolean {
   if (value.length === 0) return false;
@@ -204,3 +206,40 @@ export const LineEndSchema = z
   .min(1, 'lineEnd must be at least 1')
   .optional()
   .describe('End line (inclusive) for reading a range');
+
+function resolveConflictField(options: LineRangeOptions): string {
+  if (options.head !== undefined) return 'head';
+  if (options.tail !== undefined) return 'tail';
+  return 'lineStart';
+}
+
+export function applyLineRangeIssues(
+  options: LineRangeOptions,
+  ctx: z.RefinementCtx
+): void {
+  const issues = validateLineRange(options);
+  if (issues.missingPair) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid lineRange: ${issues.missingPair.provided} requires ${issues.missingPair.missing} to also be specified`,
+      path: [issues.missingPair.missing],
+    });
+  }
+
+  if (issues.invalidOrder) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Invalid lineRange: lineEnd (${issues.invalidOrder.end}) must be >= lineStart (${issues.invalidOrder.start})`,
+      path: ['lineEnd'],
+    });
+  }
+
+  if (issues.multipleModes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'Cannot specify multiple of lineRange (lineStart + lineEnd), head, or tail simultaneously',
+      path: [resolveConflictField(options)],
+    });
+  }
+}

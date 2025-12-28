@@ -20,7 +20,7 @@ import {
   withToolErrorHandling,
 } from './tool-response.js';
 
-type SearchContentArgs = z.infer<z.ZodObject<typeof SearchContentInputSchema>>;
+type SearchContentArgs = z.infer<typeof SearchContentInputSchema>;
 type SearchContentStructuredResult = z.infer<typeof SearchContentOutputSchema>;
 
 async function handleSearchContent(
@@ -65,7 +65,7 @@ const SEARCH_CONTENT_TOOL = {
     'excludePatterns defaults to common dependency/build dirs (pass [] to disable). ' +
     'Automatically skips binary files unless skipBinary=false.',
   inputSchema: SearchContentInputSchema,
-  outputSchema: SearchContentOutputSchema.shape,
+  outputSchema: SearchContentOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

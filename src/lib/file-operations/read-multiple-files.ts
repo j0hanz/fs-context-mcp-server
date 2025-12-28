@@ -1,45 +1,17 @@
-import * as fs from 'node:fs/promises';
-import type { Stats } from 'node:fs';
-
-import { MAX_TEXT_FILE_SIZE, PARALLEL_CONCURRENCY } from '../constants.js';
-import { ErrorCode, McpError } from '../errors.js';
+import { MAX_TEXT_FILE_SIZE } from '../constants.js';
+import { assertLineRangeOptions, buildLineRange } from '../line-range.js';
 import {
-  processInParallel,
-  readFile,
-  readFileWithStats,
-} from '../fs-helpers.js';
-import { validateExistingPath } from '../path-validation.js';
-
-interface ReadMultipleResult {
-  path: string;
-  content?: string;
-  truncated?: boolean;
-  totalLines?: number;
-  readMode?: 'full' | 'head' | 'tail' | 'lineRange';
-  lineStart?: number;
-  lineEnd?: number;
-  head?: number;
-  tail?: number;
-  linesRead?: number;
-  hasMoreLines?: boolean;
-  error?: string;
-}
-
-interface ValidatedFileInfo {
-  index: number;
-  filePath: string;
-  validPath: string;
-  stats: Stats;
-}
-
-interface NormalizedReadMultipleOptions {
-  encoding: BufferEncoding;
-  maxSize: number;
-  maxTotalSize: number;
-  lineRange?: { start: number; end: number };
-  head?: number;
-  tail?: number;
-}
+  applyParallelResults,
+  applySkippedBudgetErrors,
+  buildProcessTargets,
+  collectFileBudget,
+  createOutputSkeleton,
+  isPartialRead,
+  mapParallelErrors,
+  type NormalizedReadMultipleOptions,
+  readFilesInParallel,
+  type ReadMultipleResult,
+} from './read-multiple-utils.js';
 
 interface ReadMultipleOptions {
   encoding?: BufferEncoding;
@@ -52,261 +24,31 @@ interface ReadMultipleOptions {
   signal?: AbortSignal;
 }
 
-function assertLineRangeComplete(
-  lineStart: number | undefined,
-  lineEnd: number | undefined
-): void {
-  const hasLineStart = lineStart !== undefined;
-  const hasLineEnd = lineEnd !== undefined;
-  if (hasLineStart === hasLineEnd) return;
-  const missing = hasLineStart ? 'lineEnd' : 'lineStart';
-  const provided = hasLineStart ? 'lineStart' : 'lineEnd';
-  throw new McpError(
-    ErrorCode.E_INVALID_INPUT,
-    `Invalid lineRange: ${provided} requires ${missing} to also be specified`,
-    undefined
-  );
-}
-
-function assertLineRangeOrder(
-  lineStart: number | undefined,
-  lineEnd: number | undefined
-): void {
-  if (lineStart === undefined || lineEnd === undefined) return;
-  if (lineEnd >= lineStart) return;
-  throw new McpError(
-    ErrorCode.E_INVALID_INPUT,
-    `Invalid lineRange: lineEnd (${lineEnd}) must be >= lineStart (${lineStart})`,
-    undefined
-  );
-}
-
-function buildLineRange(
-  lineStart: number | undefined,
-  lineEnd: number | undefined
-): { start: number; end: number } | undefined {
-  assertLineRangeComplete(lineStart, lineEnd);
-  assertLineRangeOrder(lineStart, lineEnd);
-  if (lineStart === undefined || lineEnd === undefined) return undefined;
-  return { start: lineStart, end: lineEnd };
-}
-
-function assertExclusiveReadOptions(
-  lineRange: { start: number; end: number } | undefined,
-  head: number | undefined,
-  tail: number | undefined
-): void {
-  const optionsCount = [
-    lineRange !== undefined,
-    head !== undefined,
-    tail !== undefined,
-  ].filter(Boolean).length;
-  if (optionsCount <= 1) return;
-
-  throw new McpError(
-    ErrorCode.E_INVALID_INPUT,
-    'Cannot specify multiple of lineRange (lineStart + lineEnd), head, or tail simultaneously',
-    undefined
-  );
-}
-
-function createOutputSkeleton(filePaths: string[]): ReadMultipleResult[] {
-  return filePaths.map((filePath) => ({ path: filePath }));
-}
-
 function normalizeReadMultipleOptions(
-  options: ReadMultipleOptions = {}
+  options: ReadMultipleOptions,
+  pathLabel: string
 ): NormalizedReadMultipleOptions {
+  assertLineRangeOptions(
+    {
+      lineStart: options.lineStart,
+      lineEnd: options.lineEnd,
+      head: options.head,
+      tail: options.tail,
+    },
+    pathLabel
+  );
   const lineRange = buildLineRange(options.lineStart, options.lineEnd);
   return {
     encoding: options.encoding ?? 'utf-8',
-    maxSize: options.maxSize ?? MAX_TEXT_FILE_SIZE,
+    maxSize: Math.min(
+      options.maxSize ?? MAX_TEXT_FILE_SIZE,
+      MAX_TEXT_FILE_SIZE
+    ),
     maxTotalSize: options.maxTotalSize ?? 100 * 1024 * 1024,
     lineRange,
     head: options.head,
     tail: options.tail,
   };
-}
-
-function isPartialRead(options: NormalizedReadMultipleOptions): boolean {
-  return (
-    options.lineRange !== undefined ||
-    options.head !== undefined ||
-    options.tail !== undefined
-  );
-}
-
-async function collectFileBudget(
-  filePaths: string[],
-  isPartialRead: boolean,
-  maxTotalSize: number,
-  maxSize: number,
-  signal?: AbortSignal
-): Promise<{
-  skippedBudget: Set<number>;
-  validated: Map<number, ValidatedFileInfo>;
-}> {
-  const skippedBudget = new Set<number>();
-  const validated = new Map<number, ValidatedFileInfo>();
-
-  // Gather file sizes
-  const { results } = await processInParallel(
-    filePaths.map((filePath, index) => ({ filePath, index })),
-    async ({ filePath, index }) => {
-      const validPath = await validateExistingPath(filePath);
-      const stats = await fs.stat(validPath);
-      return { filePath, index, validPath, stats };
-    },
-    PARALLEL_CONCURRENCY,
-    signal
-  );
-
-  // Determine which files to skip based on budget
-  let totalSize = 0;
-  const orderedResults = [...results].sort((a, b) => a.index - b.index);
-
-  for (const result of orderedResults) {
-    validated.set(result.index, {
-      index: result.index,
-      filePath: result.filePath,
-      validPath: result.validPath,
-      stats: result.stats,
-    });
-    const estimatedSize = isPartialRead
-      ? Math.min(result.stats.size, maxSize)
-      : result.stats.size;
-    if (totalSize + estimatedSize > maxTotalSize) {
-      skippedBudget.add(result.index);
-      continue;
-    }
-    totalSize += estimatedSize;
-  }
-
-  return { skippedBudget, validated };
-}
-
-function buildProcessTargets(
-  filePaths: string[],
-  skippedBudget: Set<number>,
-  validated: Map<number, ValidatedFileInfo>
-): {
-  filePath: string;
-  index: number;
-  validPath?: string;
-  stats?: Stats;
-}[] {
-  return filePaths
-    .map((filePath, index) => {
-      const cached = validated.get(index);
-      return cached
-        ? {
-            filePath,
-            index,
-            validPath: cached.validPath,
-            stats: cached.stats,
-          }
-        : { filePath, index };
-    })
-    .filter(({ index }) => !skippedBudget.has(index));
-}
-
-function applyParallelResults(
-  output: ReadMultipleResult[],
-  results: { index: number; value: ReadMultipleResult }[],
-  errors: { index: number; error: Error }[],
-  filePaths: string[]
-): void {
-  for (const result of results) {
-    output[result.index] = result.value;
-  }
-
-  for (const failure of errors) {
-    const filePath = filePaths[failure.index] ?? '(unknown)';
-    output[failure.index] = {
-      path: filePath,
-      error: failure.error.message,
-    };
-  }
-}
-
-function applySkippedBudgetErrors(
-  output: ReadMultipleResult[],
-  skippedBudget: Set<number>,
-  filePaths: string[],
-  maxTotalSize: number
-): void {
-  for (const index of skippedBudget) {
-    const filePath = filePaths[index];
-    if (!filePath) continue;
-    output[index] = {
-      path: filePath,
-      error: `Skipped: combined estimated read would exceed maxTotalSize (${maxTotalSize} bytes)`,
-    };
-  }
-}
-
-function mapParallelErrors(
-  errors: { index: number; error: Error }[],
-  filesToProcess: { filePath: string; index: number }[]
-): { index: number; error: Error }[] {
-  return errors.map((failure) => {
-    const target = filesToProcess[failure.index];
-    return {
-      index: target?.index ?? -1,
-      error: failure.error,
-    };
-  });
-}
-
-async function readFilesInParallel(
-  filesToProcess: {
-    filePath: string;
-    index: number;
-    validPath?: string;
-    stats?: Stats;
-  }[],
-  options: NormalizedReadMultipleOptions,
-  signal?: AbortSignal
-): Promise<{
-  results: { index: number; value: ReadMultipleResult }[];
-  errors: { index: number; error: Error }[];
-}> {
-  return await processInParallel(
-    filesToProcess,
-    async ({ filePath, index, validPath, stats }) => {
-      const readOptions = {
-        encoding: options.encoding,
-        maxSize: options.maxSize,
-        head: options.head,
-        tail: options.tail,
-        lineRange: options.lineRange,
-        signal,
-      };
-      const result =
-        validPath && stats
-          ? await readFileWithStats(filePath, validPath, stats, readOptions)
-          : await readFile(filePath, readOptions);
-
-      return {
-        index,
-        value: {
-          path: filePath,
-          content: result.content,
-          truncated: result.truncated,
-          totalLines: result.totalLines,
-          readMode: result.readMode,
-          lineStart: result.lineStart,
-          lineEnd: result.lineEnd,
-          head: result.head,
-          tail: result.tail,
-          linesRead: result.linesRead,
-          hasMoreLines: result.hasMoreLines,
-        },
-      };
-    },
-    PARALLEL_CONCURRENCY,
-    signal
-  );
 }
 
 export async function readMultipleFiles(
@@ -315,13 +57,9 @@ export async function readMultipleFiles(
 ): Promise<ReadMultipleResult[]> {
   if (filePaths.length === 0) return [];
 
+  const pathLabel = filePaths[0] ?? '<paths>';
   const { signal, ...rest } = options;
-  const normalized = normalizeReadMultipleOptions(rest);
-  assertExclusiveReadOptions(
-    normalized.lineRange,
-    normalized.head,
-    normalized.tail
-  );
+  const normalized = normalizeReadMultipleOptions(rest, pathLabel);
 
   const output = createOutputSkeleton(filePaths);
   const partialRead = isPartialRead(normalized);

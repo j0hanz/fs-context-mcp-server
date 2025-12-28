@@ -52,6 +52,25 @@ export class ContextManager {
     this.pruneCompletedMatches();
   }
 
+  private hasCompletedMatch(): boolean {
+    return (
+      this.pendingStart < this.pendingMatches.length &&
+      this.pendingMatches[this.pendingStart]?.afterNeeded === 0
+    );
+  }
+
+  private shouldCompactPending(): boolean {
+    return (
+      this.pendingStart > 1024 &&
+      this.pendingStart * 2 > this.pendingMatches.length
+    );
+  }
+
+  private compactPending(): void {
+    this.pendingMatches.splice(0, this.pendingStart);
+    this.pendingStart = 0;
+  }
+
   private appendPendingContext(line: string): void {
     for (let i = this.pendingStart; i < this.pendingMatches.length; i++) {
       const pending = this.pendingMatches[i];
@@ -64,19 +83,10 @@ export class ContextManager {
   }
 
   private pruneCompletedMatches(): void {
-    while (
-      this.pendingStart < this.pendingMatches.length &&
-      this.pendingMatches[this.pendingStart]?.afterNeeded === 0
-    ) {
+    while (this.hasCompletedMatch()) {
       this.pendingStart++;
     }
-    if (
-      this.pendingStart > 1024 &&
-      this.pendingStart * 2 > this.pendingMatches.length
-    ) {
-      this.pendingMatches.splice(0, this.pendingStart);
-      this.pendingStart = 0;
-    }
+    if (this.shouldCompactPending()) this.compactPending();
   }
 
   private addToBuffer(line: string): void {

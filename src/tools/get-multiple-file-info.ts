@@ -23,9 +23,7 @@ import {
   withToolErrorHandling,
 } from './tool-response.js';
 
-type GetMultipleFileInfoArgs = z.infer<
-  z.ZodObject<typeof GetMultipleFileInfoInputSchema>
->;
+type GetMultipleFileInfoArgs = z.infer<typeof GetMultipleFileInfoInputSchema>;
 type GetMultipleFileInfoStructuredResult = z.infer<
   typeof GetMultipleFileInfoOutputSchema
 >;
@@ -84,7 +82,7 @@ const GET_MULTIPLE_FILE_INFO_TOOL = {
     'Individual file errors do not fail the entire operation; each file reports success or error independently. ' +
     'Returns: name, path, type, size, timestamps, permissions, MIME type, and symlink target for each path.',
   inputSchema: GetMultipleFileInfoInputSchema,
-  outputSchema: GetMultipleFileInfoOutputSchema.shape,
+  outputSchema: GetMultipleFileInfoOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 
 import { ErrorCode, McpError } from '../../lib/errors.js';
+import { assertLineRangeOptions } from '../../lib/line-range.js';
 
 function expectMcpError(
   fn: () => void,
@@ -17,58 +18,6 @@ function expectMcpError(
   }
 }
 
-function assertLineRangePair(
-  lineStart: number | undefined,
-  lineEnd: number | undefined,
-  path: string
-): void {
-  const hasLineStart = lineStart !== undefined;
-  const hasLineEnd = lineEnd !== undefined;
-  if (hasLineStart === hasLineEnd) return;
-
-  const missing = hasLineStart ? 'lineEnd' : 'lineStart';
-  const provided = hasLineStart ? 'lineStart' : 'lineEnd';
-  throw new McpError(
-    ErrorCode.E_INVALID_INPUT,
-    `Invalid lineRange: ${provided} requires ${missing} to also be specified`,
-    path
-  );
-}
-
-function assertLineRangeOrder(
-  lineStart: number | undefined,
-  lineEnd: number | undefined,
-  path: string
-): void {
-  if (lineStart === undefined || lineEnd === undefined) return;
-  if (lineEnd >= lineStart) return;
-  throw new McpError(
-    ErrorCode.E_INVALID_INPUT,
-    `Invalid lineRange: lineEnd (${lineEnd}) must be >= lineStart (${lineStart})`,
-    path
-  );
-}
-
-function assertExclusiveLineOptions(
-  hasLineRange: boolean,
-  head: number | undefined,
-  tail: number | undefined,
-  path: string
-): void {
-  const optionsCount = [
-    hasLineRange,
-    head !== undefined,
-    tail !== undefined,
-  ].filter(Boolean).length;
-  if (optionsCount <= 1) return;
-
-  throw new McpError(
-    ErrorCode.E_INVALID_INPUT,
-    'Cannot specify multiple of lineRange (lineStart + lineEnd), head, or tail simultaneously',
-    path
-  );
-}
-
 function validateLineRange(params: {
   lineStart?: number;
   lineEnd?: number;
@@ -76,20 +25,12 @@ function validateLineRange(params: {
   tail?: number;
   path: string;
 }): void {
-  const { lineStart, lineEnd, head, tail, path } = params;
-  assertLineRangePair(lineStart, lineEnd, path);
-  assertLineRangeOrder(lineStart, lineEnd, path);
-  const hasLineRange = lineStart !== undefined && lineEnd !== undefined;
-  assertExclusiveLineOptions(hasLineRange, head, tail, path);
+  const { path, ...options } = params;
+  assertLineRangeOptions(options, path);
 }
 
 function validateHeadTail(head?: number, tail?: number): void {
-  if (head !== undefined && tail !== undefined) {
-    throw new McpError(
-      ErrorCode.E_INVALID_INPUT,
-      'Cannot specify both head and tail simultaneously'
-    );
-  }
+  assertLineRangeOptions({ head, tail }, '/test/file.txt');
 }
 
 const validLineRangeCases = [
@@ -191,7 +132,7 @@ it('validateHeadTail rejects both head and tail', () => {
     },
     {
       code: ErrorCode.E_INVALID_INPUT,
-      messageIncludes: 'Cannot specify both head and tail',
+      messageIncludes: 'Cannot specify multiple',
     }
   );
 });

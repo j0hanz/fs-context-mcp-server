@@ -126,7 +126,7 @@ const LIST_ALLOWED_DIRECTORIES_TOOL = {
     'List the directories this server is permitted to access, plus access status. ' +
     'Call this first to understand the scope of available file operations. ' +
     'All other tools only work within these directories for security.',
-  outputSchema: ListAllowedDirectoriesOutputSchema.shape,
+  outputSchema: ListAllowedDirectoriesOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

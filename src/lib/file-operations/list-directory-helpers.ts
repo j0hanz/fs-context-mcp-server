@@ -1,17 +1,15 @@
-import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
-import type { Dir, Dirent } from 'node:fs';
+import type { Dirent } from 'node:fs';
 
-import { minimatch } from 'minimatch';
 import type { Minimatch } from 'minimatch';
 
 import type { DirectoryEntry } from '../../config/types.js';
 import { PARALLEL_CONCURRENCY } from '../constants.js';
-import { isHidden, processInParallel } from '../fs-helpers.js';
+import { processInParallel } from '../fs-helpers.js';
 import {
   buildDirectoryItemResult,
   type DirectoryItemResult,
 } from './list-directory-entry.js';
+import { streamVisibleItems } from './list-directory-matching.js';
 
 interface ListDirectoryState {
   entries: DirectoryEntry[];
@@ -72,104 +70,6 @@ export function createStopChecker(
     }
     return false;
   };
-}
-
-async function openDirectory(
-  currentPath: string,
-  onInaccessible: () => void
-): Promise<Dir | null> {
-  try {
-    return await fs.opendir(currentPath);
-  } catch {
-    onInaccessible();
-    return null;
-  }
-}
-
-const EXCLUDE_MATCH_OPTIONS = {
-  dot: true,
-  nocase: process.platform === 'win32',
-  windowsPathsNoEscape: true,
-};
-
-const PATTERN_MATCH_OPTIONS = {
-  dot: true,
-};
-
-export function buildExcludeMatchers(excludePatterns: string[]): Minimatch[] {
-  if (excludePatterns.length === 0) return [];
-  return excludePatterns.map(
-    (pattern) => new minimatch.Minimatch(pattern, EXCLUDE_MATCH_OPTIONS)
-  );
-}
-
-export function buildPatternMatcher(
-  pattern: string | undefined
-): Minimatch | undefined {
-  if (!pattern) return undefined;
-  return new minimatch.Minimatch(pattern, PATTERN_MATCH_OPTIONS);
-}
-
-function shouldExcludeEntry(
-  item: Dirent,
-  currentPath: string,
-  basePath: string,
-  excludeMatchers: Minimatch[]
-): boolean {
-  if (excludeMatchers.length === 0) return false;
-  const relativePath =
-    path.relative(basePath, path.join(currentPath, item.name)) || item.name;
-  const normalizedRelative = relativePath.replace(/\\/g, '/');
-  return excludeMatchers.some(
-    (matcher) => matcher.match(item.name) || matcher.match(normalizedRelative)
-  );
-}
-
-async function* streamVisibleItems(
-  currentPath: string,
-  basePath: string,
-  includeHidden: boolean,
-  excludeMatchers: Minimatch[],
-  onInaccessible: () => void,
-  onScanned: () => void,
-  onVisible: () => void
-): AsyncIterable<Dirent> {
-  const dir = await openDirectory(currentPath, onInaccessible);
-  if (!dir) return;
-
-  try {
-    for await (const item of dir) {
-      onScanned();
-      if (
-        shouldIncludeEntry(item, currentPath, basePath, {
-          includeHidden,
-          excludeMatchers,
-        })
-      ) {
-        onVisible();
-        yield item;
-      }
-    }
-  } catch {
-    onInaccessible();
-  } finally {
-    await dir.close().catch(() => {});
-  }
-}
-
-function shouldIncludeEntry(
-  item: Dirent,
-  currentPath: string,
-  basePath: string,
-  options: { includeHidden: boolean; excludeMatchers: Minimatch[] }
-): boolean {
-  if (!options.includeHidden && isHidden(item.name)) return false;
-  if (
-    shouldExcludeEntry(item, currentPath, basePath, options.excludeMatchers)
-  ) {
-    return false;
-  }
-  return true;
 }
 
 function applyDirectoryItemResult(

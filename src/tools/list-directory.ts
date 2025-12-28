@@ -16,6 +16,7 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations.js';
+import { mergeDefined } from '../lib/merge-defined.js';
 import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
@@ -35,8 +36,43 @@ function getExtension(name: string, isFile: boolean): string | undefined {
   return ext ? ext.slice(1) : undefined;
 }
 
-type ListDirectoryArgs = z.infer<z.ZodObject<typeof ListDirectoryInputSchema>>;
+type ListDirectoryArgs = z.infer<typeof ListDirectoryInputSchema>;
 type ListDirectoryStructuredResult = z.infer<typeof ListDirectoryOutputSchema>;
+type DirectoryEntryItem = Awaited<
+  ReturnType<typeof listDirectory>
+>['entries'][number];
+
+type ListSort = 'name' | 'size' | 'modified' | 'type';
+
+interface ListOptions {
+  recursive: boolean;
+  includeHidden: boolean;
+  excludePatterns: string[];
+  maxDepth: number;
+  maxEntries: number;
+  timeoutMs: number;
+  sortBy: ListSort;
+  includeSymlinkTargets: boolean;
+  pattern?: string;
+}
+
+const DEFAULT_LIST_OPTIONS: ListOptions = {
+  recursive: false,
+  includeHidden: false,
+  excludePatterns: [],
+  maxDepth: DEFAULT_MAX_DEPTH,
+  maxEntries: DEFAULT_LIST_MAX_ENTRIES,
+  timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
+  sortBy: 'name',
+  includeSymlinkTargets: false,
+  pattern: undefined,
+};
+
+function buildEffectiveListOptions(
+  overrides: Partial<ListOptions>
+): ListOptions {
+  return mergeDefined(DEFAULT_LIST_OPTIONS, overrides);
+}
 
 function formatDirectoryListing(
   entries: Awaited<ReturnType<typeof listDirectory>>['entries'],
@@ -44,33 +80,61 @@ function formatDirectoryListing(
   summary: Awaited<ReturnType<typeof listDirectory>>['summary']
 ): string {
   if (entries.length === 0) {
-    if (summary.entriesScanned && summary.entriesScanned > 0) {
-      if (summary.entriesVisible === 0) {
-        return 'No entries matched visibility filters (hidden/excludePatterns).';
-      }
-      return 'No entries matched the provided pattern.';
-    }
-    return 'Empty directory';
+    return formatEmptyDirectoryListing(summary);
   }
 
   const dirs = entries.filter((e) => e.type === 'directory').length;
   const files = entries.length - dirs;
 
-  const entryLines = entries.map((entry) => {
-    if (entry.type === 'directory') {
-      const symlink = entry.symlinkTarget ? ` -> ${entry.symlinkTarget}` : '';
-      return `[DIR] ${entry.relativePath}${symlink}`;
-    }
-    const size =
-      entry.size !== undefined ? ` (${formatBytes(entry.size)})` : '';
-    const tag = entry.type === 'symlink' ? '[LINK]' : '[FILE]';
-    const symlink = entry.symlinkTarget ? ` -> ${entry.symlinkTarget}` : '';
-    return `${tag} ${entry.relativePath}${size}${symlink}`;
-  });
+  const entryLines = entries.map(formatDirectoryEntry);
 
   const lines = [`${basePath} (${dirs} dirs, ${files} files):`, ...entryLines];
 
   return joinLines(lines);
+}
+
+function formatDirectoryEntry(entry: DirectoryEntryItem): string {
+  if (entry.type === 'directory') {
+    return formatDirectoryLine(entry);
+  }
+  return formatFileLine(entry);
+}
+
+function formatDirectoryLine(entry: DirectoryEntryItem): string {
+  return `[DIR] ${entry.relativePath}${formatSymlinkSuffix(entry.symlinkTarget)}`;
+}
+
+function formatFileLine(entry: DirectoryEntryItem): string {
+  const size = formatSizeSuffix(entry.size);
+  const tag = formatEntryTag(entry.type);
+  return `${tag} ${entry.relativePath}${size}${formatSymlinkSuffix(entry.symlinkTarget)}`;
+}
+
+function formatEntryTag(type: DirectoryEntryItem['type']): string {
+  if (type === 'symlink') return '[LINK]';
+  return '[FILE]';
+}
+
+function formatSizeSuffix(size: number | undefined): string {
+  if (size === undefined) return '';
+  return ` (${formatBytes(size)})`;
+}
+
+function formatSymlinkSuffix(target: string | undefined): string {
+  if (!target) return '';
+  return ` -> ${target}`;
+}
+
+function formatEmptyDirectoryListing(
+  summary: Awaited<ReturnType<typeof listDirectory>>['summary']
+): string {
+  if (!summary.entriesScanned || summary.entriesScanned === 0) {
+    return 'Empty directory';
+  }
+  if (summary.entriesVisible === 0) {
+    return 'No entries matched visibility filters (hidden/excludePatterns).';
+  }
+  return 'No entries matched the provided pattern.';
 }
 
 const LIST_DIRECTORY_TOOL = {
@@ -82,7 +146,7 @@ const LIST_DIRECTORY_TOOL = {
     'Use excludePatterns to skip paths, or pattern to include only matches. ' +
     'Symlinks are not followed; includeSymlinkTargets can show targets.',
   inputSchema: ListDirectoryInputSchema,
-  outputSchema: ListDirectoryOutputSchema.shape,
+  outputSchema: ListDirectoryOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -171,17 +235,17 @@ async function handleListDirectory(
   },
   signal?: AbortSignal
 ): Promise<ToolResponse<ListDirectoryStructuredResult>> {
-  const effectiveOptions = {
-    recursive: recursive ?? false,
-    includeHidden: includeHidden ?? false,
-    excludePatterns: excludePatterns ?? [],
-    maxDepth: maxDepth ?? DEFAULT_MAX_DEPTH,
-    maxEntries: maxEntries ?? DEFAULT_LIST_MAX_ENTRIES,
-    timeoutMs: timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
-    sortBy: sortBy ?? 'name',
-    includeSymlinkTargets: includeSymlinkTargets ?? false,
+  const effectiveOptions = buildEffectiveListOptions({
+    recursive,
+    includeHidden,
+    excludePatterns,
+    maxDepth,
+    maxEntries,
+    timeoutMs,
+    sortBy,
+    includeSymlinkTargets,
     pattern,
-  };
+  });
   const result = await listDirectory(dirPath, {
     recursive: effectiveOptions.recursive,
     includeHidden: effectiveOptions.includeHidden,

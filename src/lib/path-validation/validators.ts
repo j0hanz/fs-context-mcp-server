@@ -2,7 +2,7 @@ import * as fs from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 
 import { ErrorCode, McpError } from '../errors.js';
-import { assertNotAborted, createAbortError } from '../fs-helpers/abort.js';
+import { assertNotAborted, withAbort } from '../fs-helpers/abort.js';
 import { normalizePath } from '../path-utils.js';
 import {
   isPathWithinAllowedDirectories,
@@ -104,10 +104,7 @@ async function resolveRealPath(
     assertNotAborted(signal);
     return await withAbort(fs.realpath(normalizedRequested), signal);
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw error;
-    }
-    throw toMcpError(requestedPath, error);
+    throw normalizePathError(requestedPath, error);
   }
 }
 
@@ -121,10 +118,7 @@ async function assertIsDirectory(
     assertNotAborted(signal);
     stats = await withAbort(fs.stat(resolvedPath), signal);
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw error;
-    }
-    throw toMcpError(requestedPath, error);
+    throw normalizePathError(requestedPath, error);
   }
 
   if (stats.isDirectory()) return;
@@ -134,6 +128,13 @@ async function assertIsDirectory(
     `Not a directory: ${requestedPath}`,
     requestedPath
   );
+}
+
+function normalizePathError(requestedPath: string, error: unknown): Error {
+  if (error instanceof Error && error.name === 'AbortError') {
+    return error;
+  }
+  return toMcpError(requestedPath, error);
 }
 
 async function validateExistingPathDetailsInternal(
@@ -195,34 +196,4 @@ export async function validateExistingDirectory(
   );
   await assertIsDirectory(details.resolvedPath, requestedPath, signal);
   return details.resolvedPath;
-}
-
-function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
-  if (signal.aborted) {
-    throw getAbortError(signal);
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => {
-      reject(getAbortError(signal));
-    };
-
-    signal.addEventListener('abort', onAbort, { once: true });
-
-    promise
-      .then((value) => {
-        signal.removeEventListener('abort', onAbort);
-        resolve(value);
-      })
-      .catch((error: unknown) => {
-        signal.removeEventListener('abort', onAbort);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      });
-  });
-}
-
-function getAbortError(signal: AbortSignal): Error {
-  const { reason } = signal as { reason?: unknown };
-  return reason instanceof Error ? reason : createAbortError();
 }

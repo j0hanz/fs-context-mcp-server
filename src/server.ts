@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import type { Stats } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -87,16 +88,25 @@ async function validateDirectoryPath(inputPath: string): Promise<string> {
 
   try {
     const stats = await fs.stat(normalized);
-    if (!stats.isDirectory()) {
-      throw new Error(`Error: '${inputPath}' is not a directory`);
-    }
+    assertDirectory(stats, inputPath);
     return normalized;
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Error:')) {
-      throw error;
-    }
-    throw new Error(`Error: Cannot access directory '${inputPath}'`);
+    throw normalizeDirectoryError(error, inputPath);
   }
+}
+
+function assertDirectory(stats: Stats, inputPath: string): void {
+  if (stats.isDirectory()) return;
+  throw new Error(`Error: '${inputPath}' is not a directory`);
+}
+
+function isCliError(error: unknown): error is Error {
+  return error instanceof Error && error.message.startsWith('Error:');
+}
+
+function normalizeDirectoryError(error: unknown, inputPath: string): Error {
+  if (isCliError(error)) return error;
+  return new Error(`Error: Cannot access directory '${inputPath}'`);
 }
 
 async function normalizeCliDirectories(args: string[]): Promise<string[]> {

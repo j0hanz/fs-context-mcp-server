@@ -52,14 +52,30 @@ async function scanLineRange(
     if (signal?.aborted) break;
     state.lineNumber++;
 
-    if (state.lineNumber >= startLine && state.lineNumber <= endLine) {
-      state.lines.push(line);
-    }
+    recordLineIfInRange(state, line, startLine, endLine);
 
     if (shouldStopLineRange(state, endLine, maxBytesRead, getBytesRead())) {
       break;
     }
   }
+}
+
+function shouldCaptureLine(
+  lineNumber: number,
+  startLine: number,
+  endLine: number
+): boolean {
+  return lineNumber >= startLine && lineNumber <= endLine;
+}
+
+function recordLineIfInRange(
+  state: LineRangeState,
+  line: string,
+  startLine: number,
+  endLine: number
+): void {
+  if (!shouldCaptureLine(state.lineNumber, startLine, endLine)) return;
+  state.lines.push(line);
 }
 
 function buildLineRangeResult(state: LineRangeState): LineRangeResult {

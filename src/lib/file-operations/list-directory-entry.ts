@@ -43,16 +43,10 @@ async function buildSymlinkResult(
   includeSymlinkTargets: boolean,
   stats: Stats
 ): Promise<DirectoryItemResult> {
-  let symlinkTarget: string | undefined;
-
-  if (includeSymlinkTargets) {
-    try {
-      symlinkTarget = await fs.readlink(fullPath);
-      await validateExistingPathDetailed(fullPath);
-    } catch {
-      symlinkTarget = undefined;
-    }
-  }
+  const symlinkTarget = await resolveSymlinkTarget(
+    fullPath,
+    includeSymlinkTargets
+  );
 
   const entry: DirectoryEntry = {
     name: item.name,
@@ -65,6 +59,20 @@ async function buildSymlinkResult(
   };
 
   return { entry, symlinkNotFollowed: true };
+}
+
+async function resolveSymlinkTarget(
+  fullPath: string,
+  includeSymlinkTargets: boolean
+): Promise<string | undefined> {
+  if (!includeSymlinkTargets) return undefined;
+  try {
+    const symlinkTarget = await fs.readlink(fullPath);
+    await validateExistingPathDetailed(fullPath);
+    return symlinkTarget;
+  } catch {
+    return undefined;
+  }
 }
 
 async function buildEnqueueDir(

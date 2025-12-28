@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { performance } from 'node:perf_hooks';
 
 import {
-  analyzeDirectory,
-  getDirectoryTree,
+  getFileInfo,
   listDirectory,
   readFile,
+  readMultipleFiles,
   searchContent,
   searchFiles,
 } from '../src/lib/file-operations.js';
@@ -20,25 +20,48 @@ interface BenchmarkResult {
   memDeltaMb: number;
 }
 
-async function createFixture(): Promise<{ root: string; sampleFile: string }> {
-  const root = await mkdtemp(path.join(tmpdir(), 'fs-mcp-bench-'));
-  const folders = ['alpha', 'beta', 'gamma', 'alpha/nested', 'beta/logs'];
+interface BenchmarkCase {
+  name: string;
+  run: () => Promise<void>;
+}
 
+interface BenchmarkContext {
+  root: string;
+  sampleFile: string;
+}
+
+interface BenchmarkSpec {
+  name: string;
+  run: (context: BenchmarkContext) => Promise<void>;
+}
+
+async function createFixtureDirectories(
+  root: string,
+  folders: string[]
+): Promise<void> {
   await Promise.all(
     folders.map((folder) => mkdir(path.join(root, folder), { recursive: true }))
   );
+}
 
-  const baseContent = [
+function buildFixtureContent(): string {
+  return [
     'lorem ipsum dolor sit amet',
     'consectetur adipiscing elit',
     'sed do eiusmod tempor incididunt',
     'ut labore et dolore magna aliqua',
   ].join('\n');
+}
 
+async function writeFixtureFiles(
+  root: string,
+  baseContent: string,
+  count: number
+): Promise<string> {
   const writeOps: Promise<void>[] = [];
   let sampleFile = '';
 
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < count; i++) {
     const folder = i % 3 === 0 ? 'alpha' : i % 3 === 1 ? 'beta' : 'gamma';
     const filePath = path.join(root, folder, `file-${i}.txt`);
     const content = `${baseContent}\nitem:${i}\n${baseContent}`;
@@ -49,6 +72,15 @@ async function createFixture(): Promise<{ root: string; sampleFile: string }> {
   }
 
   await Promise.all(writeOps);
+  return sampleFile;
+}
+
+async function createFixture(): Promise<BenchmarkContext> {
+  const root = await mkdtemp(path.join(tmpdir(), 'fs-mcp-bench-'));
+  const folders = ['alpha', 'beta', 'gamma', 'alpha/nested', 'beta/logs'];
+  await createFixtureDirectories(root, folders);
+  const baseContent = buildFixtureContent();
+  const sampleFile = await writeFixtureFiles(root, baseContent, 120);
 
   return { root, sampleFile };
 }
@@ -92,59 +124,77 @@ function percentile(samples: number[], target: number): number {
 }
 
 async function runBenchmarks(): Promise<BenchmarkResult[]> {
-  const { root, sampleFile } = await createFixture();
-  setAllowedDirectories([root]);
+  const context = await createFixture();
+  setAllowedDirectories([context.root]);
 
   try {
-    const iterations = 5;
-    const results: BenchmarkResult[] = [];
-
-    results.push(
-      await measure('listDirectory(recursive)', iterations, async () => {
-        await listDirectory(root, { recursive: true, maxDepth: 3 });
-      })
-    );
-
-    results.push(
-      await measure('searchFiles(**/*.txt)', iterations, async () => {
-        await searchFiles(root, '**/*.txt', ['**/logs/**'], {
-          maxResults: 200,
-        });
-      })
-    );
-
-    results.push(
-      await measure('searchContent(lorem)', iterations, async () => {
-        await searchContent(root, 'lorem', {
-          filePattern: '**/*.txt',
-          maxResults: 200,
-          contextLines: 1,
-        });
-      })
-    );
-
-    results.push(
-      await measure('getDirectoryTree', iterations, async () => {
-        await getDirectoryTree(root, { maxDepth: 3, maxFiles: 500 });
-      })
-    );
-
-    results.push(
-      await measure('analyzeDirectory', iterations, async () => {
-        await analyzeDirectory(root, { maxDepth: 3, topN: 5 });
-      })
-    );
-
-    results.push(
-      await measure('readFile(head)', iterations, async () => {
-        await readFile(sampleFile, { head: 10 });
-      })
-    );
-
-    return results;
+    return await runBenchmarkCases(buildBenchmarkCases(context), 5);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(context.root, { recursive: true, force: true });
   }
+}
+
+const BENCHMARK_SPECS: BenchmarkSpec[] = [
+  {
+    name: 'listDirectory(recursive)',
+    run: async ({ root }) => {
+      await listDirectory(root, { recursive: true, maxDepth: 3 });
+    },
+  },
+  {
+    name: 'searchFiles(**/*.txt)',
+    run: async ({ root }) => {
+      await searchFiles(root, '**/*.txt', ['**/logs/**'], {
+        maxResults: 200,
+      });
+    },
+  },
+  {
+    name: 'searchContent(lorem)',
+    run: async ({ root }) => {
+      await searchContent(root, 'lorem', {
+        filePattern: '**/*.txt',
+        maxResults: 200,
+        contextLines: 1,
+      });
+    },
+  },
+  {
+    name: 'getFileInfo',
+    run: async ({ sampleFile }) => {
+      await getFileInfo(sampleFile);
+    },
+  },
+  {
+    name: 'readMultipleFiles(head)',
+    run: async ({ sampleFile }) => {
+      await readMultipleFiles([sampleFile], { head: 5 });
+    },
+  },
+  {
+    name: 'readFile(head)',
+    run: async ({ sampleFile }) => {
+      await readFile(sampleFile, { head: 10 });
+    },
+  },
+];
+
+function buildBenchmarkCases(context: BenchmarkContext): BenchmarkCase[] {
+  return BENCHMARK_SPECS.map((spec) => ({
+    name: spec.name,
+    run: () => spec.run(context),
+  }));
+}
+
+async function runBenchmarkCases(
+  cases: BenchmarkCase[],
+  iterations: number
+): Promise<BenchmarkResult[]> {
+  const results: BenchmarkResult[] = [];
+  for (const benchmark of cases) {
+    results.push(await measure(benchmark.name, iterations, benchmark.run));
+  }
+  return results;
 }
 
 function renderTable(results: BenchmarkResult[]): void {
