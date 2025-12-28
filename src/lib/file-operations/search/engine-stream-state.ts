@@ -1,4 +1,4 @@
-import type { SearchOptions as EngineSearchOptions } from './engine-options.js';
+import type { SearchOptions as EngineSearchOptions } from './engine.js';
 import type {
   ScanResult,
   SearchOptions as SearchFileOptions,

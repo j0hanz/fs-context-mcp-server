@@ -1,12 +1,65 @@
 import type { SearchContentResult } from '../../../config/types.js';
+import {
+  DEFAULT_MAX_RESULTS,
+  DEFAULT_SEARCH_MAX_FILES,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+  MAX_SEARCHABLE_FILE_SIZE,
+} from '../../constants.js';
 import { safeDestroy } from '../../fs-helpers.js';
+import { mergeDefined } from '../../merge-defined.js';
 import { validateExistingDirectory } from '../../path-validation.js';
 import { validateGlobPatternOrThrow } from '../pattern-validator.js';
-import { buildSearchOptions, getDeadlineMs } from './engine-options.js';
-import type { SearchOptions } from './engine-options.js';
 import { createStream, processStream } from './engine-stream.js';
 import { createMatcher } from './match-strategy.js';
 import type { SearchState } from './types.js';
+
+export interface SearchOptions {
+  filePattern: string;
+  excludePatterns: string[];
+  caseSensitive: boolean;
+  maxResults: number;
+  maxFileSize: number;
+  maxFilesScanned: number;
+  timeoutMs: number;
+  skipBinary: boolean;
+  contextLines: number;
+  wholeWord: boolean;
+  isLiteral: boolean;
+  includeHidden: boolean;
+  baseNameMatch: boolean;
+  caseSensitiveFileMatch: boolean;
+}
+
+export interface SearchContentOptions extends Partial<SearchOptions> {
+  signal?: AbortSignal;
+}
+
+function buildSearchOptions(
+  partialOptions: Partial<SearchOptions>
+): SearchOptions {
+  const defaults: SearchOptions = {
+    filePattern: '**/*',
+    excludePatterns: [],
+    caseSensitive: false,
+    maxResults: DEFAULT_MAX_RESULTS,
+    maxFileSize: MAX_SEARCHABLE_FILE_SIZE,
+    maxFilesScanned: DEFAULT_SEARCH_MAX_FILES,
+    timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
+    skipBinary: true,
+    contextLines: 0,
+    wholeWord: false,
+    isLiteral: false,
+    includeHidden: false,
+    baseNameMatch: false,
+    caseSensitiveFileMatch: true,
+  };
+
+  return mergeDefined(defaults, partialOptions);
+}
+
+function getDeadlineMs(options: SearchOptions): number | undefined {
+  return options.timeoutMs ? Date.now() + options.timeoutMs : undefined;
+}
 
 function createInitialState(): SearchState {
   return {
@@ -190,4 +243,12 @@ export async function executeSearch(
   }
 
   return buildResult(validPath, searchPattern, state, options);
+}
+
+export async function searchContent(
+  basePath: string,
+  searchPattern: string,
+  options: SearchContentOptions = {}
+): Promise<SearchContentResult> {
+  return executeSearch(basePath, searchPattern, options, options.signal);
 }

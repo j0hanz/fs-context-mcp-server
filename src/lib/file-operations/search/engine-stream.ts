@@ -3,7 +3,6 @@ import fg from 'fast-glob';
 import { PARALLEL_CONCURRENCY } from '../../constants.js';
 import { safeDestroy } from '../../fs-helpers.js';
 import { createStreamAbortController } from '../stream-control.js';
-import type { SearchOptions as EngineSearchOptions } from './engine-options.js';
 import {
   type BaseFileOptions,
   buildBaseOptions,
@@ -15,6 +14,7 @@ import {
   throwIfAborted,
   updateState,
 } from './engine-stream-state.js';
+import type { SearchOptions as EngineSearchOptions } from './engine.js';
 import { processFile } from './file-processor.js';
 import type { Matcher } from './match-strategy.js';
 import type { SearchState } from './types.js';

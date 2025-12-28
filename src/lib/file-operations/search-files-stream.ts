@@ -1,17 +1,20 @@
 import fg from 'fast-glob';
 
 import { safeDestroy } from '../fs-helpers.js';
-import type { SearchFilesState } from './search-files-state.js';
 import {
   drainStream,
   handleScanError,
   markStopped,
   throwIfAborted,
 } from './search-files-stream-processor.js';
-import type { ScanStreamOptions } from './search-files-stream-types.js';
+import type { SearchFilesState } from './search-files.js';
 import { createStreamAbortController } from './stream-control.js';
 
-export type { ScanStreamOptions } from './search-files-stream-types.js';
+export interface ScanStreamOptions {
+  deadlineMs?: number;
+  maxFilesScanned?: number;
+  maxResults: number;
+}
 
 export async function scanStream(
   stream: AsyncIterable<string | Buffer>,

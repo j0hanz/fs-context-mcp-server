@@ -4,8 +4,8 @@ import type { SearchResult } from '../../config/types.js';
 import { PARALLEL_CONCURRENCY } from '../constants.js';
 import { getFileType } from '../fs-helpers.js';
 import { validateExistingPathDetailed } from '../path-validation.js';
-import type { SearchFilesState } from './search-files-state.js';
-import type { ScanStreamOptions } from './search-files-stream-types.js';
+import type { ScanStreamOptions } from './search-files-stream.js';
+import type { SearchFilesState } from './search-files.js';
 
 function createAbortError(): Error {
   const error = new Error('Search aborted');
@@ -146,14 +146,6 @@ async function processSlice(
   return false;
 }
 
-function hasBatchWork(batch: string[]): boolean {
-  return batch.length > 0;
-}
-
-function drainBatch(batch: string[]): string[] {
-  return batch.splice(0, batch.length);
-}
-
 async function processBatchSlice(
   toProcess: string[],
   cursor: number,
@@ -177,10 +169,10 @@ async function processBatch(
   options: ScanStreamOptions,
   signal?: AbortSignal
 ): Promise<void> {
-  if (!hasBatchWork(batch)) return;
+  if (batch.length === 0) return;
   if (shouldAbortOrStop(signal, state, options)) return;
 
-  const toProcess = drainBatch(batch);
+  const toProcess = batch.splice(0, batch.length);
   let cursor = 0;
 
   while (cursor < toProcess.length) {
@@ -196,10 +188,6 @@ async function processBatch(
   }
 }
 
-function normalizeEntry(entry: string | Buffer): string {
-  return typeof entry === 'string' ? entry : String(entry);
-}
-
 async function handleStreamEntry(
   entry: string | Buffer,
   state: SearchFilesState,
@@ -209,7 +197,7 @@ async function handleStreamEntry(
 ): Promise<boolean> {
   if (shouldAbortOrStop(signal, state, options)) return false;
 
-  const matchPath = normalizeEntry(entry);
+  const matchPath = typeof entry === 'string' ? entry : String(entry);
   state.filesScanned += 1;
   if (shouldStopProcessing(state, options)) return false;
 

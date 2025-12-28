@@ -3,17 +3,15 @@ import type { Stats } from 'node:fs';
 
 import { validateExistingPath } from '../../path-validation.js';
 import { assertNotAborted } from '../abort.js';
-import type {
-  NormalizedOptions,
-  ReadFileOptions,
-  ReadFileResult,
-} from './read-file-types.js';
 import {
   assertIsFile,
   assertNotBinary,
   assertSingleMode,
+  type NormalizedOptions,
   normalizeOptions,
   readByMode,
+  type ReadFileOptions,
+  type ReadFileResult,
 } from './read-file-utils.js';
 
 async function readFileWithStatsInternal(
