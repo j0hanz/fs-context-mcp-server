@@ -9,6 +9,7 @@ import { getFileInfo } from './file-info.js';
 
 interface GetMultipleFileInfoOptions {
   includeMimeType?: boolean;
+  signal?: AbortSignal;
 }
 
 async function processFileInfo(
@@ -17,6 +18,7 @@ async function processFileInfo(
 ): Promise<MultipleFileInfoResult> {
   const info = await getFileInfo(filePath, {
     includeMimeType: options.includeMimeType,
+    signal: options.signal,
   });
 
   return {
@@ -73,7 +75,8 @@ export async function getMultipleFileInfo(
       index,
       value: await processFileInfo(filePath, options),
     }),
-    PARALLEL_CONCURRENCY
+    PARALLEL_CONCURRENCY,
+    options.signal
   );
 
   applyParallelResults(output, results, errors, paths, (filePath, error) => ({

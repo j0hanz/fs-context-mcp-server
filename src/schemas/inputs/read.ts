@@ -29,7 +29,42 @@ const ReadFileBaseSchema = z.object({
   ),
 });
 
-export const ReadFileInputSchema = ReadFileBaseSchema.shape;
+export const ReadFileInputSchema = ReadFileBaseSchema.superRefine(
+  (data, ctx) => {
+    const hasLineStart = data.lineStart !== undefined;
+    const hasLineEnd = data.lineEnd !== undefined;
+    const hasLineRange = hasLineStart || hasLineEnd;
+    const hasHeadTail = data.head !== undefined || data.tail !== undefined;
+
+    if (hasLineStart !== hasLineEnd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'lineStart and lineEnd must be provided together',
+        path: hasLineStart ? ['lineEnd'] : ['lineStart'],
+      });
+    }
+
+    if (hasLineRange && hasHeadTail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'head/tail cannot be combined with lineStart/lineEnd',
+        path: ['head'],
+      });
+    }
+
+    if (
+      data.lineStart !== undefined &&
+      data.lineEnd !== undefined &&
+      data.lineEnd < data.lineStart
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'lineEnd must be greater than or equal to lineStart',
+        path: ['lineEnd'],
+      });
+    }
+  }
+);
 
 const ReadMultipleFilesBaseSchema = z.object({
   paths: z
@@ -59,4 +94,38 @@ const ReadMultipleFilesBaseSchema = z.object({
   ),
 });
 
-export const ReadMultipleFilesInputSchema = ReadMultipleFilesBaseSchema.shape;
+export const ReadMultipleFilesInputSchema =
+  ReadMultipleFilesBaseSchema.superRefine((data, ctx) => {
+    const hasLineStart = data.lineStart !== undefined;
+    const hasLineEnd = data.lineEnd !== undefined;
+    const hasLineRange = hasLineStart || hasLineEnd;
+    const hasHeadTail = data.head !== undefined || data.tail !== undefined;
+
+    if (hasLineStart !== hasLineEnd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'lineStart and lineEnd must be provided together',
+        path: hasLineStart ? ['lineEnd'] : ['lineStart'],
+      });
+    }
+
+    if (hasLineRange && hasHeadTail) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'head/tail cannot be combined with lineStart/lineEnd',
+        path: ['head'],
+      });
+    }
+
+    if (
+      data.lineStart !== undefined &&
+      data.lineEnd !== undefined &&
+      data.lineEnd < data.lineStart
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'lineEnd must be greater than or equal to lineStart',
+        path: ['lineEnd'],
+      });
+    }
+  });

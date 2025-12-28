@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 
 import { ErrorCode, McpError } from '../errors.js';
+import { assertNotAborted, createAbortError } from '../fs-helpers/abort.js';
 import { normalizePath } from '../path-utils.js';
 import {
   isPathWithinAllowedDirectories,
@@ -96,23 +97,33 @@ function validateRequestedPath(requestedPath: string): string {
 
 async function resolveRealPath(
   requestedPath: string,
-  normalizedRequested: string
+  normalizedRequested: string,
+  signal?: AbortSignal
 ): Promise<string> {
   try {
-    return await fs.realpath(normalizedRequested);
+    assertNotAborted(signal);
+    return await withAbort(fs.realpath(normalizedRequested), signal);
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
+    }
     throw toMcpError(requestedPath, error);
   }
 }
 
 async function assertIsDirectory(
   resolvedPath: string,
-  requestedPath: string
+  requestedPath: string,
+  signal?: AbortSignal
 ): Promise<void> {
   let stats: Stats;
   try {
-    stats = await fs.stat(resolvedPath);
+    assertNotAborted(signal);
+    stats = await withAbort(fs.stat(resolvedPath), signal);
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw error;
+    }
     throw toMcpError(requestedPath, error);
   }
 
@@ -126,15 +137,21 @@ async function assertIsDirectory(
 }
 
 async function validateExistingPathDetailsInternal(
-  requestedPath: string
+  requestedPath: string,
+  signal?: AbortSignal
 ): Promise<ValidatedPathDetails> {
   const normalizedRequested = validateRequestedPath(requestedPath);
 
+  assertNotAborted(signal);
   ensureWithinAllowedDirectories(normalizedRequested, requestedPath, {
     normalizedPath: normalizedRequested,
   });
 
-  const realPath = await resolveRealPath(requestedPath, normalizedRequested);
+  const realPath = await resolveRealPath(
+    requestedPath,
+    normalizedRequested,
+    signal
+  );
   const normalizedReal = normalizePath(realPath);
 
   if (!isPathWithinAllowedDirectories(normalizedReal)) {
@@ -151,22 +168,61 @@ async function validateExistingPathDetailsInternal(
 }
 
 export async function validateExistingPathDetailed(
-  requestedPath: string
+  requestedPath: string,
+  signal?: AbortSignal
 ): Promise<ValidatedPathDetails> {
-  return validateExistingPathDetailsInternal(requestedPath);
+  return validateExistingPathDetailsInternal(requestedPath, signal);
 }
 
 export async function validateExistingPath(
-  requestedPath: string
+  requestedPath: string,
+  signal?: AbortSignal
 ): Promise<string> {
-  const details = await validateExistingPathDetailsInternal(requestedPath);
+  const details = await validateExistingPathDetailsInternal(
+    requestedPath,
+    signal
+  );
   return details.resolvedPath;
 }
 
 export async function validateExistingDirectory(
-  requestedPath: string
+  requestedPath: string,
+  signal?: AbortSignal
 ): Promise<string> {
-  const details = await validateExistingPathDetailsInternal(requestedPath);
-  await assertIsDirectory(details.resolvedPath, requestedPath);
+  const details = await validateExistingPathDetailsInternal(
+    requestedPath,
+    signal
+  );
+  await assertIsDirectory(details.resolvedPath, requestedPath, signal);
   return details.resolvedPath;
+}
+
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    throw getAbortError(signal);
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(getAbortError(signal));
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+
+    promise
+      .then((value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      })
+      .catch((error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
+  });
+}
+
+function getAbortError(signal: AbortSignal): Error {
+  const { reason } = signal as { reason?: unknown };
+  return reason instanceof Error ? reason : createAbortError();
 }

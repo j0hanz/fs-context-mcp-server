@@ -8,6 +8,7 @@ import {
   GetFileInfoInputSchema,
   GetFileInfoOutputSchema,
 } from '../schemas/index.js';
+import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildFileInfoPayload,
   formatFileInfoDetails,
@@ -23,6 +24,8 @@ import {
 type GetFileInfoArgs = z.infer<z.ZodObject<typeof GetFileInfoInputSchema>>;
 type GetFileInfoStructuredResult = z.infer<typeof GetFileInfoOutputSchema>;
 
+const GET_FILE_INFO_TIMEOUT_MS = 30000;
+
 function buildStructuredResult(
   info: Awaited<ReturnType<typeof getFileInfo>>
 ): GetFileInfoStructuredResult {
@@ -32,12 +35,15 @@ function buildStructuredResult(
   };
 }
 
-async function handleGetFileInfo({
-  path,
-}: {
-  path: string;
-}): Promise<ToolResponse<GetFileInfoStructuredResult>> {
-  const info = await getFileInfo(path);
+async function handleGetFileInfo(
+  {
+    path,
+  }: {
+    path: string;
+  },
+  signal?: AbortSignal
+): Promise<ToolResponse<GetFileInfoStructuredResult>> {
+  const info = await getFileInfo(path, { signal });
   const structured = buildStructuredResult(info);
   return buildToolResponse(formatFileInfoDetails(info), structured);
 }
@@ -60,10 +66,21 @@ const GET_FILE_INFO_TOOL = {
 
 export function registerGetFileInfoTool(server: McpServer): void {
   const handler = (
-    args: GetFileInfoArgs
+    args: GetFileInfoArgs,
+    extra: { signal?: AbortSignal }
   ): Promise<ToolResult<GetFileInfoStructuredResult>> =>
     withToolErrorHandling(
-      () => handleGetFileInfo(args),
+      async () => {
+        const { signal, cleanup } = createTimedAbortSignal(
+          extra.signal,
+          GET_FILE_INFO_TIMEOUT_MS
+        );
+        try {
+          return await handleGetFileInfo(args, signal);
+        } finally {
+          cleanup();
+        }
+      },
       (error) => buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, args.path)
     );
 

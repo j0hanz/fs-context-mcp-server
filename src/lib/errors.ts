@@ -107,7 +107,17 @@ function classifyMessageError(error: unknown): ErrorCode | undefined {
   return undefined;
 }
 
+function isTimeoutError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError') return true;
+  const message = error.message.toLowerCase();
+  return message.includes('timed out') || message.includes('timeout');
+}
+
 export function classifyError(error: unknown): ErrorCode {
+  if (isTimeoutError(error)) {
+    return ErrorCode.E_TIMEOUT;
+  }
   const direct = getDirectErrorCode(error);
   if (direct) return direct;
 

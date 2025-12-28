@@ -25,9 +25,7 @@ import {
 
 const READ_MULTIPLE_TIMEOUT_MS = 30000;
 
-type ReadMultipleArgs = z.infer<
-  z.ZodObject<typeof ReadMultipleFilesInputSchema>
->;
+type ReadMultipleArgs = z.infer<typeof ReadMultipleFilesInputSchema>;
 type ReadMultipleStructuredResult = z.infer<
   typeof ReadMultipleFilesOutputSchema
 >;

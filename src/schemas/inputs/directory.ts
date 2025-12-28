@@ -7,6 +7,7 @@ import {
   MaxDepthSchema,
   MaxEntriesSchema,
   SortByDirectorySchema,
+  TimeoutMsSchema,
 } from '../input-helpers.js';
 
 export const ListDirectoryInputSchema = {
@@ -29,6 +30,9 @@ export const ListDirectoryInputSchema = {
     'Maximum depth for recursive listing (higher values may impact performance)'
   ),
   maxEntries: MaxEntriesSchema,
+  timeoutMs: TimeoutMsSchema.describe(
+    'Timeout in milliseconds for the directory listing operation'
+  ),
   sortBy: SortByDirectorySchema,
   includeSymlinkTargets: z
     .boolean()

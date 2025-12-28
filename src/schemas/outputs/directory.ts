@@ -31,6 +31,7 @@ export const ListDirectoryOutputSchema = z.object({
       excludePatterns: z.array(z.string()),
       maxDepth: z.number(),
       maxEntries: z.number(),
+      timeoutMs: z.number(),
       sortBy: z.enum(['name', 'size', 'modified', 'type']),
       includeSymlinkTargets: z.boolean(),
       pattern: z.string().optional(),

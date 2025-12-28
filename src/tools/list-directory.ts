@@ -12,6 +12,7 @@ import {
 import {
   DEFAULT_LIST_MAX_ENTRIES,
   DEFAULT_MAX_DEPTH,
+  DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations.js';
@@ -19,6 +20,7 @@ import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
 } from '../schemas/index.js';
+import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -151,6 +153,7 @@ async function handleListDirectory(
     excludePatterns,
     maxDepth,
     maxEntries,
+    timeoutMs,
     sortBy,
     includeSymlinkTargets,
     pattern,
@@ -161,6 +164,7 @@ async function handleListDirectory(
     excludePatterns?: string[];
     maxDepth?: number;
     maxEntries?: number;
+    timeoutMs?: number;
     sortBy?: 'name' | 'size' | 'modified' | 'type';
     includeSymlinkTargets?: boolean;
     pattern?: string;
@@ -173,6 +177,7 @@ async function handleListDirectory(
     excludePatterns: excludePatterns ?? [],
     maxDepth: maxDepth ?? DEFAULT_MAX_DEPTH,
     maxEntries: maxEntries ?? DEFAULT_LIST_MAX_ENTRIES,
+    timeoutMs: timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
     sortBy: sortBy ?? 'name',
     includeSymlinkTargets: includeSymlinkTargets ?? false,
     pattern,
@@ -183,6 +188,7 @@ async function handleListDirectory(
     excludePatterns: effectiveOptions.excludePatterns,
     maxDepth: effectiveOptions.maxDepth,
     maxEntries: effectiveOptions.maxEntries,
+    // AbortSignal timeout is enforced by createTimedAbortSignal.
     sortBy: effectiveOptions.sortBy,
     includeSymlinkTargets: effectiveOptions.includeSymlinkTargets,
     pattern: effectiveOptions.pattern,
@@ -200,7 +206,17 @@ export function registerListDirectoryTool(server: McpServer): void {
     extra: { signal: AbortSignal }
   ): Promise<ToolResult<ListDirectoryStructuredResult>> =>
     withToolErrorHandling(
-      () => handleListDirectory(args, extra.signal),
+      async () => {
+        const { signal, cleanup } = createTimedAbortSignal(
+          extra.signal,
+          args.timeoutMs
+        );
+        try {
+          return await handleListDirectory(args, signal);
+        } finally {
+          cleanup();
+        }
+      },
       (error) =>
         buildToolErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, args.path)
     );

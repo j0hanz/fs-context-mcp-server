@@ -10,6 +10,7 @@ import {
   GetMultipleFileInfoInputSchema,
   GetMultipleFileInfoOutputSchema,
 } from '../schemas/index.js';
+import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildFileInfoPayload,
   formatFileInfoSummary,
@@ -28,6 +29,8 @@ type GetMultipleFileInfoArgs = z.infer<
 type GetMultipleFileInfoStructuredResult = z.infer<
   typeof GetMultipleFileInfoOutputSchema
 >;
+
+const GET_MULTIPLE_FILE_INFO_TIMEOUT_MS = 30000;
 
 function buildStructuredResult(
   result: GetMultipleFileInfoResult
@@ -59,10 +62,12 @@ function formatFileInfoBlock(
 }
 
 async function handleGetMultipleFileInfo(
-  args: GetMultipleFileInfoArgs
+  args: GetMultipleFileInfoArgs,
+  signal?: AbortSignal
 ): Promise<ToolResponse<GetMultipleFileInfoStructuredResult>> {
   const result = await getMultipleFileInfo(args.paths, {
     includeMimeType: args.includeMimeType,
+    signal,
   });
 
   return buildToolResponse(
@@ -89,10 +94,21 @@ const GET_MULTIPLE_FILE_INFO_TOOL = {
 
 export function registerGetMultipleFileInfoTool(server: McpServer): void {
   const handler = (
-    args: GetMultipleFileInfoArgs
+    args: GetMultipleFileInfoArgs,
+    extra: { signal?: AbortSignal }
   ): Promise<ToolResult<GetMultipleFileInfoStructuredResult>> =>
     withToolErrorHandling(
-      () => handleGetMultipleFileInfo(args),
+      async () => {
+        const { signal, cleanup } = createTimedAbortSignal(
+          extra.signal,
+          GET_MULTIPLE_FILE_INFO_TIMEOUT_MS
+        );
+        try {
+          return await handleGetMultipleFileInfo(args, signal);
+        } finally {
+          cleanup();
+        }
+      },
       (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN)
     );
 

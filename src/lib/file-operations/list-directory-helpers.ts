@@ -180,7 +180,8 @@ function applyDirectoryItemResult(
 ): void {
   const { entry, enqueueDir, skippedInaccessible, symlinkNotFollowed } = result;
 
-  if (!patternMatcher || patternMatcher.match(entry.relativePath)) {
+  const normalizedRelative = entry.relativePath.replace(/\\/g, '/');
+  if (!patternMatcher || patternMatcher.match(normalizedRelative)) {
     state.entries.push(entry);
     applyEntryCounts(entry, state);
   }

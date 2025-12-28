@@ -81,7 +81,7 @@ function buildRangeNote(
   return undefined;
 }
 
-type ReadFileArgs = z.infer<z.ZodObject<typeof ReadFileInputSchema>>;
+type ReadFileArgs = z.infer<typeof ReadFileInputSchema>;
 type ReadFileStructuredResult = z.infer<typeof ReadFileOutputSchema>;
 
 async function handleReadFile(
