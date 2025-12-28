@@ -114,7 +114,7 @@ function appendLinesFromEnd(
     if (state.linesFound >= numLines) break;
     const line = chunkLines[i];
     if (line !== undefined) {
-      state.lines.unshift(line);
+      state.lines.push(line);
       state.linesFound++;
     }
   }
@@ -205,7 +205,7 @@ export async function tailFile(
       );
     }
 
-    return state.lines.join('\n');
+    return state.lines.reverse().join('\n');
   } finally {
     await handle.close();
   }

@@ -118,6 +118,7 @@ async function scanLines(
   const matches: ContentMatch[] = [];
   let linesSkipped = 0;
   let lineNumber = 0;
+  const needsContext = options.contextLines > 0;
   const getCurrentMatchCount =
     options.getCurrentMatchCount ?? (() => options.currentMatchCount);
   let hitMaxResults = false;
@@ -139,8 +140,11 @@ async function scanLines(
       break;
     }
 
-    const trimmed = line.trimEnd().substring(0, MAX_LINE_CONTENT_LENGTH);
-    contextManager.pushLine(trimmed);
+    let trimmed: string | undefined;
+    if (needsContext) {
+      trimmed = line.trimEnd().substring(0, MAX_LINE_CONTENT_LENGTH);
+      contextManager.pushLine(trimmed);
+    }
 
     const matchCount = matcher(line);
     if (matchCount < 0) {
@@ -151,6 +155,7 @@ async function scanLines(
       continue;
     }
 
+    trimmed ??= line.trimEnd().substring(0, MAX_LINE_CONTENT_LENGTH);
     matches.push(
       contextManager.createMatch(displayPath, lineNumber, trimmed, matchCount)
     );

@@ -137,17 +137,6 @@ async function toSearchResult(
   }
 }
 
-function getCachedSearchResult(
-  match: string,
-  cache: Map<string, Promise<SearchResult | { error: Error }>>
-): Promise<SearchResult | { error: Error }> {
-  const cached = cache.get(match);
-  if (cached) return cached;
-  const pending = toSearchResult(match);
-  cache.set(match, pending);
-  return pending;
-}
-
 function recordSettledResult(
   state: SearchFilesState,
   result: PromiseSettledResult<SearchResult | { error: Error }>
@@ -172,7 +161,6 @@ async function processBatch(
     maxFilesScanned?: number;
     maxResults: number;
   },
-  cache: Map<string, Promise<SearchResult | { error: Error }>>,
   signal?: AbortSignal
 ): Promise<void> {
   if (batch.length === 0) return;
@@ -180,14 +168,42 @@ async function processBatch(
   if (shouldStopProcessing(state, options)) return;
 
   const toProcess = batch.splice(0, batch.length);
-  const settled = await Promise.allSettled(
-    toProcess.map(async (match) => getCachedSearchResult(match, cache))
-  );
+  let cursor = 0;
 
-  for (const result of settled) {
+  while (cursor < toProcess.length) {
     assertNotAborted(signal);
-    if (shouldStopProcessing(state, options)) break;
-    recordSettledResult(state, result);
+    if (shouldStopProcessing(state, options)) return;
+
+    const remaining = options.maxResults - state.results.length;
+    if (remaining <= 0) return;
+
+    const sliceSize = Math.min(
+      PARALLEL_CONCURRENCY,
+      remaining,
+      toProcess.length - cursor
+    );
+    const slice = toProcess.slice(cursor, cursor + sliceSize);
+    cursor += sliceSize;
+
+    const inFlight = new Map<
+      string,
+      Promise<SearchResult | { error: Error }>
+    >();
+    const settled = await Promise.allSettled(
+      slice.map((match) => {
+        const cached = inFlight.get(match);
+        if (cached) return cached;
+        const pending = toSearchResult(match);
+        inFlight.set(match, pending);
+        return pending;
+      })
+    );
+
+    for (const result of settled) {
+      assertNotAborted(signal);
+      if (shouldStopProcessing(state, options)) break;
+      recordSettledResult(state, result);
+    }
   }
 }
 
@@ -256,7 +272,6 @@ export async function scanStream(
   signal?: AbortSignal
 ): Promise<void> {
   const batch: string[] = [];
-  const cache = new Map<string, Promise<SearchResult | { error: Error }>>();
   const guard = attachStreamGuards(stream, state, options, signal);
 
   try {
@@ -268,14 +283,13 @@ export async function scanStream(
         state,
         options,
         batch,
-        cache,
         signal
       );
       if (stop) break;
     }
 
     if (!state.truncated) {
-      await processBatch(batch, state, options, cache, signal);
+      await processBatch(batch, state, options, signal);
     }
   } catch (error) {
     const reason = guard.getStopReason();
@@ -296,7 +310,6 @@ async function handleStreamEntry(
   state: SearchFilesState,
   options: ScanStreamOptions,
   batch: string[],
-  cache: Map<string, Promise<SearchResult | { error: Error }>>,
   signal?: AbortSignal
 ): Promise<boolean> {
   assertNotAborted(signal);
@@ -306,7 +319,7 @@ async function handleStreamEntry(
 
   batch.push(matchPath);
   if (batch.length >= PARALLEL_CONCURRENCY) {
-    await processBatch(batch, state, options, cache, signal);
+    await processBatch(batch, state, options, signal);
   }
 
   return false;

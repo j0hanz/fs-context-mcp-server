@@ -40,7 +40,11 @@ export async function readLineRangeContent(
 
 function countLines(content: string): number {
   if (content.length === 0) return 0;
-  return content.split('\n').length;
+  let count = 1;
+  for (let i = 0; i < content.length; i++) {
+    if (content.charCodeAt(i) === 10) count++;
+  }
+  return count;
 }
 
 export async function readHeadContent(
@@ -109,5 +113,5 @@ export async function readFullContent(
     signal
   );
   const content = buffer.toString(encoding);
-  return { content, totalLines: content.split('\n').length };
+  return { content, totalLines: countLines(content) };
 }

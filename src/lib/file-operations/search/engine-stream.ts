@@ -125,7 +125,11 @@ function shouldStop(
   return false;
 }
 
-function updateState(state: SearchState, result: ScanResult): void {
+function updateState(
+  state: SearchState,
+  result: ScanResult,
+  options: SearchOptions
+): void {
   state.filesScanned++;
   if (!result.scanned) {
     state.skippedInaccessible++;
@@ -136,8 +140,20 @@ function updateState(state: SearchState, result: ScanResult): void {
   if (result.skippedBinary) state.skippedBinary++;
 
   if (result.matches.length > 0) {
-    state.matches.push(...result.matches);
     state.filesMatched++;
+    const remaining = options.maxResults - state.matches.length;
+    if (remaining > 0) {
+      if (result.matches.length > remaining) {
+        state.matches.push(...result.matches.slice(0, remaining));
+        state.truncated = true;
+        state.stoppedReason = 'maxResults';
+      } else {
+        state.matches.push(...result.matches);
+      }
+    } else if (!state.truncated) {
+      state.truncated = true;
+      state.stoppedReason = 'maxResults';
+    }
   }
   state.linesSkippedDueToRegexTimeout += result.linesSkippedDueToRegexTimeout;
   if (result.hitMaxResults && !state.truncated) {
@@ -260,7 +276,7 @@ function createProcessingTask(
         getCurrentMatchCount: () => state.matches.length,
         signal,
       });
-      updateState(state, result);
+      updateState(state, result, options);
     } catch {
       state.skippedInaccessible++;
     }

@@ -28,15 +28,6 @@ function comparePathThenName(a: Sortable, b: Sortable): number {
   return compareString(a.name, b.name);
 }
 
-function compareBaseNameThenPath(a: Sortable, b: Sortable): number {
-  const baseCompare = compareString(
-    path.basename(a.path ?? ''),
-    path.basename(b.path ?? '')
-  );
-  if (baseCompare !== 0) return baseCompare;
-  return compareString(a.path, b.path);
-}
-
 function compareOptionalNumberDesc(
   left: number | undefined,
   right: number | undefined,
@@ -77,7 +68,23 @@ export function sortSearchResults(
   results: Sortable[],
   sortBy: 'name' | 'size' | 'modified' | 'path'
 ): void {
-  const comparator =
-    sortBy === 'name' ? compareBaseNameThenPath : SORT_COMPARATORS[sortBy];
+  if (sortBy === 'name') {
+    const decorated = results.map((item, index) => ({
+      item,
+      baseName: path.basename(item.path ?? ''),
+      index,
+    }));
+    decorated.sort((a, b) => {
+      const baseCompare = compareString(a.baseName, b.baseName);
+      if (baseCompare !== 0) return baseCompare;
+      const pathCompare = compareString(a.item.path, b.item.path);
+      if (pathCompare !== 0) return pathCompare;
+      return a.index - b.index;
+    });
+    results.splice(0, results.length, ...decorated.map((entry) => entry.item));
+    return;
+  }
+
+  const comparator = SORT_COMPARATORS[sortBy];
   results.sort(comparator);
 }
