@@ -16,12 +16,12 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { mergeDefined } from '../lib/merge-defined.js';
 import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
 } from '../schemas/index.js';
-import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,

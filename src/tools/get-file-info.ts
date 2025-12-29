@@ -4,11 +4,11 @@ import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
 import { getFileInfo } from '../lib/file-operations.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import {
   GetFileInfoInputSchema,
   GetFileInfoOutputSchema,
 } from '../schemas/index.js';
-import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildFileInfoPayload,
   formatFileInfoDetails,

@@ -48,3 +48,42 @@ export function withAbort<T>(
       });
   });
 }
+
+export function createTimedAbortSignal(
+  baseSignal: AbortSignal | undefined,
+  timeoutMs?: number
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+
+  const forwardAbort = (): void => {
+    const reason =
+      baseSignal?.reason instanceof Error ? baseSignal.reason : undefined;
+    controller.abort(reason);
+  };
+
+  if (baseSignal) {
+    if (baseSignal.aborted) {
+      forwardAbort();
+    } else {
+      baseSignal.addEventListener('abort', forwardAbort, { once: true });
+    }
+  }
+
+  const timeoutId =
+    typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)
+      ? setTimeout(() => {
+          controller.abort(createAbortError('Operation timed out'));
+        }, timeoutMs)
+      : undefined;
+
+  const cleanup = (): void => {
+    if (baseSignal) {
+      baseSignal.removeEventListener('abort', forwardAbort);
+    }
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  return { signal: controller.signal, cleanup };
+}

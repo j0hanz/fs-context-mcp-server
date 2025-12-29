@@ -6,9 +6,9 @@ import { joinLines } from '../config/formatting.js';
 import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { assertLineRangeOptions, buildLineRange } from '../lib/line-range.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
-import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,

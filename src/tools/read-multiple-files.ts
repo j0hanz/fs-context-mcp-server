@@ -6,12 +6,12 @@ import { joinLines } from '../config/formatting.js';
 import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { assertLineRangeOptions } from '../lib/line-range.js';
 import {
   ReadMultipleFilesInputSchema,
   ReadMultipleFilesOutputSchema,
 } from '../schemas/index.js';
-import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,

@@ -6,11 +6,11 @@ import { formatBytes, joinLines } from '../config/formatting.js';
 import type { GetMultipleFileInfoResult } from '../config/types.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getMultipleFileInfo } from '../lib/file-operations.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import {
   GetMultipleFileInfoInputSchema,
   GetMultipleFileInfoOutputSchema,
 } from '../schemas/index.js';
-import { createTimedAbortSignal } from './shared/abort.js';
 import {
   buildFileInfoPayload,
   formatFileInfoSummary,

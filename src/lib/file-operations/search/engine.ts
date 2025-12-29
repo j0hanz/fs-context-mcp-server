@@ -16,7 +16,7 @@ import {
   MAX_LINE_CONTENT_LENGTH,
   MAX_SEARCHABLE_FILE_SIZE,
 } from '../../constants.js';
-import { isProbablyBinary } from '../../fs-helpers.js';
+import { createTimedAbortSignal, isProbablyBinary } from '../../fs-helpers.js';
 import {
   validateExistingDirectory,
   validateExistingPathDetailed,
@@ -47,7 +47,7 @@ export interface SearchContentOptions extends Partial<SearchOptions> {
 
 type Matcher = (line: string) => number;
 
-type ResolvedOptions = SearchOptions & { signal?: AbortSignal };
+type ResolvedOptions = SearchOptions;
 
 const DEFAULTS: SearchOptions = {
   filePattern: '**/*',
@@ -67,7 +67,9 @@ const DEFAULTS: SearchOptions = {
 };
 
 function mergeOptions(partial: SearchContentOptions): ResolvedOptions {
-  const merged: ResolvedOptions = { ...DEFAULTS, ...partial };
+  const { signal, ...rest } = partial;
+  void signal; // signal handled externally via createTimedAbortSignal
+  const merged: ResolvedOptions = { ...DEFAULTS, ...rest };
   return merged;
 }
 
@@ -111,39 +113,6 @@ function buildMatcher(pattern: string, o: ResolvedOptions): Matcher {
   };
 }
 
-function combineSignals(
-  original?: AbortSignal,
-  timeoutMs?: number
-): AbortSignal | undefined {
-  if (!original && !timeoutMs) return undefined;
-  const controller = new AbortController();
-  const timeoutId =
-    typeof timeoutMs === 'number'
-      ? setTimeout(() => {
-          controller.abort();
-        }, timeoutMs)
-      : undefined;
-
-  const forward = (): void => {
-    controller.abort();
-  };
-  if (original) {
-    if (original.aborted) controller.abort();
-    else original.addEventListener('abort', forward, { once: true });
-  }
-
-  controller.signal.addEventListener(
-    'abort',
-    () => {
-      if (original) original.removeEventListener('abort', forward);
-      if (timeoutId) clearTimeout(timeoutId);
-    },
-    { once: true }
-  );
-
-  return controller.signal;
-}
-
 interface ContextState {
   before: string[];
   pendingAfter: { match: ContentMatch; left: number }[];
@@ -177,11 +146,12 @@ async function scanFile(
   matcher: Matcher,
   opts: ResolvedOptions,
   summary: SearchContentResult['summary'],
-  matches: ContentMatch[]
+  matches: ContentMatch[],
+  signal: AbortSignal
 ): Promise<void> {
   const { resolvedPath, requestedPath } = await validateExistingPathDetailed(
     targetPath,
-    opts.signal
+    signal
   );
   const handle = await fsp.open(resolvedPath, 'r');
   const stats = await handle.stat();
@@ -194,7 +164,7 @@ async function scanFile(
 
   if (
     opts.skipBinary &&
-    (await isProbablyBinary(resolvedPath, handle, opts.signal))
+    (await isProbablyBinary(resolvedPath, handle, signal))
   ) {
     summary.skippedBinary++;
     await handle.close();
@@ -204,14 +174,14 @@ async function scanFile(
   const rl = readline.createInterface({
     input: handle.createReadStream({ encoding: 'utf-8', autoClose: false }),
     crlfDelay: Infinity,
-    signal: opts.signal,
+    signal,
   });
 
   const ctx = makeContext();
   let lineNo = 0;
   try {
     for await (const line of rl) {
-      if (opts.signal?.aborted) break;
+      if (signal.aborted) break;
       lineNo++;
       pushContext(ctx, trimContent(line), opts.contextLines);
 
@@ -261,8 +231,11 @@ export async function searchContent(
   options: SearchContentOptions = {}
 ): Promise<SearchContentResult> {
   const opts = mergeOptions(options);
-  const root = await validateExistingDirectory(basePath, opts.signal);
-  const signal = combineSignals(opts.signal, opts.timeoutMs);
+  const { signal, cleanup } = createTimedAbortSignal(
+    options.signal,
+    opts.timeoutMs
+  );
+  const root = await validateExistingDirectory(basePath, signal);
   const matcher = buildMatcher(pattern, opts);
 
   const summary: SearchContentResult['summary'] = {
@@ -292,44 +265,42 @@ export async function searchContent(
     objectMode: true,
   });
 
-  for await (const entry of toEntries(stream)) {
-    if (signal?.aborted) {
-      summary.truncated = true;
-      summary.stoppedReason = 'timeout';
-      break;
-    }
-    if (summary.filesScanned >= opts.maxFilesScanned) {
-      summary.truncated = true;
-      summary.stoppedReason = 'maxFiles';
-      break;
-    }
-    summary.filesScanned++;
+  try {
+    for await (const entry of toEntries(stream)) {
+      if (signal.aborted) {
+        summary.truncated = true;
+        summary.stoppedReason = 'timeout';
+        break;
+      }
+      if (summary.filesScanned >= opts.maxFilesScanned) {
+        summary.truncated = true;
+        summary.stoppedReason = 'maxFiles';
+        break;
+      }
+      summary.filesScanned++;
 
-    try {
-      await scanFile(
-        entry.path,
-        matcher,
-        { ...opts, signal },
-        summary,
-        matches
-      );
-    } catch {
-      summary.skippedInaccessible++;
+      try {
+        await scanFile(entry.path, matcher, opts, summary, matches, signal);
+      } catch {
+        summary.skippedInaccessible++;
+      }
+
+      summary.matches = matches.length;
+      if (matches.length >= opts.maxResults) {
+        summary.truncated = true;
+        summary.stoppedReason = 'maxResults';
+        break;
+      }
     }
 
-    summary.matches = matches.length;
-    if (matches.length >= opts.maxResults) {
-      summary.truncated = true;
-      summary.stoppedReason = 'maxResults';
-      break;
-    }
+    return {
+      basePath: root,
+      pattern,
+      filePattern: opts.filePattern,
+      matches,
+      summary,
+    };
+  } finally {
+    cleanup();
   }
-
-  return {
-    basePath: root,
-    pattern,
-    filePattern: opts.filePattern,
-    matches,
-    summary,
-  };
 }
