@@ -4,7 +4,6 @@ import type {
 } from '../../config/types.js';
 import { PARALLEL_CONCURRENCY } from '../constants.js';
 import { processInParallel } from '../fs-helpers.js';
-import { applyParallelResults, createOutputSkeleton } from './batch-results.js';
 import { getFileInfo } from './file-info.js';
 
 interface GetMultipleFileInfoOptions {
@@ -65,7 +64,7 @@ export async function getMultipleFileInfo(
     };
   }
 
-  const output = createOutputSkeleton(paths, (filePath) => ({
+  const output: MultipleFileInfoResult[] = paths.map((filePath) => ({
     path: filePath,
   }));
 
@@ -79,10 +78,16 @@ export async function getMultipleFileInfo(
     options.signal
   );
 
-  applyParallelResults(output, results, errors, paths, (filePath, error) => ({
-    path: filePath,
-    error: error.message,
-  }));
+  for (const result of results) {
+    output[result.index] = result.value;
+  }
+
+  for (const failure of errors) {
+    const filePath = paths[failure.index] ?? '(unknown)';
+    if (output[failure.index] !== undefined) {
+      output[failure.index] = { path: filePath, error: failure.error.message };
+    }
+  }
 
   return {
     results: output,

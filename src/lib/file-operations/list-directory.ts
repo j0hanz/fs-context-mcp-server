@@ -9,6 +9,7 @@ import {
   DEFAULT_MAX_DEPTH,
   DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../constants.js';
+import { createTimedAbortSignal } from '../fs-helpers/abort.js';
 import { validateExistingDirectory } from '../path-validation.js';
 
 interface ListDirectoryOptions {
@@ -28,7 +29,6 @@ type NormalizedOptions = Required<
   Omit<ListDirectoryOptions, 'signal' | 'pattern'>
 > & {
   pattern?: string;
-  signal?: AbortSignal;
 };
 
 type GlobEntry = fg.Entry;
@@ -47,38 +47,7 @@ function normalizeOptions(options: ListDirectoryOptions): NormalizedOptions {
         ? options.pattern
         : undefined,
     timeoutMs: options.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
-    signal: options.signal,
   };
-}
-
-function combineSignals(
-  original?: AbortSignal,
-  timeoutMs?: number
-): AbortSignal | undefined {
-  if (!original && !timeoutMs) return undefined;
-  const controller = new AbortController();
-  const timeoutId =
-    typeof timeoutMs === 'number'
-      ? setTimeout(() => {
-          controller.abort();
-        }, timeoutMs)
-      : undefined;
-  const forward = (): void => {
-    controller.abort();
-  };
-  if (original) {
-    if (original.aborted) controller.abort();
-    else original.addEventListener('abort', forward, { once: true });
-  }
-  controller.signal.addEventListener(
-    'abort',
-    () => {
-      if (original) original.removeEventListener('abort', forward);
-      if (timeoutId) clearTimeout(timeoutId);
-    },
-    { once: true }
-  );
-  return controller.signal;
 }
 
 function sortEntries(
@@ -112,8 +81,11 @@ export async function listDirectory(
   options: ListDirectoryOptions = {}
 ): Promise<ListDirectoryResult> {
   const normalized = normalizeOptions(options);
-  const basePath = await validateExistingDirectory(dirPath, options.signal);
-  const signal = combineSignals(normalized.signal, normalized.timeoutMs);
+  const { signal, cleanup } = createTimedAbortSignal(
+    options.signal,
+    normalized.timeoutMs
+  );
+  const basePath = await validateExistingDirectory(dirPath, signal);
 
   const entries: ListDirectoryResult['entries'] = [];
   let totalFiles = 0;
@@ -137,63 +109,67 @@ export async function listDirectory(
     deep: maxDepth,
   });
 
-  for await (const entry of toEntries(stream)) {
-    if (signal?.aborted) {
-      truncated = true;
-      stoppedReason = 'aborted';
-      break;
+  try {
+    for await (const entry of toEntries(stream)) {
+      if (signal.aborted) {
+        truncated = true;
+        stoppedReason = 'aborted';
+        break;
+      }
+      if (entries.length >= normalized.maxEntries) {
+        truncated = true;
+        stoppedReason = 'maxEntries';
+        break;
+      }
+
+      const relPath =
+        path.relative(basePath, entry.path) || path.basename(entry.path);
+      const type = entry.dirent.isDirectory()
+        ? 'directory'
+        : entry.dirent.isSymbolicLink()
+          ? 'symlink'
+          : entry.dirent.isFile()
+            ? 'file'
+            : 'other';
+
+      const symlinkTarget =
+        type === 'symlink' && normalized.includeSymlinkTargets
+          ? await fsp.readlink(entry.path).catch(() => undefined)
+          : undefined;
+
+      if (type === 'file') totalFiles++;
+      if (type === 'directory') totalDirectories++;
+
+      entries.push({
+        name: path.basename(entry.path),
+        path: entry.path,
+        relativePath: relPath,
+        type,
+        size: entry.stats?.isFile() ? entry.stats.size : undefined,
+        modified: entry.stats?.mtime,
+        symlinkTarget,
+      });
     }
-    if (entries.length >= normalized.maxEntries) {
-      truncated = true;
-      stoppedReason = 'maxEntries';
-      break;
-    }
 
-    const relPath =
-      path.relative(basePath, entry.path) || path.basename(entry.path);
-    const type = entry.dirent.isDirectory()
-      ? 'directory'
-      : entry.dirent.isSymbolicLink()
-        ? 'symlink'
-        : entry.dirent.isFile()
-          ? 'file'
-          : 'other';
+    sortEntries(entries, normalized.sortBy);
 
-    const symlinkTarget =
-      type === 'symlink' && normalized.includeSymlinkTargets
-        ? await fsp.readlink(entry.path).catch(() => undefined)
-        : undefined;
-
-    if (type === 'file') totalFiles++;
-    if (type === 'directory') totalDirectories++;
-
-    entries.push({
-      name: path.basename(entry.path),
-      path: entry.path,
-      relativePath: relPath,
-      type,
-      size: entry.stats?.isFile() ? entry.stats.size : undefined,
-      modified: entry.stats?.mtime,
-      symlinkTarget,
-    });
+    return {
+      path: basePath,
+      entries,
+      summary: {
+        totalEntries: entries.length,
+        entriesScanned: entries.length,
+        entriesVisible: entries.length,
+        totalFiles,
+        totalDirectories,
+        maxDepthReached: maxDepth,
+        truncated,
+        stoppedReason,
+        skippedInaccessible: 0,
+        symlinksNotFollowed: 0,
+      },
+    };
+  } finally {
+    cleanup();
   }
-
-  sortEntries(entries, normalized.sortBy);
-
-  return {
-    path: basePath,
-    entries,
-    summary: {
-      totalEntries: entries.length,
-      entriesScanned: entries.length,
-      entriesVisible: entries.length,
-      totalFiles,
-      totalDirectories,
-      maxDepthReached: maxDepth,
-      truncated,
-      stoppedReason,
-      skippedInaccessible: 0,
-      symlinksNotFollowed: 0,
-    },
-  };
 }
