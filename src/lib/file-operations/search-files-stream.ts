@@ -8,7 +8,6 @@ import {
   throwIfAborted,
 } from './search-files-stream-processor.js';
 import type { SearchFilesState } from './search-files.js';
-import { createStreamAbortController } from './stream-control.js';
 
 export interface ScanStreamOptions {
   deadlineMs?: number;
@@ -28,24 +27,56 @@ export async function scanStream(
     safeDestroy(stream as unknown);
   };
 
-  const abortController = createStreamAbortController({
-    signal,
-    deadlineMs: options.deadlineMs,
-    destroyStream,
-    onTimeout: (): void => {
+  let stopReason: 'timeout' | 'abort' | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const clearTimer = (): void => {
+    if (!timeoutId) return;
+    clearTimeout(timeoutId);
+    timeoutId = undefined;
+  };
+
+  const stop = (reason: 'timeout' | 'abort'): void => {
+    if (stopReason !== null) return;
+    stopReason = reason;
+    if (reason === 'timeout') {
       markStopped(state, 'timeout');
-    },
-    onAbort: (): void => {
-      // No-op: abort state handled by caller.
-    },
-  });
+    }
+    destroyStream();
+  };
+
+  const onAbortSignal = (): void => {
+    const reason =
+      options.deadlineMs !== undefined && Date.now() >= options.deadlineMs
+        ? 'timeout'
+        : 'abort';
+    stop(reason);
+    clearTimer();
+  };
+
+  const onTimeoutSignal = (): void => {
+    if (stopReason === 'abort') return;
+    stop('timeout');
+  };
+
+  if (signal?.aborted) {
+    onAbortSignal();
+  } else if (signal) {
+    signal.addEventListener('abort', onAbortSignal, { once: true });
+  }
+
+  if (options.deadlineMs !== undefined) {
+    const delay = Math.max(0, options.deadlineMs - Date.now());
+    timeoutId = setTimeout(onTimeoutSignal, delay);
+  }
 
   try {
     await drainStream(stream, state, options, batch, signal);
   } catch (error) {
     handleScanError(error, options, signal);
   } finally {
-    abortController.cleanup();
+    if (signal) signal.removeEventListener('abort', onAbortSignal);
+    clearTimer();
   }
 
   throwIfAborted(signal, options.deadlineMs);

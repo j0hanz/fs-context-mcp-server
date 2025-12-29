@@ -2,7 +2,6 @@ import fg from 'fast-glob';
 
 import { PARALLEL_CONCURRENCY } from '../../constants.js';
 import { safeDestroy } from '../../fs-helpers.js';
-import { createStreamAbortController } from '../stream-control.js';
 import {
   type BaseFileOptions,
   buildBaseOptions,
@@ -225,25 +224,57 @@ async function runWithAbortController(
     safeDestroy(stream as unknown);
   };
 
-  const abortController = createStreamAbortController({
-    signal,
-    deadlineMs,
-    destroyStream,
-    onTimeout: (): void => {
+  let stopReason: 'timeout' | 'abort' | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const clearTimer = (): void => {
+    if (!timeoutId) return;
+    clearTimeout(timeoutId);
+    timeoutId = undefined;
+  };
+
+  const stop = (reason: 'timeout' | 'abort'): void => {
+    if (stopReason !== null) return;
+    stopReason = reason;
+    if (reason === 'timeout') {
       searchState.truncated = true;
       searchState.stoppedReason = 'timeout';
-    },
-    onAbort: (): void => {
-      // No-op: abort state handled by caller.
-    },
-  });
+    }
+    destroyStream();
+  };
+
+  const onAbortSignal = (): void => {
+    const reason =
+      deadlineMs !== undefined && Date.now() >= deadlineMs
+        ? 'timeout'
+        : 'abort';
+    stop(reason);
+    clearTimer();
+  };
+
+  const onTimeoutSignal = (): void => {
+    if (stopReason === 'abort') return;
+    stop('timeout');
+  };
+
+  if (signal?.aborted) {
+    onAbortSignal();
+  } else if (signal) {
+    signal.addEventListener('abort', onAbortSignal, { once: true });
+  }
+
+  if (deadlineMs !== undefined) {
+    const delay = Math.max(0, deadlineMs - Date.now());
+    timeoutId = setTimeout(onTimeoutSignal, delay);
+  }
 
   try {
     await run();
   } catch (error) {
     handleStreamError(error, deadlineMs, signal);
   } finally {
-    abortController.cleanup();
+    if (signal) signal.removeEventListener('abort', onAbortSignal);
+    clearTimer();
     await Promise.all(active);
   }
 }
