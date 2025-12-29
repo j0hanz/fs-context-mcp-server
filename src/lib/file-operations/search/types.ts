@@ -10,6 +10,8 @@ export interface SearchOptions {
   signal?: AbortSignal;
   currentMatchCount: number;
   getCurrentMatchCount?: () => number;
+  hasRemainingMatchBudget?: () => boolean;
+  reserveMatchSlot?: () => boolean;
   isLiteral?: boolean;
   searchString?: string;
   caseSensitive?: boolean;

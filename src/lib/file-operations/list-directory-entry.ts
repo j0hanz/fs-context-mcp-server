@@ -3,10 +3,7 @@ import * as path from 'node:path';
 import type { Dirent, Stats } from 'node:fs';
 
 import type { DirectoryEntry } from '../../config/types.js';
-import {
-  validateExistingPath,
-  validateExistingPathDetailed,
-} from '../path-validation.js';
+import { validateExistingPathDetailed } from '../path-validation.js';
 
 export interface DirectoryItemResult {
   entry: DirectoryEntry;
@@ -75,21 +72,21 @@ async function resolveSymlinkTarget(
   }
 }
 
-async function buildEnqueueDir(
+function buildEnqueueDir(
   fullPath: string,
   depth: number,
   maxDepth: number,
   recursive: boolean
-): Promise<{ currentPath: string; depth: number } | undefined> {
+): { currentPath: string; depth: number } | undefined {
   if (!recursive || depth + 1 > maxDepth) return undefined;
 
   return {
-    currentPath: await validateExistingPath(fullPath),
+    currentPath: fullPath,
     depth: depth + 1,
   };
 }
 
-async function buildRegularResult(
+function buildRegularResult(
   item: Dirent,
   fullPath: string,
   relativePath: string,
@@ -99,7 +96,7 @@ async function buildRegularResult(
     depth: number;
     maxDepth: number;
   }
-): Promise<DirectoryItemResult> {
+): DirectoryItemResult {
   const type = resolveEntryType(stats);
 
   const entry: DirectoryEntry = {
@@ -110,7 +107,7 @@ async function buildRegularResult(
 
   const enqueueDir =
     type === 'directory'
-      ? await buildEnqueueDir(
+      ? buildEnqueueDir(
           fullPath,
           options.depth,
           options.maxDepth,
@@ -162,7 +159,7 @@ async function buildDirectoryItemResultCore(
     );
   }
 
-  return await buildRegularResult(item, fullPath, relativePath, stats, options);
+  return buildRegularResult(item, fullPath, relativePath, stats, options);
 }
 
 export async function buildDirectoryItemResult(

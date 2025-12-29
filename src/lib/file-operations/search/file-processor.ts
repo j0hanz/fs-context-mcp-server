@@ -118,6 +118,10 @@ function processLine(
   state.lineNumber++;
 
   if (isDeadlineExceeded(options.deadlineMs)) return false;
+  if (options.hasRemainingMatchBudget && !options.hasRemainingMatchBudget()) {
+    state.hitMaxResults = true;
+    return false;
+  }
   if (
     hasReachedMatchLimit(
       options.maxResults,
@@ -131,6 +135,12 @@ function processLine(
 
   const trimmed = updateContextLine(contextManager, line, needsContext);
   const matchCount = matcher(line);
+  if (matchCount > 0 && options.reserveMatchSlot) {
+    if (!options.reserveMatchSlot()) {
+      state.hitMaxResults = true;
+      return false;
+    }
+  }
   handleMatchCount(
     matchCount,
     state,

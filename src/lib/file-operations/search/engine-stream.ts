@@ -9,6 +9,7 @@ import {
   buildSearchLimits,
   finalizeTimeoutState,
   markMaxFiles,
+  markMaxResults,
   type SearchLimits,
   shouldAbortOrStop,
   throwIfAborted,
@@ -36,6 +37,23 @@ export function createStream(
   });
 }
 
+interface MatchBudget {
+  hasRemaining: () => boolean;
+  reserve: () => boolean;
+}
+
+function createMatchBudget(maxResults: number): MatchBudget {
+  const budget = { remaining: maxResults };
+  return {
+    hasRemaining: () => budget.remaining > 0,
+    reserve: () => {
+      if (budget.remaining <= 0) return false;
+      budget.remaining -= 1;
+      return true;
+    },
+  };
+}
+
 async function runFileTask(
   rawPath: string,
   matcher: Matcher,
@@ -43,14 +61,21 @@ async function runFileTask(
   state: SearchState,
   limits: SearchLimits,
   deadlineMs: number | undefined,
+  matchBudget: MatchBudget,
   signal?: AbortSignal
 ): Promise<void> {
   try {
     if (shouldAbortOrStop(signal, state, limits, deadlineMs)) return;
+    if (!matchBudget.hasRemaining()) {
+      markMaxResults(state);
+      return;
+    }
     const result = await processFile(rawPath, matcher, {
       ...baseOptions,
       currentMatchCount: state.matches.length,
       getCurrentMatchCount: () => state.matches.length,
+      hasRemainingMatchBudget: matchBudget.hasRemaining,
+      reserveMatchSlot: matchBudget.reserve,
       signal,
     });
     updateState(state, result, limits.maxResults);
@@ -103,10 +128,15 @@ async function handleStreamEntry(
   matcher: Matcher,
   baseOptions: BaseFileOptions,
   limits: SearchLimits,
+  matchBudget: MatchBudget,
   deadlineMs: number | undefined,
   signal?: AbortSignal
 ): Promise<boolean> {
   if (shouldAbortOrStop(signal, state, limits, deadlineMs)) return false;
+  if (!matchBudget.hasRemaining()) {
+    markMaxResults(state);
+    return false;
+  }
 
   const budgetDecision = await enforceFileBudget(active, state, limits);
   if (budgetDecision !== 'process') {
@@ -132,6 +162,7 @@ async function handleStreamEntry(
       state,
       limits,
       deadlineMs,
+      matchBudget,
       signal
     )
   );
@@ -146,6 +177,7 @@ async function drainStreamEntries(
   matcher: Matcher,
   baseOptions: BaseFileOptions,
   limits: SearchLimits,
+  matchBudget: MatchBudget,
   deadlineMs: number | undefined,
   signal?: AbortSignal
 ): Promise<void> {
@@ -157,6 +189,7 @@ async function drainStreamEntries(
       matcher,
       baseOptions,
       limits,
+      matchBudget,
       deadlineMs,
       signal
     );
@@ -227,6 +260,7 @@ export async function processStream(
   const active = new Set<Promise<void>>();
   const limits = buildSearchLimits(options);
   const baseOptions = buildBaseOptions(options, deadlineMs, searchPattern);
+  const matchBudget = createMatchBudget(limits.maxResults);
 
   await runWithAbortController(
     stream,
@@ -242,6 +276,7 @@ export async function processStream(
         matcher,
         baseOptions,
         limits,
+        matchBudget,
         deadlineMs,
         signal
       );
