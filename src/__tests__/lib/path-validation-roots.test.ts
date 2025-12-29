@@ -8,7 +8,7 @@ import type { Root } from '@modelcontextprotocol/sdk/types.js';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 
 import { normalizePath } from '../../lib/path-utils.js';
-import { getValidRootDirectories } from '../../lib/path-validation/roots.js';
+import { getValidRootDirectories } from '../../lib/path-validation.js';
 
 let testDir = '';
 let testFile = '';

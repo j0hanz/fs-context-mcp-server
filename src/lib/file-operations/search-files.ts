@@ -1,15 +1,12 @@
+import fg from 'fast-glob';
+
 import type { SearchFilesResult, SearchResult } from '../../config/types.js';
 import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_SEARCH_MAX_FILES,
   DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../constants.js';
-import { ErrorCode, McpError } from '../errors.js';
-import { safeDestroy } from '../fs-helpers.js';
-import { mergeDefined } from '../merge-defined.js';
 import { validateExistingDirectory } from '../path-validation.js';
-import { validateGlobPatternOrThrow } from './pattern-validator.js';
-import { createSearchStream, scanStream } from './search-files-stream.js';
 import { sortSearchResults } from './sorting.js';
 
 export interface SearchFilesOptions {
@@ -24,98 +21,67 @@ export interface SearchFilesOptions {
   signal?: AbortSignal;
 }
 
-interface NormalizedSearchFilesOptions {
-  effectiveMaxResults: number;
-  sortBy: 'name' | 'size' | 'modified' | 'path';
+type NormalizedOptions = Required<
+  Omit<SearchFilesOptions, 'maxDepth' | 'sortBy' | 'signal'>
+> & {
   maxDepth?: number;
-  maxFilesScanned: number;
-  deadlineMs?: number;
-  baseNameMatch: boolean;
-  skipSymlinks: boolean;
-  includeHidden: boolean;
-}
+  sortBy: NonNullable<SearchFilesOptions['sortBy']>;
+  signal?: AbortSignal;
+};
 
-export interface SearchFilesState {
-  results: SearchResult[];
-  skippedInaccessible: number;
-  truncated: boolean;
-  filesScanned: number;
-  stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
-}
+type GlobEntry = fg.Entry;
 
-function normalizeSearchFilesOptions(
-  options: Omit<SearchFilesOptions, 'signal'>
-): NormalizedSearchFilesOptions {
-  const defaults: Required<Omit<SearchFilesOptions, 'maxDepth' | 'signal'>> & {
-    maxDepth: number | undefined;
-  } = {
-    maxResults: DEFAULT_MAX_RESULTS,
-    sortBy: 'path',
-    maxDepth: undefined,
-    maxFilesScanned: DEFAULT_SEARCH_MAX_FILES,
-    timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
-    baseNameMatch: false,
-    skipSymlinks: true,
-    includeHidden: false,
-  };
-  const merged = mergeDefined(defaults, options);
+function normalizeOptions(options: SearchFilesOptions): NormalizedOptions {
   return {
-    effectiveMaxResults: merged.maxResults,
-    sortBy: merged.sortBy,
-    maxDepth: merged.maxDepth,
-    maxFilesScanned: merged.maxFilesScanned,
-    deadlineMs: merged.timeoutMs ? Date.now() + merged.timeoutMs : undefined,
-    baseNameMatch: merged.baseNameMatch,
-    skipSymlinks: merged.skipSymlinks,
-    includeHidden: merged.includeHidden,
+    maxResults: options.maxResults ?? DEFAULT_MAX_RESULTS,
+    sortBy: options.sortBy ?? 'path',
+    maxDepth: options.maxDepth,
+    maxFilesScanned: options.maxFilesScanned ?? DEFAULT_SEARCH_MAX_FILES,
+    timeoutMs: options.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
+    baseNameMatch: options.baseNameMatch ?? false,
+    skipSymlinks: options.skipSymlinks ?? true,
+    includeHidden: options.includeHidden ?? false,
+    signal: options.signal,
   };
 }
 
-function buildScanOptions(normalized: {
-  deadlineMs?: number;
-  maxFilesScanned: number;
-  effectiveMaxResults: number;
-}): {
-  deadlineMs?: number;
-  maxFilesScanned: number;
-  maxResults: number;
-} {
-  return {
-    deadlineMs: normalized.deadlineMs,
-    maxFilesScanned: normalized.maxFilesScanned,
-    maxResults: normalized.effectiveMaxResults,
+function combineSignals(
+  original?: AbortSignal,
+  timeoutMs?: number
+): AbortSignal | undefined {
+  if (!original && !timeoutMs) return undefined;
+  const controller = new AbortController();
+  const timeoutId =
+    typeof timeoutMs === 'number'
+      ? setTimeout(() => {
+          controller.abort();
+        }, timeoutMs)
+      : undefined;
+  const forward = (): void => {
+    controller.abort();
   };
-}
-
-function initSearchFilesState(): SearchFilesState {
-  return {
-    results: [],
-    skippedInaccessible: 0,
-    truncated: false,
-    filesScanned: 0,
-    stoppedReason: undefined,
-  };
-}
-
-function buildSearchFilesResult(
-  basePath: string,
-  pattern: string,
-  state: SearchFilesState,
-  sortBy: SearchFilesOptions['sortBy']
-): SearchFilesResult {
-  sortSearchResults(state.results, sortBy ?? 'path');
-  return {
-    basePath,
-    pattern,
-    results: state.results,
-    summary: {
-      matched: state.results.length,
-      truncated: state.truncated,
-      skippedInaccessible: state.skippedInaccessible,
-      filesScanned: state.filesScanned,
-      stoppedReason: state.stoppedReason,
+  if (original) {
+    if (original.aborted) controller.abort();
+    else original.addEventListener('abort', forward, { once: true });
+  }
+  controller.signal.addEventListener(
+    'abort',
+    () => {
+      if (original) original.removeEventListener('abort', forward);
+      if (timeoutId) clearTimeout(timeoutId);
     },
-  };
+    { once: true }
+  );
+  return controller.signal;
+}
+
+async function* toEntries(
+  stream: AsyncIterable<GlobEntry | string | Buffer>
+): AsyncGenerator<GlobEntry> {
+  for await (const item of stream) {
+    if (typeof item === 'string' || Buffer.isBuffer(item)) continue;
+    yield item;
+  }
 }
 
 export async function searchFiles(
@@ -124,37 +90,82 @@ export async function searchFiles(
   excludePatterns: string[] = [],
   options: SearchFilesOptions = {}
 ): Promise<SearchFilesResult> {
-  const validPath = await validateExistingDirectory(basePath, options.signal);
+  const normalized = normalizeOptions(options);
+  const root = await validateExistingDirectory(basePath, options.signal);
+  const signal = combineSignals(normalized.signal, normalized.timeoutMs);
 
-  // Validate pattern
-  validateGlobPatternOrThrow(pattern, validPath);
+  const state: SearchFilesResult['summary'] = {
+    matched: 0,
+    truncated: false,
+    skippedInaccessible: 0,
+    filesScanned: 0,
+    stoppedReason: undefined,
+  };
 
-  const { signal, ...rest } = options;
-  const normalized = normalizeSearchFilesOptions(rest);
-  if (!normalized.skipSymlinks) {
-    throw new McpError(
-      ErrorCode.E_INVALID_INPUT,
-      'Following symbolic links is not supported for security reasons',
-      basePath
-    );
+  const results: SearchResult[] = [];
+
+  const stream = fg.stream(pattern, {
+    cwd: root,
+    absolute: true,
+    dot: normalized.includeHidden,
+    followSymbolicLinks: false,
+    baseNameMatch: normalized.baseNameMatch,
+    caseSensitiveMatch: true,
+    ignore: excludePatterns,
+    onlyFiles: false,
+    stats: true,
+    objectMode: true,
+    deep: normalized.maxDepth ?? Number.POSITIVE_INFINITY,
+  });
+
+  for await (const entry of toEntries(stream)) {
+    if (signal?.aborted) {
+      state.truncated = true;
+      state.stoppedReason = 'timeout';
+      break;
+    }
+    if (state.filesScanned >= normalized.maxFilesScanned) {
+      state.truncated = true;
+      state.stoppedReason = 'maxFiles';
+      break;
+    }
+
+    state.filesScanned++;
+
+    const type = entry.dirent.isDirectory()
+      ? 'directory'
+      : entry.dirent.isSymbolicLink()
+        ? 'symlink'
+        : entry.dirent.isFile()
+          ? 'file'
+          : 'other';
+
+    if (normalized.skipSymlinks && type === 'symlink') {
+      continue;
+    }
+
+    results.push({
+      path: entry.path,
+      type:
+        type === 'directory' ? 'directory' : type === 'file' ? 'file' : 'other',
+      size: entry.stats?.isFile() ? entry.stats.size : undefined,
+      modified: entry.stats?.mtime,
+    });
+
+    if (results.length >= normalized.maxResults) {
+      state.truncated = true;
+      state.stoppedReason = 'maxResults';
+      break;
+    }
   }
 
-  const state = initSearchFilesState();
-  const stream = createSearchStream(
-    validPath,
+  sortSearchResults(results, normalized.sortBy);
+  state.matched = results.length;
+
+  return {
+    basePath: root,
     pattern,
-    excludePatterns,
-    normalized.maxDepth,
-    normalized.baseNameMatch,
-    normalized.skipSymlinks,
-    normalized.includeHidden
-  );
-
-  try {
-    await scanStream(stream, state, buildScanOptions(normalized), signal);
-  } finally {
-    safeDestroy(stream);
-  }
-
-  return buildSearchFilesResult(validPath, pattern, state, normalized.sortBy);
+    results,
+    summary: state,
+  };
 }

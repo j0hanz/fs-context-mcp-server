@@ -1,17 +1,28 @@
-import type { SearchContentResult } from '../../../config/types.js';
+import * as fsp from 'node:fs/promises';
+import readline from 'node:readline';
+
+import fg from 'fast-glob';
+import RE2 from 're2';
+import safeRegex from 'safe-regex2';
+
+import type {
+  ContentMatch,
+  SearchContentResult,
+} from '../../../config/types.js';
 import {
   DEFAULT_MAX_RESULTS,
   DEFAULT_SEARCH_MAX_FILES,
   DEFAULT_SEARCH_TIMEOUT_MS,
+  MAX_LINE_CONTENT_LENGTH,
   MAX_SEARCHABLE_FILE_SIZE,
 } from '../../constants.js';
-import { safeDestroy } from '../../fs-helpers.js';
-import { mergeDefined } from '../../merge-defined.js';
-import { validateExistingDirectory } from '../../path-validation.js';
-import { validateGlobPatternOrThrow } from '../pattern-validator.js';
-import { createStream, processStream } from './engine-stream.js';
-import { createMatcher } from './match-strategy.js';
-import type { SearchState } from './types.js';
+import { isProbablyBinary } from '../../fs-helpers.js';
+import {
+  validateExistingDirectory,
+  validateExistingPathDetailed,
+} from '../../path-validation.js';
+
+type GlobEntry = fg.Entry;
 
 export interface SearchOptions {
   filePattern: string;
@@ -34,221 +45,291 @@ export interface SearchContentOptions extends Partial<SearchOptions> {
   signal?: AbortSignal;
 }
 
-function buildSearchOptions(
-  partialOptions: Partial<SearchOptions>
-): SearchOptions {
-  const defaults: SearchOptions = {
-    filePattern: '**/*',
-    excludePatterns: [],
-    caseSensitive: false,
-    maxResults: DEFAULT_MAX_RESULTS,
-    maxFileSize: MAX_SEARCHABLE_FILE_SIZE,
-    maxFilesScanned: DEFAULT_SEARCH_MAX_FILES,
-    timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
-    skipBinary: true,
-    contextLines: 0,
-    wholeWord: false,
-    isLiteral: false,
-    includeHidden: false,
-    baseNameMatch: false,
-    caseSensitiveFileMatch: true,
-  };
+type Matcher = (line: string) => number;
 
-  return mergeDefined(defaults, partialOptions);
+type ResolvedOptions = SearchOptions & { signal?: AbortSignal };
+
+const DEFAULTS: SearchOptions = {
+  filePattern: '**/*',
+  excludePatterns: [],
+  caseSensitive: false,
+  maxResults: DEFAULT_MAX_RESULTS,
+  maxFileSize: MAX_SEARCHABLE_FILE_SIZE,
+  maxFilesScanned: DEFAULT_SEARCH_MAX_FILES,
+  timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
+  skipBinary: true,
+  contextLines: 0,
+  wholeWord: false,
+  isLiteral: false,
+  includeHidden: false,
+  baseNameMatch: false,
+  caseSensitiveFileMatch: true,
+};
+
+function mergeOptions(partial: SearchContentOptions): ResolvedOptions {
+  const merged: ResolvedOptions = { ...DEFAULTS, ...partial };
+  return merged;
 }
 
-function getDeadlineMs(options: SearchOptions): number | undefined {
-  return options.timeoutMs ? Date.now() + options.timeoutMs : undefined;
-}
-
-function createInitialState(): SearchState {
-  return {
-    matches: [],
-    filesScanned: 0,
-    filesMatched: 0,
-    skippedTooLarge: 0,
-    skippedBinary: 0,
-    skippedInaccessible: 0,
-    linesSkippedDueToRegexTimeout: 0,
-    truncated: false,
-    stoppedReason: undefined,
-  };
-}
-
-function buildResult(
-  basePath: string,
-  pattern: string,
-  state: SearchState,
-  options: SearchOptions
-): SearchContentResult {
-  let { matches } = state;
-  if (matches.length > options.maxResults) {
-    matches = matches.slice(0, options.maxResults);
-    state.truncated = true;
-    state.stoppedReason = 'maxResults';
+function buildMatcher(pattern: string, o: ResolvedOptions): Matcher {
+  if (o.isLiteral && !o.wholeWord) {
+    const needle = o.caseSensitive ? pattern : pattern.toLowerCase();
+    return (line: string): number => {
+      const hay = o.caseSensitive ? line : line.toLowerCase();
+      if (needle.length === 0 || hay.length === 0) return 0;
+      let count = 0;
+      let pos = hay.indexOf(needle);
+      while (pos !== -1) {
+        count++;
+        pos = hay.indexOf(needle, pos + needle.length);
+      }
+      return count;
+    };
   }
 
-  return {
-    basePath,
-    pattern,
-    filePattern: options.filePattern,
-    matches,
-    summary: {
-      filesScanned: state.filesScanned,
-      filesMatched: state.filesMatched,
-      matches: matches.length,
-      truncated: state.truncated,
-      skippedTooLarge: state.skippedTooLarge,
-      skippedBinary: state.skippedBinary,
-      skippedInaccessible: state.skippedInaccessible,
-      linesSkippedDueToRegexTimeout: state.linesSkippedDueToRegexTimeout,
-      stoppedReason: state.stoppedReason,
-    },
-  };
-}
-
-function assertNotAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) {
-    throw new Error('Search aborted');
-  }
-}
-
-function attachSignalAbort(
-  signal: AbortSignal | undefined,
-  controller: AbortController
-): () => void {
-  if (!signal) return () => {};
-
-  const onAbort = (): void => {
-    controller.abort();
-  };
-
-  if (signal.aborted) {
-    onAbort();
-  } else {
-    signal.addEventListener('abort', onAbort, { once: true });
-  }
-
-  return (): void => {
-    signal.removeEventListener('abort', onAbort);
-  };
-}
-
-function attachTimeoutAbort(
-  deadlineMs: number | undefined,
-  controller: AbortController
-): () => void {
-  if (!deadlineMs) return () => {};
-
-  const delay = Math.max(0, deadlineMs - Date.now());
-  const timeoutId = setTimeout(() => {
-    controller.abort();
-  }, delay);
-
-  return (): void => {
-    clearTimeout(timeoutId);
-  };
-}
-
-function createSearchSignal(
-  signal: AbortSignal | undefined,
-  deadlineMs: number | undefined
-): { signal?: AbortSignal; cleanup: () => void } {
-  if (!signal && !deadlineMs) {
-    return { signal: undefined, cleanup: () => {} };
-  }
-
-  const controller = new AbortController();
-  const detachSignal = attachSignalAbort(signal, controller);
-  const clearTimeout = attachTimeoutAbort(deadlineMs, controller);
-
-  return {
-    signal: controller.signal,
-    cleanup: (): void => {
-      clearTimeout();
-      detachSignal();
-    },
-  };
-}
-
-async function ensureSearchBasePath(
-  basePath: string,
-  options: SearchOptions,
-  signal?: AbortSignal
-): Promise<string> {
-  assertNotAborted(signal);
-  const validPath = await validateExistingDirectory(basePath, signal);
-  validateGlobPatternOrThrow(options.filePattern, validPath);
-  return validPath;
-}
-
-function buildMatcherForSearch(
-  validPath: string,
-  searchPattern: string,
-  options: SearchOptions
-): ReturnType<typeof createMatcher> {
-  return createMatcher(searchPattern, {
-    isLiteral: options.isLiteral,
-    wholeWord: options.wholeWord,
-    caseSensitive: options.caseSensitive,
-    basePath: validPath,
-  });
-}
-
-function createSearchStreamState(
-  validPath: string,
-  options: SearchOptions
-): { state: SearchState; stream: AsyncIterable<string | Buffer> } {
-  return {
-    state: createInitialState(),
-    stream: createStream(validPath, options),
-  };
-}
-
-export async function executeSearch(
-  basePath: string,
-  searchPattern: string,
-  partialOptions: Partial<SearchOptions>,
-  signal?: AbortSignal
-): Promise<SearchContentResult> {
-  const options = buildSearchOptions(partialOptions);
-
-  const deadlineMs = getDeadlineMs(options);
-  const { signal: combinedSignal, cleanup } = createSearchSignal(
-    signal,
-    deadlineMs
-  );
-  const validPath = await ensureSearchBasePath(
-    basePath,
-    options,
-    combinedSignal
-  );
-  const matcher = buildMatcherForSearch(validPath, searchPattern, options);
-  const { state, stream } = createSearchStreamState(validPath, options);
-
-  try {
-    assertNotAborted(combinedSignal);
-    await processStream(
-      stream,
-      state,
-      matcher,
-      options,
-      deadlineMs,
-      searchPattern,
-      combinedSignal
+  const escaped = o.isLiteral
+    ? pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    : pattern;
+  const final = o.wholeWord ? `\\b${escaped}\\b` : escaped;
+  if (!safeRegex(final)) {
+    throw new Error(
+      `Potentially unsafe regular expression (ReDoS risk): ${pattern}`
     );
-  } finally {
-    cleanup();
-    safeDestroy(stream);
+  }
+  const regex = new RE2(final, o.caseSensitive ? 'g' : 'gi');
+  return (line: string): number => {
+    regex.lastIndex = 0;
+    let count = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(line)) !== null) {
+      count++;
+      if (match[0].length === 0) {
+        regex.lastIndex++;
+      }
+    }
+    return count;
+  };
+}
+
+function combineSignals(
+  original?: AbortSignal,
+  timeoutMs?: number
+): AbortSignal | undefined {
+  if (!original && !timeoutMs) return undefined;
+  const controller = new AbortController();
+  const timeoutId =
+    typeof timeoutMs === 'number'
+      ? setTimeout(() => {
+          controller.abort();
+        }, timeoutMs)
+      : undefined;
+
+  const forward = (): void => {
+    controller.abort();
+  };
+  if (original) {
+    if (original.aborted) controller.abort();
+    else original.addEventListener('abort', forward, { once: true });
   }
 
-  return buildResult(validPath, searchPattern, state, options);
+  controller.signal.addEventListener(
+    'abort',
+    () => {
+      if (original) original.removeEventListener('abort', forward);
+      if (timeoutId) clearTimeout(timeoutId);
+    },
+    { once: true }
+  );
+
+  return controller.signal;
+}
+
+interface ContextState {
+  before: string[];
+  pendingAfter: { match: ContentMatch; left: number }[];
+}
+
+function makeContext(): ContextState {
+  return { before: [], pendingAfter: [] };
+}
+
+function pushContext(ctx: ContextState, line: string, max: number): void {
+  if (max <= 0) return;
+  ctx.before.push(line);
+  if (ctx.before.length > max) ctx.before.shift();
+  for (const pending of ctx.pendingAfter) {
+    if (pending.left <= 0) continue;
+    pending.match.contextAfter ??= [];
+    pending.match.contextAfter.push(line);
+    pending.left -= 1;
+  }
+  while (ctx.pendingAfter.length > 0 && ctx.pendingAfter[0]?.left === 0) {
+    ctx.pendingAfter.shift();
+  }
+}
+
+function trimContent(line: string): string {
+  return line.trimEnd().slice(0, MAX_LINE_CONTENT_LENGTH);
+}
+
+async function scanFile(
+  targetPath: string,
+  matcher: Matcher,
+  opts: ResolvedOptions,
+  summary: SearchContentResult['summary'],
+  matches: ContentMatch[]
+): Promise<void> {
+  const { resolvedPath, requestedPath } = await validateExistingPathDetailed(
+    targetPath,
+    opts.signal
+  );
+  const handle = await fsp.open(resolvedPath, 'r');
+  const stats = await handle.stat();
+
+  if (stats.size > opts.maxFileSize) {
+    summary.skippedTooLarge++;
+    await handle.close();
+    return;
+  }
+
+  if (
+    opts.skipBinary &&
+    (await isProbablyBinary(resolvedPath, handle, opts.signal))
+  ) {
+    summary.skippedBinary++;
+    await handle.close();
+    return;
+  }
+
+  const rl = readline.createInterface({
+    input: handle.createReadStream({ encoding: 'utf-8', autoClose: false }),
+    crlfDelay: Infinity,
+    signal: opts.signal,
+  });
+
+  const ctx = makeContext();
+  let lineNo = 0;
+  try {
+    for await (const line of rl) {
+      if (opts.signal?.aborted) break;
+      lineNo++;
+      pushContext(ctx, trimContent(line), opts.contextLines);
+
+      if (matches.length >= opts.maxResults) {
+        summary.truncated = true;
+        summary.stoppedReason = 'maxResults';
+        break;
+      }
+
+      const count = matcher(line);
+      if (count > 0) {
+        const match: ContentMatch = {
+          file: requestedPath,
+          line: lineNo,
+          content: trimContent(line),
+          contextBefore: opts.contextLines > 0 ? [...ctx.before] : undefined,
+          matchCount: count,
+        };
+        matches.push(match);
+        if (opts.contextLines > 0) {
+          ctx.pendingAfter.push({ match, left: opts.contextLines });
+        }
+      }
+    }
+  } finally {
+    rl.close();
+    await handle.close();
+  }
+
+  if (matches.length > 0) {
+    summary.filesMatched++;
+  }
+}
+
+async function* toEntries(
+  stream: AsyncIterable<GlobEntry | string | Buffer>
+): AsyncGenerator<GlobEntry> {
+  for await (const item of stream) {
+    if (typeof item === 'string' || Buffer.isBuffer(item)) continue;
+    yield item;
+  }
 }
 
 export async function searchContent(
   basePath: string,
-  searchPattern: string,
+  pattern: string,
   options: SearchContentOptions = {}
 ): Promise<SearchContentResult> {
-  return executeSearch(basePath, searchPattern, options, options.signal);
+  const opts = mergeOptions(options);
+  const root = await validateExistingDirectory(basePath, opts.signal);
+  const signal = combineSignals(opts.signal, opts.timeoutMs);
+  const matcher = buildMatcher(pattern, opts);
+
+  const summary: SearchContentResult['summary'] = {
+    filesScanned: 0,
+    filesMatched: 0,
+    matches: 0,
+    truncated: false,
+    skippedTooLarge: 0,
+    skippedBinary: 0,
+    skippedInaccessible: 0,
+    linesSkippedDueToRegexTimeout: 0,
+    stoppedReason: undefined,
+  };
+
+  const matches: ContentMatch[] = [];
+
+  const stream = fg.stream(opts.filePattern, {
+    cwd: root,
+    absolute: true,
+    dot: opts.includeHidden,
+    ignore: opts.excludePatterns,
+    followSymbolicLinks: false,
+    baseNameMatch: opts.baseNameMatch,
+    caseSensitiveMatch: opts.caseSensitiveFileMatch,
+    suppressErrors: true,
+    stats: true,
+    objectMode: true,
+  });
+
+  for await (const entry of toEntries(stream)) {
+    if (signal?.aborted) {
+      summary.truncated = true;
+      summary.stoppedReason = 'timeout';
+      break;
+    }
+    if (summary.filesScanned >= opts.maxFilesScanned) {
+      summary.truncated = true;
+      summary.stoppedReason = 'maxFiles';
+      break;
+    }
+    summary.filesScanned++;
+
+    try {
+      await scanFile(
+        entry.path,
+        matcher,
+        { ...opts, signal },
+        summary,
+        matches
+      );
+    } catch {
+      summary.skippedInaccessible++;
+    }
+
+    summary.matches = matches.length;
+    if (matches.length >= opts.maxResults) {
+      summary.truncated = true;
+      summary.stoppedReason = 'maxResults';
+      break;
+    }
+  }
+
+  return {
+    basePath: root,
+    pattern,
+    filePattern: opts.filePattern,
+    matches,
+    summary,
+  };
 }

@@ -9,7 +9,7 @@ import { setAllowedDirectories } from '../../lib/path-validation.js';
 import {
   toAccessDeniedWithHint,
   toMcpError,
-} from '../../lib/path-validation/errors.js';
+} from '../../lib/path-validation.js';
 
 afterEach(() => {
   setAllowedDirectories([]);
