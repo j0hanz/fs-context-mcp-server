@@ -67,27 +67,6 @@ export function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
   };
 }
 
-export function assertIsFile(stats: Stats, filePath: string): void {
-  if (stats.isFile()) return;
-  throw new McpError(ErrorCode.E_NOT_FILE, `Not a file: ${filePath}`, filePath);
-}
-
-export function assertSingleMode(
-  options: NormalizedOptions,
-  filePath: string
-): void {
-  const optionsCount = [options.lineRange, options.head, options.tail].filter(
-    Boolean
-  ).length;
-  if (optionsCount <= 1) return;
-
-  throw new McpError(
-    ErrorCode.E_INVALID_INPUT,
-    'Cannot specify multiple of lineRange, head, or tail simultaneously',
-    filePath
-  );
-}
-
 function validateLineRange(
   lineRange: { start: number; end: number },
   filePath: string

@@ -40,153 +40,10 @@ interface DirectoryQueueItem {
   depth: number;
 }
 
-interface QueueState {
-  queue: DirectoryQueueItem[];
-  index: number;
-  aborted: boolean;
-  abortReason?: Error;
-  errors: Error[];
-  inFlight: Set<Promise<void>>;
-}
-
 type QueueWorker = (
   item: DirectoryQueueItem,
   enqueue: (item: DirectoryQueueItem) => void
 ) => Promise<void>;
-
-function createQueueState(
-  initialItems: DirectoryQueueItem[],
-  signal?: AbortSignal
-): QueueState {
-  return {
-    queue: [...initialItems],
-    index: 0,
-    aborted: Boolean(signal?.aborted),
-    abortReason: signal?.aborted ? createAbortError() : undefined,
-    errors: [],
-    inFlight: new Set<Promise<void>>(),
-  };
-}
-
-function normalizeQueueError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
-
-function recordQueueError(state: QueueState, error: Error): void {
-  state.errors.push(error);
-  state.aborted = true;
-  state.abortReason ??= error;
-}
-
-function attachAbortListener(
-  state: QueueState,
-  signal?: AbortSignal
-): () => void {
-  if (!signal || signal.aborted) return () => {};
-
-  const onAbort = (): void => {
-    if (state.aborted) return;
-    state.aborted = true;
-    state.abortReason = createAbortError();
-  };
-
-  signal.addEventListener('abort', onAbort, { once: true });
-
-  return (): void => {
-    signal.removeEventListener('abort', onAbort);
-  };
-}
-
-function createAbortPromise(signal?: AbortSignal): Promise<void> | undefined {
-  if (!signal) return undefined;
-  if (signal.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
-    const onAbort = (): void => {
-      resolve();
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
-function enqueueItem(state: QueueState, item: DirectoryQueueItem): void {
-  if (state.aborted) return;
-  state.queue.push(item);
-}
-
-function canStartNext(state: QueueState, concurrency: number): boolean {
-  return (
-    !state.aborted &&
-    state.inFlight.size < concurrency &&
-    state.index < state.queue.length
-  );
-}
-
-function createWorkerTask(
-  state: QueueState,
-  item: DirectoryQueueItem,
-  worker: QueueWorker
-): Promise<void> {
-  return (async (): Promise<void> => {
-    try {
-      await worker(item, (next) => {
-        enqueueItem(state, next);
-      });
-    } catch (error) {
-      recordQueueError(state, normalizeQueueError(error));
-    }
-  })();
-}
-
-function queueNextTask(state: QueueState, worker: QueueWorker): void {
-  const item = state.queue[state.index];
-  state.index += 1;
-  if (!item) return;
-
-  const task = createWorkerTask(state, item, worker);
-  state.inFlight.add(task);
-  void task.finally(() => {
-    state.inFlight.delete(task);
-  });
-}
-
-function startNextTasks(
-  state: QueueState,
-  worker: QueueWorker,
-  concurrency: number
-): void {
-  while (canStartNext(state, concurrency)) {
-    queueNextTask(state, worker);
-  }
-}
-
-async function drainQueue(
-  state: QueueState,
-  worker: QueueWorker,
-  concurrency: number,
-  abortPromise?: Promise<void>
-): Promise<void> {
-  startNextTasks(state, worker, concurrency);
-  while (state.inFlight.size > 0) {
-    if (state.aborted) return;
-    const raceTargets = abortPromise
-      ? [...state.inFlight, abortPromise]
-      : [...state.inFlight];
-    await Promise.race(raceTargets);
-    startNextTasks(state, worker, concurrency);
-  }
-}
-
-function throwIfQueueFailed(state: QueueState): void {
-  if (state.errors.length === 1) {
-    throw state.errors.at(0) ?? new Error('Work queue failed');
-  }
-  if (state.errors.length > 1) {
-    throw new AggregateError(state.errors, 'Work queue failed');
-  }
-  if (state.abortReason) {
-    throw state.abortReason;
-  }
-}
 
 async function runDirectoryQueue(
   initialItems: DirectoryQueueItem[],
@@ -194,17 +51,71 @@ async function runDirectoryQueue(
   concurrency: number,
   signal?: AbortSignal
 ): Promise<void> {
-  const state = createQueueState(initialItems, signal);
-  const abortPromise = createAbortPromise(signal);
-  const detachAbort = attachAbortListener(state, signal);
+  const queue = [...initialItems];
+  let index = 0;
+  const inFlight = new Set<Promise<void>>();
+  const errors: Error[] = [];
+  let aborted = Boolean(signal?.aborted);
+
+  if (aborted) throw createAbortError();
+
+  const onAbort = (): void => {
+    aborted = true;
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
 
   try {
-    await drainQueue(state, worker, concurrency, abortPromise);
+    while (index < queue.length || inFlight.size > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      if (aborted) break;
+      while (inFlight.size < concurrency && index < queue.length) {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (aborted) break;
+        const item = queue[index++];
+        if (!item) break;
+        const task = (async (): Promise<void> => {
+          try {
+            await worker(item, (next) => {
+              if (!aborted) queue.push(next);
+            });
+          } catch (err) {
+            errors.push(err instanceof Error ? err : new Error(String(err)));
+            aborted = true;
+          }
+        })();
+        inFlight.add(task);
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        task.finally(() => inFlight.delete(task));
+      }
+
+      if (inFlight.size > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+        if (aborted) break;
+        const abortPromise = new Promise<void>((resolve) => {
+          if (signal?.aborted) resolve();
+          else {
+            signal?.addEventListener(
+              'abort',
+              () => {
+                resolve();
+              },
+              { once: true }
+            );
+          }
+        });
+        await Promise.race([...inFlight, abortPromise]);
+      }
+    }
   } finally {
-    detachAbort();
+    signal?.removeEventListener('abort', onAbort);
   }
 
-  throwIfQueueFailed(state);
+  if (errors.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    if (errors.length === 1) throw errors[0]!;
+    throw new AggregateError(errors, 'Work queue failed');
+  }
+  if (signal?.aborted) throw createAbortError();
 }
 
 function normalizeListDirectoryOptions(

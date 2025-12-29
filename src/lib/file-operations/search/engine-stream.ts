@@ -42,12 +42,12 @@ interface MatchBudget {
 }
 
 function createMatchBudget(maxResults: number): MatchBudget {
-  const budget = { remaining: maxResults };
+  let remaining = maxResults;
   return {
-    hasRemaining: () => budget.remaining > 0,
+    hasRemaining: () => remaining > 0,
     reserve: () => {
-      if (budget.remaining <= 0) return false;
-      budget.remaining -= 1;
+      if (remaining <= 0) return false;
+      remaining--;
       return true;
     },
   };
@@ -220,52 +220,27 @@ async function runWithAbortController(
   signal: AbortSignal | undefined,
   run: () => Promise<void>
 ): Promise<void> {
-  const destroyStream = (): void => {
-    safeDestroy(stream as unknown);
-  };
+  const timeoutSignal =
+    deadlineMs !== undefined
+      ? AbortSignal.timeout(Math.max(0, deadlineMs - Date.now()))
+      : undefined;
 
-  let stopReason: 'timeout' | 'abort' | null = null;
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const signals = [signal, timeoutSignal].filter((s): s is AbortSignal => !!s);
+  const combinedSignal =
+    signals.length > 0 ? AbortSignal.any(signals) : undefined;
 
-  const clearTimer = (): void => {
-    if (!timeoutId) return;
-    clearTimeout(timeoutId);
-    timeoutId = undefined;
-  };
-
-  const stop = (reason: 'timeout' | 'abort'): void => {
-    if (stopReason !== null) return;
-    stopReason = reason;
-    if (reason === 'timeout') {
+  const onAbort = (): void => {
+    if (timeoutSignal?.aborted) {
       searchState.truncated = true;
       searchState.stoppedReason = 'timeout';
     }
-    destroyStream();
+    safeDestroy(stream as unknown);
   };
 
-  const onAbortSignal = (): void => {
-    const reason =
-      deadlineMs !== undefined && Date.now() >= deadlineMs
-        ? 'timeout'
-        : 'abort';
-    stop(reason);
-    clearTimer();
-  };
-
-  const onTimeoutSignal = (): void => {
-    if (stopReason === 'abort') return;
-    stop('timeout');
-  };
-
-  if (signal?.aborted) {
-    onAbortSignal();
-  } else if (signal) {
-    signal.addEventListener('abort', onAbortSignal, { once: true });
-  }
-
-  if (deadlineMs !== undefined) {
-    const delay = Math.max(0, deadlineMs - Date.now());
-    timeoutId = setTimeout(onTimeoutSignal, delay);
+  if (combinedSignal?.aborted) {
+    onAbort();
+  } else {
+    combinedSignal?.addEventListener('abort', onAbort, { once: true });
   }
 
   try {
@@ -273,12 +248,8 @@ async function runWithAbortController(
   } catch (error) {
     handleStreamError(error, deadlineMs, signal);
   } finally {
-    if (signal) signal.removeEventListener('abort', onAbortSignal);
-    clearTimer();
-    const shouldWaitForActive =
-      !signal?.aborted &&
-      !(deadlineMs !== undefined && Date.now() >= deadlineMs);
-    if (shouldWaitForActive) {
+    combinedSignal?.removeEventListener('abort', onAbort);
+    if (!combinedSignal?.aborted) {
       await Promise.all(active);
     }
   }

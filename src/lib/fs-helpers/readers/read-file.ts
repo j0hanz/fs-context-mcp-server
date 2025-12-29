@@ -1,12 +1,11 @@
 import * as fs from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 
+import { ErrorCode, McpError } from '../../errors.js';
 import { validateExistingPath } from '../../path-validation.js';
 import { assertNotAborted, withAbort } from '../abort.js';
 import {
-  assertIsFile,
   assertNotBinary,
-  assertSingleMode,
   type NormalizedOptions,
   normalizeOptions,
   readByMode,
@@ -21,8 +20,29 @@ async function readFileWithStatsInternal(
   normalized: NormalizedOptions
 ): Promise<ReadFileResult> {
   assertNotAborted(normalized.signal);
-  assertIsFile(stats, filePath);
-  assertSingleMode(normalized, filePath);
+
+  if (!stats.isFile()) {
+    throw new McpError(
+      ErrorCode.E_NOT_FILE,
+      `Not a file: ${filePath}`,
+      filePath
+    );
+  }
+
+  const optionsCount = [
+    normalized.lineRange,
+    normalized.head,
+    normalized.tail,
+  ].filter(Boolean).length;
+
+  if (optionsCount > 1) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Cannot specify multiple of lineRange, head, or tail simultaneously',
+      filePath
+    );
+  }
+
   if (normalized.skipBinary) {
     await assertNotBinary(validPath, filePath, normalized);
   }
