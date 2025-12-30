@@ -9,7 +9,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "esModuleInterop": true,
-    "allowJs": true,
+    "allowJs": false,
     "resolveJsonModule": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,

@@ -55,6 +55,9 @@ export async function searchFiles(
   const root = await validateExistingDirectory(basePath, signal);
 
   try {
+    const needsStats =
+      normalized.sortBy === 'size' || normalized.sortBy === 'modified';
+
     const state: SearchFilesResult['summary'] = {
       matched: 0,
       truncated: false,
@@ -75,7 +78,7 @@ export async function searchFiles(
       maxDepth: normalized.maxDepth,
       followSymbolicLinks: false,
       onlyFiles: false,
-      stats: true,
+      stats: needsStats,
     });
 
     for await (const entry of stream) {
@@ -112,8 +115,9 @@ export async function searchFiles(
             : type === 'file'
               ? 'file'
               : 'other',
-        size: entry.stats?.isFile() ? entry.stats.size : undefined,
-        modified: entry.stats?.mtime,
+        size:
+          needsStats && entry.stats?.isFile() ? entry.stats.size : undefined,
+        modified: needsStats ? entry.stats?.mtime : undefined,
       });
 
       if (results.length >= normalized.maxResults) {

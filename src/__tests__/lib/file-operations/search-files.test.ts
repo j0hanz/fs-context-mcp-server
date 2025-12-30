@@ -8,7 +8,9 @@ import { useFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 const getTestDir = useFileOpsFixture();
 
 it('searchFiles finds files by glob pattern', async () => {
-  const result = await searchFiles(getTestDir(), '**/*.ts');
+  const result = await searchFiles(getTestDir(), '**/*.ts', [], {
+    sortBy: 'modified',
+  });
   expect(result.results.length).toBe(2);
   expect(result.results.some((r) => r.path.includes('index.ts'))).toBe(true);
   const first = result.results.find((r) => r.type === 'file');

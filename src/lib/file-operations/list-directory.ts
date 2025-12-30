@@ -80,6 +80,8 @@ export async function listDirectory(
   let totalDirectories = 0;
   let truncated = false;
   let stoppedReason: ListDirectoryResult['summary']['stoppedReason'];
+  const needsStats =
+    normalized.sortBy === 'size' || normalized.sortBy === 'modified';
 
   const globPattern =
     normalized.pattern ?? (normalized.recursive ? '**/*' : '*');
@@ -96,7 +98,7 @@ export async function listDirectory(
       maxDepth,
       followSymbolicLinks: false,
       onlyFiles: false,
-      stats: true,
+      stats: needsStats,
     });
 
     for await (const entry of stream) {
@@ -134,8 +136,9 @@ export async function listDirectory(
         path: entry.path,
         relativePath: relPath,
         type,
-        size: entry.stats?.isFile() ? entry.stats.size : undefined,
-        modified: entry.stats?.mtime,
+        size:
+          needsStats && entry.stats?.isFile() ? entry.stats.size : undefined,
+        modified: needsStats ? entry.stats?.mtime : undefined,
         symlinkTarget,
       });
     }

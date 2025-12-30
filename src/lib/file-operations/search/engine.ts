@@ -250,12 +250,13 @@ export async function searchContent(
       baseNameMatch: opts.baseNameMatch,
       caseSensitiveMatch: opts.caseSensitiveFileMatch,
       followSymbolicLinks: false,
-      onlyFiles: false,
-      stats: true,
+      onlyFiles: true,
+      stats: false,
       suppressErrors: true,
     });
 
     for await (const entry of stream) {
+      if (!entry.dirent.isFile()) continue;
       if (signal.aborted) {
         summary.truncated = true;
         summary.stoppedReason = 'timeout';
