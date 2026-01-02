@@ -18,6 +18,7 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { mergeDefined } from '../lib/merge-defined.js';
 import {
   SearchFilesInputSchema,
@@ -231,7 +232,17 @@ export function registerSearchFilesTool(server: McpServer): void {
     extra: { signal: AbortSignal }
   ): Promise<ToolResult<SearchFilesStructuredResult>> =>
     withToolErrorHandling(
-      () => handleSearchFiles(args, extra.signal),
+      async () => {
+        const { signal, cleanup } = createTimedAbortSignal(
+          extra.signal,
+          args.timeoutMs
+        );
+        try {
+          return await handleSearchFiles(args, signal);
+        } finally {
+          cleanup();
+        }
+      },
       (error) =>
         buildToolErrorResponse(error, ErrorCode.E_INVALID_PATTERN, args.path)
     );

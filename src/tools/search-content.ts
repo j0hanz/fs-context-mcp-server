@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { searchContent } from '../lib/file-operations.js';
 import {
   SearchContentInputSchema,
@@ -79,7 +80,17 @@ export function registerSearchContentTool(server: McpServer): void {
     extra: { signal: AbortSignal }
   ): Promise<ToolResult<SearchContentStructuredResult>> =>
     withToolErrorHandling(
-      () => handleSearchContent(args, extra.signal),
+      async () => {
+        const { signal, cleanup } = createTimedAbortSignal(
+          extra.signal,
+          args.timeoutMs
+        );
+        try {
+          return await handleSearchContent(args, signal);
+        } finally {
+          cleanup();
+        }
+      },
       (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
     );
 

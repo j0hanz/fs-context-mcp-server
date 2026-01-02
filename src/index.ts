@@ -64,6 +64,19 @@ process.stdin.on('close', () => {
   void shutdown('stdin close');
 });
 
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error(
+    'Unhandled rejection:',
+    reason instanceof Error ? reason.message : String(reason)
+  );
+  void shutdown('unhandledRejection');
+});
+
+process.on('uncaughtException', (error: Error) => {
+  console.error('Uncaught exception:', error.message);
+  void shutdown('uncaughtException');
+});
+
 main().catch((error: unknown) => {
   console.error(
     'Fatal error:',
