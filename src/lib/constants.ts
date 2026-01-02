@@ -73,18 +73,6 @@ export const PARALLEL_CONCURRENCY =
   UV_THREADPOOL_LIMIT !== undefined
     ? Math.min(BASE_PARALLEL_CONCURRENCY, UV_THREADPOOL_LIMIT)
     : BASE_PARALLEL_CONCURRENCY;
-export const DIR_TRAVERSAL_CONCURRENCY = parseEnvInt(
-  'TRAVERSAL_JOBS',
-  8,
-  1,
-  50
-);
-export const REGEX_MATCH_TIMEOUT_MS = parseEnvInt(
-  'REGEX_TIMEOUT',
-  100,
-  50,
-  1000
-);
 export const MAX_SEARCHABLE_FILE_SIZE = parseEnvInt(
   'MAX_SEARCH_SIZE',
   1024 * 1024,
@@ -99,7 +87,6 @@ export const MAX_TEXT_FILE_SIZE = parseEnvInt(
 );
 
 export const MAX_LINE_CONTENT_LENGTH = 200;
-export const MAX_SEARCH_LINE_LENGTH = 100_000;
 export const BINARY_CHECK_BUFFER_SIZE = 512;
 
 export const DEFAULT_MAX_DEPTH = parseEnvInt('DEFAULT_DEPTH', 10, 1, 100);

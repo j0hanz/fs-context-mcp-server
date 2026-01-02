@@ -22,7 +22,7 @@ import {
 } from '../../path-validation.js';
 import { globEntries } from '../glob-engine.js';
 
-export interface SearchOptions {
+interface SearchOptions {
   filePattern: string;
   excludePatterns: string[];
   caseSensitive: boolean;

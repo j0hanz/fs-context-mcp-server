@@ -47,7 +47,7 @@ export interface ReadFileResult {
   hasMoreLines?: boolean;
 }
 
-export type ReadResultMetadata = Omit<
+type ReadResultMetadata = Omit<
   ReadFileResult,
   'path' | 'content' | 'truncated' | 'totalLines'
 >;

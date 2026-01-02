@@ -4,7 +4,7 @@ import type { Stats } from 'node:fs';
 
 import fg from 'fast-glob';
 
-export interface DirentLike {
+interface DirentLike {
   isDirectory(): boolean;
   isFile(): boolean;
   isSymbolicLink(): boolean;

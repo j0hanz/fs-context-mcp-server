@@ -1,6 +1,6 @@
 import { ErrorCode, McpError } from './errors.js';
 
-export type LineRangeField = 'lineStart' | 'lineEnd';
+type LineRangeField = 'lineStart' | 'lineEnd';
 
 export interface LineRangeIssues {
   missingPair?: { missing: LineRangeField; provided: LineRangeField };

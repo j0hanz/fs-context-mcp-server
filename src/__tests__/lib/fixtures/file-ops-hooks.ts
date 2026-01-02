@@ -1,4 +1,4 @@
-import { after, before, type TestContext } from 'node:test';
+import { after, before } from 'node:test';
 
 import {
   acquireFileOpsFixture,
@@ -18,12 +18,4 @@ export function withFileOpsFixture(
   });
 
   fn(() => testDir);
-}
-
-export async function setupFileOpsFixture(t: TestContext): Promise<string> {
-  const { testDir } = await acquireFileOpsFixture();
-  t.after(async () => {
-    await releaseFileOpsFixture();
-  });
-  return testDir;
 }

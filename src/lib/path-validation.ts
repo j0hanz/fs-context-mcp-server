@@ -36,7 +36,7 @@ export const RESERVED_DEVICE_NAMES = new Set([
 
 let allowedDirectories: string[] = [];
 
-export function normalizeForComparison(p: string): string {
+function normalizeForComparison(p: string): string {
   return process.platform === 'win32' ? p.toLowerCase() : p;
 }
 
@@ -79,9 +79,7 @@ export function isPathWithinDirectories(
   );
 }
 
-export function isPathWithinAllowedDirectories(
-  normalizedPath: string
-): boolean {
+function isPathWithinAllowedDirectories(normalizedPath: string): boolean {
   return isPathWithinDirectories(normalizedPath, allowedDirectories);
 }
 

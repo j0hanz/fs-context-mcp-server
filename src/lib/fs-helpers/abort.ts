@@ -13,7 +13,7 @@ export function assertNotAborted(signal?: AbortSignal, message?: string): void {
   throw createAbortError(message);
 }
 
-export function getAbortError(signal: AbortSignal, message?: string): Error {
+function getAbortError(signal: AbortSignal, message?: string): Error {
   const { reason } = signal as { reason?: unknown };
   if (reason instanceof Error) {
     return reason;
