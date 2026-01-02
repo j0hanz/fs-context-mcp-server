@@ -62,7 +62,7 @@ function isPartialRead(options: NormalizedReadMultipleOptions): boolean {
 }
 
 async function collectFileBudget(
-  filePaths: string[],
+  filePaths: readonly string[],
   partialRead: boolean,
   maxTotalSize: number,
   maxSize: number,
@@ -187,7 +187,7 @@ function normalizeReadMultipleOptions(
 }
 
 export async function readMultipleFiles(
-  filePaths: string[],
+  filePaths: readonly string[],
   options: ReadMultipleOptions = {}
 ): Promise<ReadMultipleResult[]> {
   if (filePaths.length === 0) return [];

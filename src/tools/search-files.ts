@@ -38,7 +38,7 @@ type SearchFilesStructuredResult = z.infer<typeof SearchFilesOutputSchema>;
 type SearchSort = 'name' | 'size' | 'modified' | 'path';
 
 interface SearchOptions {
-  excludePatterns: string[];
+  excludePatterns: readonly string[];
   maxResults: number;
   sortBy: SearchSort;
   maxDepth: number;
@@ -205,7 +205,10 @@ async function handleSearchFiles(
     signal,
   });
   const structured = buildStructuredResult(result);
-  structured.effectiveOptions = effectiveOptions;
+  structured.effectiveOptions = {
+    ...effectiveOptions,
+    excludePatterns: [...effectiveOptions.excludePatterns],
+  };
   return buildToolResponse(buildTextResult(result), structured);
 }
 

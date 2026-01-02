@@ -30,7 +30,7 @@ import {
 
 interface SearchOptions {
   filePattern: string;
-  excludePatterns: string[];
+  excludePatterns: readonly string[];
   caseSensitive: boolean;
   maxResults: number;
   maxFileSize: number;
@@ -155,7 +155,7 @@ function buildWorkerOptions(options: ResolvedOptions): WorkerScanOptions {
 
 function resolveNonSymlinkPath(
   entryPath: string,
-  allowedDirs: string[]
+  allowedDirs: readonly string[]
 ): { resolvedPath: string; requestedPath: string } {
   const normalized = normalizePath(entryPath);
   if (!isPathWithinDirectories(normalized, allowedDirs)) {

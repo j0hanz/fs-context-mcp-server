@@ -12,7 +12,7 @@ export function formatDate(date: Date): string {
   return date.toISOString();
 }
 
-export function joinLines(lines: string[]): string {
+export function joinLines(lines: readonly string[]): string {
   return lines.join('\n');
 }
 

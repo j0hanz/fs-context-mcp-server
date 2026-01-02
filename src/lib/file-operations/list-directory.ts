@@ -17,7 +17,7 @@ import { globEntries } from './glob-engine.js';
 interface ListDirectoryOptions {
   recursive?: boolean;
   includeHidden?: boolean;
-  excludePatterns?: string[];
+  excludePatterns?: readonly string[];
   maxDepth?: number;
   maxEntries?: number;
   sortBy?: 'name' | 'size' | 'modified' | 'type';

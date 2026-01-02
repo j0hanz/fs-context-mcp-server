@@ -47,7 +47,7 @@ type ListSort = 'name' | 'size' | 'modified' | 'type';
 interface ListOptions {
   recursive: boolean;
   includeHidden: boolean;
-  excludePatterns: string[];
+  excludePatterns: readonly string[];
   maxDepth: number;
   maxEntries: number;
   timeoutMs: number;
@@ -259,7 +259,10 @@ async function handleListDirectory(
     signal,
   });
   const structured = buildStructuredResult(result);
-  structured.effectiveOptions = effectiveOptions;
+  structured.effectiveOptions = {
+    ...effectiveOptions,
+    excludePatterns: [...effectiveOptions.excludePatterns],
+  };
   const textOutput = buildTextResult(result);
   return buildToolResponse(textOutput, structured);
 }

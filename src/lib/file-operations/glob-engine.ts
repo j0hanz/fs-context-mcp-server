@@ -19,7 +19,7 @@ export interface GlobEntry {
 export interface GlobEntriesOptions {
   cwd: string;
   pattern: string;
-  excludePatterns: string[];
+  excludePatterns: readonly string[];
   includeHidden: boolean;
   baseNameMatch: boolean;
   caseSensitiveMatch: boolean;
@@ -48,7 +48,7 @@ function resolveGlobEngine(options: GlobEntriesOptions): GlobEngine {
   return 'fast-glob';
 }
 
-function hasNegationPattern(patterns: string[]): boolean {
+function hasNegationPattern(patterns: readonly string[]): boolean {
   return patterns.some((pattern) => pattern.trim().startsWith('!'));
 }
 
@@ -97,7 +97,7 @@ async function* fastGlobEntries(
     cwd: options.cwd,
     absolute: true,
     dot: options.includeHidden,
-    ignore: options.excludePatterns,
+    ignore: [...options.excludePatterns],
     followSymbolicLinks: options.followSymbolicLinks,
     baseNameMatch: options.baseNameMatch,
     caseSensitiveMatch: options.caseSensitiveMatch,

@@ -58,7 +58,7 @@ function normalizeAllowedDirectory(dir: string): string {
   return stripTrailingSeparator(normalized);
 }
 
-export function setAllowedDirectories(dirs: string[]): void {
+export function setAllowedDirectories(dirs: readonly string[]): void {
   const normalized = dirs
     .map(normalizeAllowedDirectory)
     .filter((d) => d.length > 0);
@@ -71,7 +71,7 @@ export function getAllowedDirectories(): string[] {
 
 export function isPathWithinDirectories(
   normalizedPath: string,
-  allowedDirs: string[]
+  allowedDirs: readonly string[]
 ): boolean {
   const candidate = normalizeForComparison(normalizedPath);
   return allowedDirs.some((allowedDir) =>
@@ -83,7 +83,9 @@ function isPathWithinAllowedDirectories(normalizedPath: string): boolean {
   return isPathWithinDirectories(normalizedPath, allowedDirectories);
 }
 
-async function expandAllowedDirectories(dirs: string[]): Promise<string[]> {
+async function expandAllowedDirectories(
+  dirs: readonly string[]
+): Promise<string[]> {
   const expanded: string[] = [];
 
   for (const dir of dirs) {
@@ -114,7 +116,7 @@ async function resolveRealPath(normalized: string): Promise<string | null> {
 }
 
 export async function setAllowedDirectoriesResolved(
-  dirs: string[]
+  dirs: readonly string[]
 ): Promise<void> {
   const expanded = await expandAllowedDirectories(dirs);
   setAllowedDirectories(expanded);

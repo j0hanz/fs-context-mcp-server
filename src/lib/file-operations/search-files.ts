@@ -44,7 +44,7 @@ function normalizeOptions(options: SearchFilesOptions): NormalizedOptions {
 export async function searchFiles(
   basePath: string,
   pattern: string,
-  excludePatterns: string[] = [],
+  excludePatterns: readonly string[] = [],
   options: SearchFilesOptions = {}
 ): Promise<SearchFilesResult> {
   const normalized = normalizeOptions(options);

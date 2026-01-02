@@ -96,14 +96,10 @@ function normalizeDirectoryError(error: unknown, inputPath: string): Error {
   return new Error(`Error: Cannot access directory '${inputPath}'`);
 }
 
-async function normalizeCliDirectories(args: string[]): Promise<string[]> {
-  const validatedDirs: string[] = [];
-
-  for (const dir of args) {
-    validatedDirs.push(await validateDirectoryPath(dir));
-  }
-
-  return validatedDirs;
+async function normalizeCliDirectories(
+  args: readonly string[]
+): Promise<string[]> {
+  return Promise.all(args.map(validateDirectoryPath));
 }
 
 export async function parseArgs(): Promise<ParseArgsResult> {
@@ -204,7 +200,7 @@ function isRoot(value: unknown): value is Root {
   );
 }
 
-function normalizeAllowedDirectories(dirs: string[]): string[] {
+function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
   return dirs
     .map((dir) => dir.trim())
     .filter((dir) => dir.length > 0)
@@ -212,8 +208,8 @@ function normalizeAllowedDirectories(dirs: string[]): string[] {
 }
 
 async function filterRootsWithinBaseline(
-  roots: string[],
-  baseline: string[]
+  roots: readonly string[],
+  baseline: readonly string[]
 ): Promise<string[]> {
   const normalizedBaseline = normalizeAllowedDirectories(baseline);
   const filtered: string[] = [];
@@ -232,7 +228,7 @@ async function filterRootsWithinBaseline(
 
 async function isRootWithinBaseline(
   normalizedRoot: string,
-  baseline: string[]
+  baseline: readonly string[]
 ): Promise<boolean> {
   if (!isPathWithinDirectories(normalizedRoot, baseline)) {
     return false;
