@@ -122,19 +122,21 @@ All configuration is optional. Values are integers unless noted. Sizes are in by
 
 ### Environment Variables
 
-| Variable                         | Default                 | Range       | Description                                                                    |
-| -------------------------------- | ----------------------- | ----------- | ------------------------------------------------------------------------------ |
-| `UV_THREADPOOL_SIZE`             | (unset)                 | 1-1024      | libuv threadpool size. If set, caps parallelism.                               |
-| `FILESYSTEM_CONTEXT_CONCURRENCY` | Auto (2x cores, cap 50) | 1-100       | Parallel file operations. Further capped by `UV_THREADPOOL_SIZE`               |
-| `TRAVERSAL_JOBS`                 | 8                       | 1-50        | Reserved (currently unused; kept for compatibility)                            |
-| `REGEX_TIMEOUT`                  | 100                     | 50-1000     | Reserved (currently unused; regex engine is RE2)                               |
-| `MAX_FILE_SIZE`                  | 10MB                    | 1MB-100MB   | Max text file size (`read_file`, `read_multiple_files`)                        |
-| `MAX_SEARCH_SIZE`                | 1MB                     | 100KB-10MB  | Max file size for content search (`search_content`)                            |
-| `DEFAULT_DEPTH`                  | 10                      | 1-100       | Default max depth (`list_directory`, `search_files`)                           |
-| `DEFAULT_RESULTS`                | 100                     | 10-10000    | Default max results (`search_files`, `search_content`)                         |
-| `DEFAULT_LIST_MAX_ENTRIES`       | 10000                   | 100-100000  | Default max entries (`list_directory`)                                         |
-| `DEFAULT_SEARCH_MAX_FILES`       | 20000                   | 100-100000  | Default max files scanned (`search_files`, `search_content`)                   |
-| `DEFAULT_SEARCH_TIMEOUT`         | 30000                   | 100-3600000 | Default operation timeout (`list_directory`, `search_files`, `search_content`) |
+| Variable                            | Default                 | Range       | Description                                                                    |
+| ----------------------------------- | ----------------------- | ----------- | ------------------------------------------------------------------------------ |
+| `UV_THREADPOOL_SIZE`                | (unset)                 | 1-1024      | libuv threadpool size. If set, caps parallelism.                               |
+| `FILESYSTEM_CONTEXT_CONCURRENCY`    | Auto (2x cores, cap 50) | 1-100       | Parallel file operations. Further capped by `UV_THREADPOOL_SIZE`               |
+| `FILESYSTEM_CONTEXT_SEARCH_WORKERS` | 0 (disabled)            | 0-32        | Worker-thread offload for `search_content` (uses one worker per search)        |
+| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                  | n/a         | Glob engine: `auto`, `fast-glob`, or `node`/`node:fs`                           |
+| `MAX_FILE_SIZE`                     | 10MB                    | 1MB-100MB   | Max text file size (`read_file`, `read_multiple_files`)                        |
+| `MAX_SEARCH_SIZE`                   | 1MB                     | 100KB-10MB  | Max file size for content search (`search_content`)                            |
+| `DEFAULT_DEPTH`                     | 10                      | 1-100       | Default max depth (`list_directory`, `search_files`)                           |
+| `DEFAULT_RESULTS`                   | 100                     | 10-10000    | Default max results (`search_files`, `search_content`)                         |
+| `DEFAULT_LIST_MAX_ENTRIES`          | 10000                   | 100-100000  | Default max entries (`list_directory`)                                         |
+| `DEFAULT_SEARCH_MAX_FILES`          | 20000                   | 100-100000  | Default max files scanned (`search_files`, `search_content`)                   |
+| `DEFAULT_SEARCH_TIMEOUT`            | 30000                   | 100-3600000 | Default operation timeout (`list_directory`, `search_files`, `search_content`) |
+
+Note: `FILESYSTEM_CONTEXT_GLOB_ENGINE` is a string. `auto` uses Node's glob when options allow, otherwise it falls back to `fast-glob`.
 
 See [CONFIGURATION.md](CONFIGURATION.md) for profiles and examples.
 
@@ -475,9 +477,10 @@ This server implements multiple layers of security:
 | `npm run build`         | Compile TypeScript to JavaScript |
 | `npm run dev`           | Watch mode with tsx              |
 | `npm run start`         | Run compiled server              |
-| `npm run test`          | Run tests with Vitest            |
-| `npm run test:watch`    | Run tests in watch mode          |
-| `npm run test:coverage` | Run tests with coverage report   |
+| `npm run test`          | Run tests (node --test with tsx/esm) |
+| `npm run test:watch`    | Run tests in watch mode (node --test --watch) |
+| `npm run test:coverage` | Run tests with coverage (node --test --experimental-test-coverage) |
+| `npm run test:node`     | Run node-tests (isolated checks) |
 | `npm run lint`          | Run ESLint                       |
 | `npm run format`        | Format code with Prettier        |
 | `npm run type-check`    | TypeScript type checking         |
@@ -495,7 +498,8 @@ src/
   lib/                     # Core logic and filesystem operations
   schemas/                 # Zod input/output schemas
   tools/                   # MCP tool registration
-  __tests__/               # Vitest tests
+  __tests__/               # node:test + tsx tests
+node-tests/                # Isolated Node.js checks
 ```
 
 ## Troubleshooting

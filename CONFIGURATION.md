@@ -15,8 +15,9 @@ Environment variables for tuning performance and resource limits. All variables 
 ## Environment Variables
 
 Values are integers unless otherwise noted. Sizes are in bytes, timeouts are in
-milliseconds. Invalid values emit a warning and fall back to defaults (or are
-ignored for `UV_THREADPOOL_SIZE`).
+milliseconds. Invalid integer values emit a warning and fall back to defaults
+(or are ignored for `UV_THREADPOOL_SIZE`). String options like
+`FILESYSTEM_CONTEXT_GLOB_ENGINE` fall back silently to `auto` behavior.
 
 ### Performance and Concurrency
 
@@ -25,13 +26,9 @@ ignored for `UV_THREADPOOL_SIZE`).
 | `UV_THREADPOOL_SIZE`                | (unset)                 | 1-1024  | libuv threadpool size (set before start). Caps parallelism.                                                                                       | Heavy fs/crypto load          | Memory-constrained      |
 | `FILESYSTEM_CONTEXT_CONCURRENCY`    | Auto (2x cores, cap 50) | 1-100   | Parallel file operations (further capped by `UV_THREADPOOL_SIZE`)                                                                                 | SSDs, many CPU cores          | HDDs, shared systems    |
 | `FILESYSTEM_CONTEXT_SEARCH_WORKERS` | 0 (disabled)            | 0-32    | Worker-thread offload for `search_content` (enabled when > 0; currently uses a single worker per search; capped to cores - 1, min 1 when enabled) | Large regex searches          | Small repos, low memory |
-| `TRAVERSAL_JOBS`                    | 8                       | 1-50    | Reserved (currently unused; kept for compatibility)                                                                                               | n/a                           | n/a                     |
-| `REGEX_TIMEOUT`                     | 100                     | 50-1000 | Reserved (currently unused; regex engine is RE2)                                                                                                  | n/a                           | n/a                     |
-| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | auto                    | n/a     | Glob implementation (`auto`, `fast-glob`, or `node`). Auto-falls back to `fast-glob` when options require unsupported features.                   | Reduce deps (if parity is OK) | Maximum feature parity  |
+| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                  | n/a     | Glob implementation (`auto`, `fast-glob`, or `node`/`node:fs`). Auto-falls back to `fast-glob` when options require unsupported features.         | Reduce deps (if parity is OK) | Maximum feature parity  |
 
 > Note: `UV_THREADPOOL_SIZE` must be set before the process starts.
-
-> Note: `TRAVERSAL_JOBS` and `REGEX_TIMEOUT` are parsed but currently unused.
 
 ### File Size Limits
 
@@ -57,8 +54,9 @@ enforces `maxTotalSize` (default 100MB, max 1GB).
 
 Defaults apply when tool parameters are omitted. Tool-level `maxDepth` can be
 set to `0` to restrict listing/searching to the base directory, even though
-`DEFAULT_DEPTH` is constrained to 1-100. `read_file` and `read_multiple_files`
-use fixed 30s timeouts (not configurable via env).
+`DEFAULT_DEPTH` is constrained to 1-100. `read_file`, `read_multiple_files`,
+`get_file_info`, and `get_multiple_file_info` use fixed 30s timeouts (not
+configurable via env).
 
 ## Configuration Examples
 
