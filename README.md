@@ -127,7 +127,7 @@ All configuration is optional. Values are integers unless noted. Sizes are in by
 | `UV_THREADPOOL_SIZE`                | (unset)                 | 1-1024      | libuv threadpool size. If set, caps parallelism.                               |
 | `FILESYSTEM_CONTEXT_CONCURRENCY`    | Auto (2x cores, cap 50) | 1-100       | Parallel file operations. Further capped by `UV_THREADPOOL_SIZE`               |
 | `FILESYSTEM_CONTEXT_SEARCH_WORKERS` | 0 (disabled)            | 0-32        | Worker-thread offload for `search_content` (uses one worker per search)        |
-| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                  | n/a         | Glob engine: `auto`, `fast-glob`, or `node`/`node:fs`                           |
+| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                  | n/a         | Glob engine: `auto`, `fast-glob`, or `node`/`node:fs`                          |
 | `MAX_FILE_SIZE`                     | 10MB                    | 1MB-100MB   | Max text file size (`read_file`, `read_multiple_files`)                        |
 | `MAX_SEARCH_SIZE`                   | 1MB                     | 100KB-10MB  | Max file size for content search (`search_content`)                            |
 | `DEFAULT_DEPTH`                     | 10                      | 1-100       | Default max depth (`list_directory`, `search_files`)                           |
@@ -472,20 +472,20 @@ This server implements multiple layers of security:
 
 ### Scripts
 
-| Command                 | Description                      |
-| ----------------------- | -------------------------------- |
-| `npm run build`         | Compile TypeScript to JavaScript |
-| `npm run dev`           | Watch mode with tsx              |
-| `npm run start`         | Run compiled server              |
-| `npm run test`          | Run tests (node --test with tsx/esm) |
-| `npm run test:watch`    | Run tests in watch mode (node --test --watch) |
+| Command                 | Description                                                        |
+| ----------------------- | ------------------------------------------------------------------ |
+| `npm run build`         | Compile TypeScript to JavaScript                                   |
+| `npm run dev`           | Watch mode with tsx                                                |
+| `npm run start`         | Run compiled server                                                |
+| `npm run test`          | Run tests (node --test with tsx/esm)                               |
+| `npm run test:watch`    | Run tests in watch mode (node --test --watch)                      |
 | `npm run test:coverage` | Run tests with coverage (node --test --experimental-test-coverage) |
-| `npm run test:node`     | Run node-tests (isolated checks) |
-| `npm run lint`          | Run ESLint                       |
-| `npm run format`        | Format code with Prettier        |
-| `npm run type-check`    | TypeScript type checking         |
-| `npm run bench`         | Run benchmarks                   |
-| `npm run inspector`     | Test with MCP Inspector          |
+| `npm run test:node`     | Run node-tests (isolated checks)                                   |
+| `npm run lint`          | Run ESLint                                                         |
+| `npm run format`        | Format code with Prettier                                          |
+| `npm run type-check`    | TypeScript type checking                                           |
+| `npm run bench`         | Run benchmarks                                                     |
+| `npm run inspector`     | Test with MCP Inspector                                            |
 
 ### Project Structure
 

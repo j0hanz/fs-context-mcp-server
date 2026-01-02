@@ -21,12 +21,12 @@ milliseconds. Invalid integer values emit a warning and fall back to defaults
 
 ### Performance and Concurrency
 
-| Variable                            | Default                 | Range   | Description                                                                                                                                       | Increase For                  | Decrease For            |
-| ----------------------------------- | ----------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------- |
-| `UV_THREADPOOL_SIZE`                | (unset)                 | 1-1024  | libuv threadpool size (set before start). Caps parallelism.                                                                                       | Heavy fs/crypto load          | Memory-constrained      |
-| `FILESYSTEM_CONTEXT_CONCURRENCY`    | Auto (2x cores, cap 50) | 1-100   | Parallel file operations (further capped by `UV_THREADPOOL_SIZE`)                                                                                 | SSDs, many CPU cores          | HDDs, shared systems    |
-| `FILESYSTEM_CONTEXT_SEARCH_WORKERS` | 0 (disabled)            | 0-32    | Worker-thread offload for `search_content` (enabled when > 0; currently uses a single worker per search; capped to cores - 1, min 1 when enabled) | Large regex searches          | Small repos, low memory |
-| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                  | n/a     | Glob implementation (`auto`, `fast-glob`, or `node`/`node:fs`). Auto-falls back to `fast-glob` when options require unsupported features.         | Reduce deps (if parity is OK) | Maximum feature parity  |
+| Variable                            | Default                 | Range  | Description                                                                                                                                       | Increase For                  | Decrease For            |
+| ----------------------------------- | ----------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------- |
+| `UV_THREADPOOL_SIZE`                | (unset)                 | 1-1024 | libuv threadpool size (set before start). Caps parallelism.                                                                                       | Heavy fs/crypto load          | Memory-constrained      |
+| `FILESYSTEM_CONTEXT_CONCURRENCY`    | Auto (2x cores, cap 50) | 1-100  | Parallel file operations (further capped by `UV_THREADPOOL_SIZE`)                                                                                 | SSDs, many CPU cores          | HDDs, shared systems    |
+| `FILESYSTEM_CONTEXT_SEARCH_WORKERS` | 0 (disabled)            | 0-32   | Worker-thread offload for `search_content` (enabled when > 0; currently uses a single worker per search; capped to cores - 1, min 1 when enabled) | Large regex searches          | Small repos, low memory |
+| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                  | n/a    | Glob implementation (`auto`, `fast-glob`, or `node`/`node:fs`). Auto-falls back to `fast-glob` when options require unsupported features.         | Reduce deps (if parity is OK) | Maximum feature parity  |
 
 > Note: `UV_THREADPOOL_SIZE` must be set before the process starts.
 

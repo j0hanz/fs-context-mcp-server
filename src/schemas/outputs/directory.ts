@@ -64,7 +64,7 @@ export const ListDirectoryOutputSchema = z.object({
     .object({
       totalEntries: z.number().optional(),
     })
-    .merge(TraversalSummarySchema)
+    .extend(TraversalSummarySchema.shape)
     .optional(),
   error: ErrorSchema.optional(),
 });

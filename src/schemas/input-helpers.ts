@@ -56,7 +56,7 @@ export const ExcludePatternsSchema = z
       .string()
       .max(500, 'Individual exclude pattern is too long')
       .refine((val) => !val.includes('**/**/**'), {
-        message: 'Pattern too deeply nested (max 2 levels of **)',
+        error: 'Pattern too deeply nested (max 2 levels of **)',
       })
   )
   .max(100, 'Too many exclude patterns (max 100)')
@@ -69,7 +69,7 @@ export const ListExcludePatternsSchema = z
       .string()
       .max(500, 'Individual exclude pattern is too long')
       .refine((val) => !val.includes('**/**/**'), {
-        message: 'Pattern too deeply nested (max 2 levels of **)',
+        error: 'Pattern too deeply nested (max 2 levels of **)',
       })
   )
   .max(100, 'Too many exclude patterns (max 100)')
@@ -220,7 +220,7 @@ export function applyLineRangeIssues(
   const issues = validateLineRange(options);
   if (issues.missingPair) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message: `Invalid lineRange: ${issues.missingPair.provided} requires ${issues.missingPair.missing} to also be specified`,
       path: [issues.missingPair.missing],
     });
@@ -228,7 +228,7 @@ export function applyLineRangeIssues(
 
   if (issues.invalidOrder) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message: `Invalid lineRange: lineEnd (${issues.invalidOrder.end}) must be >= lineStart (${issues.invalidOrder.start})`,
       path: ['lineEnd'],
     });
@@ -236,7 +236,7 @@ export function applyLineRangeIssues(
 
   if (issues.multipleModes) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message:
         'Cannot specify multiple of lineRange (lineStart + lineEnd), head, or tail simultaneously',
       path: [resolveConflictField(options)],

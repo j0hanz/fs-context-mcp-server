@@ -55,7 +55,7 @@
     "fast-glob": "^3.3.3",
     "re2": "^1.23.0",
     "safe-regex2": "^5.0.0",
-    "zod": "^3.24.0"
+    "zod": "^4.3.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
