@@ -96,7 +96,7 @@ export const SearchContentOutputSchema = z.object({
         .number()
         .optional()
         .describe(
-          'Number of lines skipped due to regex matching timeout (potential incomplete results)'
+          'Number of lines skipped due to regex matching time budget. Currently always 0 (no per-line timeout is enforced); reserved for future implementations.'
         ),
       stoppedReason: z.enum(['maxResults', 'maxFiles', 'timeout']).optional(),
     })

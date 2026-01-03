@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { performance } from 'node:perf_hooks';
 
+import RE2 from 're2';
+
 import {
   getFileInfo,
   listDirectory,
@@ -11,6 +13,7 @@ import {
   searchContent,
   searchFiles,
 } from '../src/lib/file-operations.js';
+import { buildMatcher } from '../src/lib/file-operations/search/scan-file.js';
 import { setAllowedDirectories } from '../src/lib/path-validation.js';
 
 interface BenchmarkResult {
@@ -160,6 +163,30 @@ const BENCHMARK_SPECS: BenchmarkSpec[] = [
     },
   },
   {
+    name: 'searchContent(literal, case-insensitive)',
+    run: async ({ root }) => {
+      await searchContent(root, 'LOREM', {
+        filePattern: '**/*.txt',
+        maxResults: 200,
+        contextLines: 0,
+        isLiteral: true,
+        caseSensitive: false,
+      });
+    },
+  },
+  {
+    name: 'searchContent(literal, case-sensitive)',
+    run: async ({ root }) => {
+      await searchContent(root, 'lorem', {
+        filePattern: '**/*.txt',
+        maxResults: 200,
+        contextLines: 0,
+        isLiteral: true,
+        caseSensitive: true,
+      });
+    },
+  },
+  {
     name: 'getFileInfo',
     run: async ({ sampleFile }) => {
       await getFileInfo(sampleFile);
@@ -175,6 +202,84 @@ const BENCHMARK_SPECS: BenchmarkSpec[] = [
     name: 'readFile(head)',
     run: async ({ sampleFile }) => {
       await readFile(sampleFile, { head: 10 });
+    },
+  },
+  {
+    name: 'matcher(literal, case-insensitive, long-line)',
+    run: async () => {
+      const matcher = buildMatcher('LOREM', {
+        caseSensitive: false,
+        wholeWord: false,
+        isLiteral: true,
+      });
+
+      const line = `${'x'.repeat(20000)}lorem${'y'.repeat(20000)}LOREM`;
+      let total = 0;
+      for (let i = 0; i < 3000; i++) {
+        total += matcher(line);
+      }
+      if (total === 0) {
+        throw new Error('Unexpected benchmark result: 0 matches');
+      }
+    },
+  },
+  {
+    name: 'matcher(baseline toLowerCase+indexOf, long-line)',
+    run: async () => {
+      const needle = 'lorem';
+      const line = `${'x'.repeat(20000)}lorem${'y'.repeat(20000)}LOREM`;
+      let total = 0;
+      for (let i = 0; i < 3000; i++) {
+        const hay = line.toLowerCase();
+        let pos = hay.indexOf(needle);
+        while (pos !== -1) {
+          total++;
+          pos = hay.indexOf(needle, pos + needle.length);
+        }
+      }
+      if (total === 0) {
+        throw new Error('Unexpected benchmark result: 0 matches');
+      }
+    },
+  },
+  {
+    name: 'matcher(RE2 gi literal, long-line)',
+    run: async () => {
+      const regex = new RE2('lorem', 'gi');
+      const line = `${'x'.repeat(20000)}lorem${'y'.repeat(20000)}LOREM`;
+      let total = 0;
+      for (let i = 0; i < 3000; i++) {
+        regex.lastIndex = 0;
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(line)) !== null) {
+          total++;
+          if (match[0].length === 0) {
+            regex.lastIndex++;
+          }
+        }
+      }
+      if (total === 0) {
+        throw new Error('Unexpected benchmark result: 0 matches');
+      }
+    },
+  },
+  {
+    name: 'matcher(literal, case-sensitive, long-line)',
+    run: async () => {
+      const matcher = buildMatcher('lorem', {
+        caseSensitive: true,
+        wholeWord: false,
+        isLiteral: true,
+      });
+
+      const line = `${'x'.repeat(20000)}lorem${'y'.repeat(20000)}LOREM`;
+      let total = 0;
+      for (let i = 0; i < 3000; i++) {
+        total += matcher(line);
+      }
+      if (total === 0) {
+        throw new Error('Unexpected benchmark result: 0 matches');
+      }
     },
   },
 ];

@@ -48,17 +48,12 @@ function resolveGlobEngine(options: GlobEntriesOptions): GlobEngine {
   return 'fast-glob';
 }
 
-function hasNegationPattern(patterns: readonly string[]): boolean {
-  return patterns.some((pattern) => pattern.trim().startsWith('!'));
-}
-
 function canUseNodeGlob(options: GlobEntriesOptions): boolean {
   if (typeof fsp.glob !== 'function') return false;
   if (options.includeHidden) return false;
   if (!options.caseSensitiveMatch) return false;
   if (options.suppressErrors) return false;
   if (options.excludePatterns.length > 0) return false;
-  if (hasNegationPattern(options.excludePatterns)) return false;
   return true;
 }
 

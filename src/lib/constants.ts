@@ -57,7 +57,7 @@ function parseOptionalEnvInt(
 // Determine optimal parallelism based on CPU cores
 function getOptimalParallelism(): number {
   const cpuCores = availableParallelism();
-  return Math.min(cpuCores * 2, 50);
+  return Math.min(Math.max(cpuCores, 4), 32);
 }
 
 const UV_THREADPOOL_LIMIT = parseOptionalEnvInt('UV_THREADPOOL_SIZE', 1, 1024);

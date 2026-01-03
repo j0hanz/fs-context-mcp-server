@@ -12,6 +12,8 @@ void describe('searchContent', () => {
       const result = await searchContent(getTestDir(), 'hello');
       assert.ok(result.matches.length > 0);
       assert.ok(result.matches[0]?.file.includes('index.ts'));
+      assert.strictEqual(result.matches[0]?.contextBefore, undefined);
+      assert.strictEqual(result.matches[0]?.contextAfter, undefined);
     });
 
     void it('searchContent rejects file base path', async () => {
@@ -46,6 +48,26 @@ void describe('searchContent', () => {
 
       assert.strictEqual(result.matches.length, 1);
       assert.strictEqual(result.matches[0]?.matchCount, 2);
+      await fs.rm(literalFile).catch(() => {});
+    });
+
+    void it('searchContent matches case-insensitively when literal', async () => {
+      const literalFile = path.join(
+        getTestDir(),
+        'literal-case-insensitive.txt'
+      );
+      await fs.writeFile(
+        literalFile,
+        'ZzTestToken zztesttoken ZZTESTTOKEN zZtEsTtOkEn\n'
+      );
+
+      const result = await searchContent(getTestDir(), 'zztesttoken', {
+        isLiteral: true,
+        filePattern: '**/*.txt',
+      });
+
+      assert.strictEqual(result.matches.length, 1);
+      assert.strictEqual(result.matches[0]?.matchCount, 4);
       await fs.rm(literalFile).catch(() => {});
     });
 
@@ -96,6 +118,19 @@ void describe('searchContent', () => {
         });
         assert.ok(result);
       }
+    });
+
+    void it('searchContent returns context lines when requested', async () => {
+      const result = await searchContent(getTestDir(), 'hello', {
+        filePattern: '**/*.ts',
+        contextLines: 1,
+      });
+
+      assert.ok(result.matches.length > 0);
+      const firstMatch = result.matches[0];
+      assert.ok(firstMatch !== undefined);
+      assert.ok(Array.isArray(firstMatch.contextBefore));
+      assert.ok(Array.isArray(firstMatch.contextAfter));
     });
   });
 });

@@ -38,9 +38,6 @@ export function formatOperationSummary(summary: {
   addNote(summary.skippedBinary, 'skipped: binary');
   addNote(summary.skippedInaccessible, 'skipped: inaccessible');
   addNote(summary.symlinksNotFollowed, 'symlinks not followed');
-  addNote(
-    summary.linesSkippedDueToRegexTimeout,
-    'lines skipped: regex timeout'
-  );
+  addNote(summary.linesSkippedDueToRegexTimeout, 'lines skipped: regex budget');
   return notes.length > 0 ? `\n${notes.join(' ')}` : '';
 }

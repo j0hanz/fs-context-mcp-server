@@ -151,7 +151,11 @@ export async function scanFileResolved(
       for await (const line of rl) {
         if (signal?.aborted) break;
         lineNo++;
-        pushContext(ctx, trimContent(line), options.contextLines);
+        const trimmedLine =
+          options.contextLines > 0 ? trimContent(line) : undefined;
+        if (trimmedLine !== undefined) {
+          pushContext(ctx, trimmedLine, options.contextLines);
+        }
 
         const count = matcher(line);
         if (count > 0) {
@@ -159,7 +163,7 @@ export async function scanFileResolved(
           const match: ContentMatch = {
             file: requestedPath,
             line: lineNo,
-            content: trimContent(line),
+            content: trimmedLine ?? trimContent(line),
             contextBefore:
               options.contextLines > 0 ? [...ctx.before] : undefined,
             contextAfter,
