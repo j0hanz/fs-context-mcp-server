@@ -12,7 +12,6 @@ interface LineRangeState {
 interface LineRangeResult {
   content: string;
   linesRead: number;
-  totalLinesScanned: number;
   hasMoreLines: boolean;
 }
 
@@ -82,7 +81,6 @@ function buildLineRangeResult(state: LineRangeState): LineRangeResult {
   return {
     content: state.lines.join('\n'),
     linesRead: state.lines.length,
-    totalLinesScanned: state.lineNumber,
     hasMoreLines: state.hasMoreLines,
   };
 }

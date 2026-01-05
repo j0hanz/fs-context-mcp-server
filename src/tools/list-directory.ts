@@ -17,7 +17,6 @@ import {
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { mergeDefined } from '../lib/merge-defined.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
 import {
   ListDirectoryInputSchema,
@@ -39,9 +38,6 @@ function getExtension(name: string, isFile: boolean): string | undefined {
 
 type ListDirectoryArgs = z.infer<typeof ListDirectoryInputSchema>;
 type ListDirectoryStructuredResult = z.infer<typeof ListDirectoryOutputSchema>;
-type DirectoryEntryItem = Awaited<
-  ReturnType<typeof listDirectory>
->['entries'][number];
 
 type ListSort = 'name' | 'size' | 'modified' | 'type';
 
@@ -69,12 +65,6 @@ const DEFAULT_LIST_OPTIONS: ListOptions = {
   pattern: undefined,
 };
 
-function buildEffectiveListOptions(
-  overrides: Partial<ListOptions>
-): ListOptions {
-  return mergeDefined(DEFAULT_LIST_OPTIONS, overrides);
-}
-
 function formatDirectoryListing(
   entries: Awaited<ReturnType<typeof listDirectory>>['entries'],
   basePath: string,
@@ -84,46 +74,26 @@ function formatDirectoryListing(
     return formatEmptyDirectoryListing(summary);
   }
 
-  const dirs = entries.filter((e) => e.type === 'directory').length;
+  let dirs = 0;
+  const entryLines = entries.map((entry) => {
+    const isDir = entry.type === 'directory';
+    if (isDir) dirs++;
+    const tag = isDir
+      ? '[DIR]'
+      : entry.type === 'symlink'
+        ? '[LINK]'
+        : '[FILE]';
+    const size =
+      entry.size !== undefined ? ` (${formatBytes(entry.size)})` : '';
+    const symlink = entry.symlinkTarget ? ` -> ${entry.symlinkTarget}` : '';
+    return `${tag} ${entry.relativePath}${isDir ? '' : size}${symlink}`;
+  });
+
   const files = entries.length - dirs;
-
-  const entryLines = entries.map(formatDirectoryEntry);
-
-  const lines = [`${basePath} (${dirs} dirs, ${files} files):`, ...entryLines];
-
-  return joinLines(lines);
-}
-
-function formatDirectoryEntry(entry: DirectoryEntryItem): string {
-  if (entry.type === 'directory') {
-    return formatDirectoryLine(entry);
-  }
-  return formatFileLine(entry);
-}
-
-function formatDirectoryLine(entry: DirectoryEntryItem): string {
-  return `[DIR] ${entry.relativePath}${formatSymlinkSuffix(entry.symlinkTarget)}`;
-}
-
-function formatFileLine(entry: DirectoryEntryItem): string {
-  const size = formatSizeSuffix(entry.size);
-  const tag = formatEntryTag(entry.type);
-  return `${tag} ${entry.relativePath}${size}${formatSymlinkSuffix(entry.symlinkTarget)}`;
-}
-
-function formatEntryTag(type: DirectoryEntryItem['type']): string {
-  if (type === 'symlink') return '[LINK]';
-  return '[FILE]';
-}
-
-function formatSizeSuffix(size: number | undefined): string {
-  if (size === undefined) return '';
-  return ` (${formatBytes(size)})`;
-}
-
-function formatSymlinkSuffix(target: string | undefined): string {
-  if (!target) return '';
-  return ` -> ${target}`;
+  return joinLines([
+    `${basePath} (${dirs} dirs, ${files} files):`,
+    ...entryLines,
+  ]);
 }
 
 function formatEmptyDirectoryListing(
@@ -236,17 +206,18 @@ async function handleListDirectory(
   },
   signal?: AbortSignal
 ): Promise<ToolResponse<ListDirectoryStructuredResult>> {
-  const effectiveOptions = buildEffectiveListOptions({
-    recursive,
-    includeHidden,
-    excludePatterns,
-    maxDepth,
-    maxEntries,
-    timeoutMs,
-    sortBy,
-    includeSymlinkTargets,
-    pattern,
-  });
+  const effectiveOptions: ListOptions = {
+    recursive: recursive ?? DEFAULT_LIST_OPTIONS.recursive,
+    includeHidden: includeHidden ?? DEFAULT_LIST_OPTIONS.includeHidden,
+    excludePatterns: excludePatterns ?? DEFAULT_LIST_OPTIONS.excludePatterns,
+    maxDepth: maxDepth ?? DEFAULT_LIST_OPTIONS.maxDepth,
+    maxEntries: maxEntries ?? DEFAULT_LIST_OPTIONS.maxEntries,
+    timeoutMs: timeoutMs ?? DEFAULT_LIST_OPTIONS.timeoutMs,
+    sortBy: sortBy ?? DEFAULT_LIST_OPTIONS.sortBy,
+    includeSymlinkTargets:
+      includeSymlinkTargets ?? DEFAULT_LIST_OPTIONS.includeSymlinkTargets,
+    pattern: pattern ?? DEFAULT_LIST_OPTIONS.pattern,
+  };
   const result = await listDirectory(dirPath, {
     recursive: effectiveOptions.recursive,
     includeHidden: effectiveOptions.includeHidden,

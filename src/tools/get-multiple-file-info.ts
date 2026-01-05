@@ -29,8 +29,6 @@ type GetMultipleFileInfoStructuredResult = z.infer<
   typeof GetMultipleFileInfoOutputSchema
 >;
 
-const GET_MULTIPLE_FILE_INFO_TIMEOUT_MS = 30000;
-
 function buildStructuredResult(
   result: GetMultipleFileInfoResult
 ): GetMultipleFileInfoStructuredResult {
@@ -101,7 +99,7 @@ export function registerGetMultipleFileInfoTool(server: McpServer): void {
         async () => {
           const { signal, cleanup } = createTimedAbortSignal(
             extra.signal,
-            GET_MULTIPLE_FILE_INFO_TIMEOUT_MS
+            30000
           );
           try {
             return await handleGetMultipleFileInfo(args, signal);

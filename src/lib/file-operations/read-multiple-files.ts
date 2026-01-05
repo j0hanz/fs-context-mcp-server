@@ -8,7 +8,7 @@ import {
   readFileWithStats,
 } from '../fs-helpers.js';
 import { withAbort } from '../fs-helpers/abort.js';
-import { assertLineRangeOptions, buildLineRange } from '../line-range.js';
+import { assertLineRangeOptions } from '../line-range.js';
 import { validateExistingPath } from '../path-validation.js';
 
 interface ReadMultipleResult {
@@ -172,7 +172,10 @@ function normalizeReadMultipleOptions(
     },
     pathLabel
   );
-  const lineRange = buildLineRange(options.lineStart, options.lineEnd);
+  const lineRange =
+    options.lineStart !== undefined && options.lineEnd !== undefined
+      ? { start: options.lineStart, end: options.lineEnd }
+      : undefined;
   return {
     encoding: options.encoding ?? 'utf-8',
     maxSize: Math.min(

@@ -7,7 +7,7 @@ import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readFile } from '../lib/file-operations.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { assertLineRangeOptions, buildLineRange } from '../lib/line-range.js';
+import { assertLineRangeOptions } from '../lib/line-range.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas/index.js';
 import {
@@ -17,8 +17,6 @@ import {
   type ToolResult,
   withToolErrorHandling,
 } from './tool-response.js';
-
-const READ_FILE_TIMEOUT_MS = 30000;
 
 function buildTextResult(
   result: Awaited<ReturnType<typeof readFile>>,
@@ -148,7 +146,10 @@ async function handleReadFile(
     },
     args.path
   );
-  const lineRange = buildLineRange(args.lineStart, args.lineEnd);
+  const lineRange =
+    args.lineStart !== undefined && args.lineEnd !== undefined
+      ? { start: args.lineStart, end: args.lineEnd }
+      : undefined;
   const effectiveOptions = buildEffectiveReadOptions(args, lineRange);
   const result = await readFile(args.path, {
     encoding: effectiveOptions.encoding,
@@ -196,7 +197,7 @@ export function registerReadFileTool(server: McpServer): void {
           async () => {
             const { signal, cleanup } = createTimedAbortSignal(
               extra.signal,
-              READ_FILE_TIMEOUT_MS
+              30000
             );
             try {
               return await handleReadFile(args, signal);

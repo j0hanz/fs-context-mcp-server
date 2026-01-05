@@ -11,7 +11,6 @@ export async function readLineRangeContent(
   content: string;
   truncated: boolean;
   linesRead: number;
-  totalLinesScanned: number;
   hasMoreLines: boolean;
 }> {
   const result = await readLineRange(
@@ -33,7 +32,6 @@ export async function readLineRangeContent(
     content: result.content,
     truncated,
     linesRead: result.linesRead,
-    totalLinesScanned: result.totalLinesScanned,
     hasMoreLines: result.hasMoreLines,
   };
 }

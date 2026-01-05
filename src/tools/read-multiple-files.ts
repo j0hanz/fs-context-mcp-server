@@ -21,8 +21,6 @@ import {
   withToolErrorHandling,
 } from './tool-response.js';
 
-const READ_MULTIPLE_TIMEOUT_MS = 30000;
-
 type ReadMultipleArgs = z.infer<typeof ReadMultipleFilesInputSchema>;
 type ReadMultipleStructuredResult = z.infer<
   typeof ReadMultipleFilesOutputSchema
@@ -92,40 +90,27 @@ function buildReadMultipleNote(
 }
 
 type ReadMultipleResult = Awaited<ReturnType<typeof readMultipleFiles>>[number];
-type ReadMode = NonNullable<ReadMultipleResult['readMode']>;
-
-function buildLineRangeNote(result: ReadMultipleResult): string | undefined {
-  if (result.lineStart === undefined || result.lineEnd === undefined) {
-    return undefined;
-  }
-  return `Showing lines ${result.lineStart}-${result.lineEnd}`;
-}
-
-function buildHeadNote(result: ReadMultipleResult): string | undefined {
-  if (result.head === undefined) return undefined;
-  return `Showing first ${String(result.head)} lines`;
-}
-
-function buildTailNote(result: ReadMultipleResult): string | undefined {
-  if (result.tail === undefined) return undefined;
-  return `Showing last ${String(result.tail)} lines`;
-}
-
-const RANGE_NOTE_BUILDERS: Record<
-  ReadMode,
-  (result: ReadMultipleResult) => string | undefined
-> = {
-  lineRange: buildLineRangeNote,
-  head: buildHeadNote,
-  tail: buildTailNote,
-  full: () => undefined,
-};
 
 function buildReadMultipleRangeNote(
   result: ReadMultipleResult
 ): string | undefined {
-  if (!result.readMode) return undefined;
-  return RANGE_NOTE_BUILDERS[result.readMode](result);
+  switch (result.readMode) {
+    case 'lineRange':
+      if (result.lineStart === undefined || result.lineEnd === undefined) {
+        return undefined;
+      }
+      return `Showing lines ${result.lineStart}-${result.lineEnd}`;
+    case 'head':
+      return result.head !== undefined
+        ? `Showing first ${String(result.head)} lines`
+        : undefined;
+    case 'tail':
+      return result.tail !== undefined
+        ? `Showing last ${String(result.tail)} lines`
+        : undefined;
+    default:
+      return undefined;
+  }
 }
 
 async function handleReadMultipleFiles(
@@ -203,7 +188,7 @@ export function registerReadMultipleFilesTool(server: McpServer): void {
         async () => {
           const { signal, cleanup } = createTimedAbortSignal(
             extra.signal,
-            READ_MULTIPLE_TIMEOUT_MS
+            30000
           );
           try {
             return await handleReadMultipleFiles(args, signal);

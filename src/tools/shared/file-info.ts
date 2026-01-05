@@ -1,4 +1,4 @@
-import { formatBytes, formatDate, joinLines } from '../../config/formatting.js';
+import { formatBytes, joinLines } from '../../config/formatting.js';
 import type { FileInfo } from '../../config/types.js';
 
 export function buildFileInfoPayload(info: FileInfo): {
@@ -35,9 +35,9 @@ export function formatFileInfoDetails(info: FileInfo): string {
     `Path: ${info.path}`,
     `Type: ${info.type}`,
     `Size: ${formatBytes(info.size)}`,
-    `Created: ${formatDate(info.created)}`,
-    `Modified: ${formatDate(info.modified)}`,
-    `Accessed: ${formatDate(info.accessed)}`,
+    `Created: ${info.created.toISOString()}`,
+    `Modified: ${info.modified.toISOString()}`,
+    `Accessed: ${info.accessed.toISOString()}`,
     `Permissions: ${info.permissions}`,
     `Hidden: ${info.isHidden ? 'Yes' : 'No'}`,
   ];

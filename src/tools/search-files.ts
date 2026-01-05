@@ -19,7 +19,6 @@ import {
 import { ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { mergeDefined } from '../lib/merge-defined.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
 import {
   SearchFilesInputSchema,
@@ -61,12 +60,6 @@ const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
   skipSymlinks: true,
   includeHidden: false,
 };
-
-function buildEffectiveSearchOptions(
-  overrides: Partial<SearchOptions>
-): SearchOptions {
-  return mergeDefined(DEFAULT_SEARCH_OPTIONS, overrides);
-}
 
 function formatSearchResults(
   results: Awaited<ReturnType<typeof searchFiles>>['results'],
@@ -188,17 +181,17 @@ async function handleSearchFiles(
   },
   signal?: AbortSignal
 ): Promise<ToolResponse<SearchFilesStructuredResult>> {
-  const effectiveOptions = buildEffectiveSearchOptions({
-    excludePatterns,
-    maxResults,
-    sortBy,
-    maxDepth,
-    maxFilesScanned,
-    timeoutMs,
-    baseNameMatch,
-    skipSymlinks,
-    includeHidden,
-  });
+  const effectiveOptions: SearchOptions = {
+    excludePatterns: excludePatterns ?? DEFAULT_SEARCH_OPTIONS.excludePatterns,
+    maxResults: maxResults ?? DEFAULT_SEARCH_OPTIONS.maxResults,
+    sortBy: sortBy ?? DEFAULT_SEARCH_OPTIONS.sortBy,
+    maxDepth: maxDepth ?? DEFAULT_SEARCH_OPTIONS.maxDepth,
+    maxFilesScanned: maxFilesScanned ?? DEFAULT_SEARCH_OPTIONS.maxFilesScanned,
+    timeoutMs: timeoutMs ?? DEFAULT_SEARCH_OPTIONS.timeoutMs,
+    baseNameMatch: baseNameMatch ?? DEFAULT_SEARCH_OPTIONS.baseNameMatch,
+    skipSymlinks: skipSymlinks ?? DEFAULT_SEARCH_OPTIONS.skipSymlinks,
+    includeHidden: includeHidden ?? DEFAULT_SEARCH_OPTIONS.includeHidden,
+  };
   const { excludePatterns: effectiveExclude, ...searchOptions } =
     effectiveOptions;
   const result = await searchFiles(searchBasePath, pattern, effectiveExclude, {

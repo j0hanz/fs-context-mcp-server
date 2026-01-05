@@ -71,14 +71,6 @@ export function validateLineRange(options: LineRangeOptions): LineRangeIssues {
   return issues;
 }
 
-export function buildLineRange(
-  lineStart: number | undefined,
-  lineEnd: number | undefined
-): { start: number; end: number } | undefined {
-  if (lineStart === undefined || lineEnd === undefined) return undefined;
-  return { start: lineStart, end: lineEnd };
-}
-
 export function assertLineRangeOptions(
   options: LineRangeOptions,
   pathLabel: string
