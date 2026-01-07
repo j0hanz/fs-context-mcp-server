@@ -6,8 +6,6 @@ import { buildMatcher, scanFileResolved } from './scan-file.js';
 import { getSearchWorkerPool } from './worker-pool-manager.js';
 import type { ScanTask, WorkerScanResult } from './worker-pool.js';
 
-type PendingScan = ScanTask;
-
 function shouldStopOnSignalOrLimit(
   signal: AbortSignal,
   matchesCount: number,
@@ -27,18 +25,6 @@ function shouldStopOnSignalOrLimit(
   return false;
 }
 
-function applyOutcome(
-  result: Pick<
-    WorkerScanResult,
-    'matched' | 'skippedTooLarge' | 'skippedBinary'
-  >,
-  summary: ScanSummary
-): void {
-  if (result.skippedTooLarge) summary.skippedTooLarge++;
-  if (result.skippedBinary) summary.skippedBinary++;
-  if (result.matched) summary.filesMatched++;
-}
-
 export async function scanFilesSequential(
   files: AsyncIterable<ResolvedFile>,
   pattern: string,
@@ -50,14 +36,12 @@ export async function scanFilesSequential(
 ): Promise<ContentMatch[]> {
   const matcher = buildMatcher(pattern, matcherOptions);
   const matches: ContentMatch[] = [];
-
   for await (const file of files) {
     if (
       shouldStopOnSignalOrLimit(signal, matches.length, maxResults, summary)
     ) {
       break;
     }
-
     try {
       const remaining = maxResults - matches.length;
       const result = await scanFileResolved(
@@ -68,7 +52,9 @@ export async function scanFilesSequential(
         signal,
         remaining
       );
-      applyOutcome(result, summary);
+      if (result.skippedTooLarge) summary.skippedTooLarge++;
+      if (result.skippedBinary) summary.skippedBinary++;
+      if (result.matched) summary.filesMatched++;
       if (result.matches.length > 0 && remaining > 0) {
         matches.push(...result.matches.slice(0, remaining));
       }
@@ -76,7 +62,6 @@ export async function scanFilesSequential(
       summary.skippedInaccessible++;
     }
   }
-
   return matches;
 }
 
@@ -91,12 +76,11 @@ export async function scanFilesParallel(
 ): Promise<ContentMatch[]> {
   const pool = getSearchWorkerPool(SEARCH_WORKERS);
   const matches: ContentMatch[] = [];
-  const inFlight = new Set<PendingScan>();
+  const inFlight = new Set<ScanTask>();
   const iterator = files[Symbol.asyncIterator]();
   let done = false;
   let stoppedEarly = false;
   const maxInFlight = Math.min(SEARCH_WORKERS, Math.max(1, maxResults));
-
   const cancelInFlight = (): void => {
     for (const task of inFlight) {
       task.cancel();
@@ -104,9 +88,8 @@ export async function scanFilesParallel(
     }
     inFlight.clear();
   };
-
   const handleOutcome = (outcome: {
-    task: PendingScan;
+    task: ScanTask;
     result?: WorkerScanResult;
     error?: Error;
   }): void => {
@@ -120,8 +103,9 @@ export async function scanFilesParallel(
     }
     const { result } = outcome;
     if (!result) return;
-
-    applyOutcome(result, summary);
+    if (result.skippedTooLarge) summary.skippedTooLarge++;
+    if (result.skippedBinary) summary.skippedBinary++;
+    if (result.matched) summary.filesMatched++;
     if (result.matches.length > 0) {
       const remaining = maxResults - matches.length;
       if (remaining <= 0) {
@@ -136,9 +120,8 @@ export async function scanFilesParallel(
       }
     }
   };
-
   const awaitNext = async (): Promise<{
-    task: PendingScan;
+    task: ScanTask;
     result?: WorkerScanResult;
     error?: Error;
   }> => {
@@ -153,7 +136,6 @@ export async function scanFilesParallel(
     );
     return await Promise.race(races);
   };
-
   const enqueue = async (): Promise<void> => {
     while (!done && inFlight.size < maxInFlight) {
       if (
@@ -164,13 +146,11 @@ export async function scanFilesParallel(
         cancelInFlight();
         return;
       }
-
       const next = await iterator.next();
       if (next.done) {
         done = true;
         break;
       }
-
       const remaining = Math.max(1, maxResults - matches.length);
       const task = pool.scan({
         resolvedPath: next.value.resolvedPath,
@@ -183,7 +163,6 @@ export async function scanFilesParallel(
       inFlight.add(task);
     }
   };
-
   const onAbort = (): void => {
     stoppedEarly = true;
     summary.truncated = true;
@@ -191,10 +170,8 @@ export async function scanFilesParallel(
     cancelInFlight();
   };
   signal.addEventListener('abort', onAbort, { once: true });
-
   try {
     await enqueue();
-
     while (inFlight.size > 0) {
       if (
         shouldStopOnSignalOrLimit(signal, matches.length, maxResults, summary)
@@ -203,7 +180,6 @@ export async function scanFilesParallel(
         cancelInFlight();
         break;
       }
-
       handleOutcome(await awaitNext());
       if (
         shouldStopOnSignalOrLimit(signal, matches.length, maxResults, summary)
@@ -212,10 +188,8 @@ export async function scanFilesParallel(
         cancelInFlight();
         break;
       }
-
       await enqueue();
     }
-
     if (stoppedEarly) {
       cancelInFlight();
       await iterator.return?.();
@@ -223,6 +197,5 @@ export async function scanFilesParallel(
   } finally {
     signal.removeEventListener('abort', onAbort);
   }
-
   return matches;
 }

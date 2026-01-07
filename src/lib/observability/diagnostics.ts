@@ -88,12 +88,6 @@ function normalizePathForDiagnostics(path: string): string | undefined {
   return hashPath(path);
 }
 
-function resolveDiagnosticsPath(options?: {
-  path?: string;
-}): string | undefined {
-  return options?.path ? normalizePathForDiagnostics(options.path) : undefined;
-}
-
 function normalizeOpsTraceContext(context: OpsTraceContext): OpsTraceContext {
   if (!context.path) return context;
   return {
@@ -102,21 +96,14 @@ function normalizeOpsTraceContext(context: OpsTraceContext): OpsTraceContext {
   };
 }
 
-function resolveDurationMsFrom(startNs: bigint, endNs: bigint): number {
-  return Number(endNs - startNs) / 1_000_000;
-}
-
-function resolvePrimitiveErrorMessage(error: unknown): string | undefined {
+function resolveDiagnosticsErrorMessage(error?: unknown): string | undefined {
+  if (error === undefined || error === null) return undefined;
   if (typeof error === 'string') return error;
   if (typeof error === 'number' || typeof error === 'boolean') {
     return String(error);
   }
   if (typeof error === 'bigint') return error.toString();
   if (typeof error === 'symbol') return error.description ?? 'symbol';
-  return undefined;
-}
-
-function resolveObjectErrorMessage(error: unknown): string | undefined {
   if (error instanceof Error) return error.message;
   if (isObject(error) && typeof error.message === 'string') {
     return error.message;
@@ -128,18 +115,11 @@ function resolveObjectErrorMessage(error: unknown): string | undefined {
   }
 }
 
-function resolveDiagnosticsErrorMessage(error?: unknown): string | undefined {
-  if (!error) return undefined;
-  return (
-    resolvePrimitiveErrorMessage(error) ?? resolveObjectErrorMessage(error)
-  );
-}
-
 function publishStartEvent(tool: string, options?: { path?: string }): void {
   TOOL_CHANNEL.publish({
     phase: 'start',
     tool,
-    path: resolveDiagnosticsPath(options),
+    path: options?.path ? normalizePathForDiagnostics(options.path) : undefined,
   } satisfies ToolDiagnosticsEvent);
 }
 
@@ -222,7 +202,7 @@ export async function withToolDiagnostics<T>(
   try {
     const result = await run();
     const endNs = process.hrtime.bigint();
-    const durationMs = resolveDurationMsFrom(startNs, endNs);
+    const durationMs = Number(endNs - startNs) / 1_000_000;
     if (shouldPublishPerf && eluStart) {
       publishPerfEndEvent(tool, durationMs, diffEventLoopUtilization(eluStart));
     }
@@ -232,7 +212,7 @@ export async function withToolDiagnostics<T>(
     return result;
   } catch (error: unknown) {
     const endNs = process.hrtime.bigint();
-    const durationMs = resolveDurationMsFrom(startNs, endNs);
+    const durationMs = Number(endNs - startNs) / 1_000_000;
     if (shouldPublishPerf && eluStart) {
       publishPerfEndEvent(tool, durationMs, diffEventLoopUtilization(eluStart));
     }

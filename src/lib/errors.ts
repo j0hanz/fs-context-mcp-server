@@ -12,11 +12,10 @@ interface DetailedError {
 }
 
 export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return (
-    error instanceof Error &&
-    'code' in error &&
-    typeof (error as NodeJS.ErrnoException).code === 'string'
-  );
+  if (!(error instanceof Error)) return false;
+  if (!('code' in error)) return false;
+  const { code } = error as { code?: unknown };
+  return typeof code === 'string';
 }
 
 const NODE_ERROR_CODE_MAP = {

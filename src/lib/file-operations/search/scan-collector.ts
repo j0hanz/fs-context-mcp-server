@@ -129,25 +129,3 @@ export function collectFilesStream(
     summary,
   };
 }
-
-/**
- * Collect file entries for scanning, up to the configured limits.
- */
-export async function collectFiles(
-  root: string,
-  opts: ResolvedOptions,
-  allowedDirs: readonly string[],
-  signal: AbortSignal
-): Promise<{ files: ResolvedFile[]; summary: ScanSummary }> {
-  const { stream, summary } = collectFilesStream(
-    root,
-    opts,
-    allowedDirs,
-    signal
-  );
-  const files: ResolvedFile[] = [];
-  for await (const file of stream) {
-    files.push(file);
-  }
-  return { files, summary };
-}

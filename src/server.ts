@@ -63,14 +63,16 @@ type ToolErrorBuilder = (errorMessage: string) => {
 };
 
 function patchToolErrorHandling(server: McpServer): void {
-  const mutableServer = server as unknown as {
-    createToolError: ToolErrorBuilder;
-  };
-  mutableServer.createToolError = (errorMessage: string) => {
+  const createToolError: ToolErrorBuilder = (errorMessage: string) => {
     const code = resolveToolErrorCode(errorMessage);
     const error = new McpError(code, errorMessage);
     return buildToolErrorResponse(error, code);
   };
+  Object.defineProperty(server, 'createToolError', {
+    value: createToolError,
+    configurable: true,
+    writable: true,
+  });
 }
 
 export function createServer(options: ServerOptions = {}): McpServer {
