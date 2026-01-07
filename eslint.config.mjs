@@ -1,5 +1,6 @@
 import eslint from '@eslint/js';
 import eslintConfigPrettier from 'eslint-config-prettier';
+import sonarjs from 'eslint-plugin-sonarjs';
 import unusedImports from 'eslint-plugin-unused-imports';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
@@ -9,7 +10,8 @@ export default defineConfig(
     ignores: ['dist', 'node_modules', '*.config.mjs', '*.config.js'],
   },
 
-  eslint.configs.recommended,
+    eslint.configs.recommended,
+    sonarjs.configs.recommended,
 
   {
     files: ['src/**/*.ts'],
