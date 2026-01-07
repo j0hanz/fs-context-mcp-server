@@ -54,3 +54,4 @@ coverage/
 # Local reports
 .jscpd/
 reports/
+metrics/
