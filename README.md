@@ -118,27 +118,17 @@ Notes:
 
 ## Configuration
 
-All configuration is optional. Values are integers unless noted. Sizes are in bytes, timeouts in milliseconds.
+All configuration is optional. Sizes in bytes, timeouts in milliseconds.
 
 ### Environment Variables
 
-| Variable                            | Default                 | Range       | Description                                                                    |
-| ----------------------------------- | ----------------------- | ----------- | ------------------------------------------------------------------------------ |
-| `UV_THREADPOOL_SIZE`                | (unset)                 | 1-1024      | libuv threadpool size. If set, caps parallelism.                               |
-| `FILESYSTEM_CONTEXT_CONCURRENCY`    | Auto (2x cores, cap 50) | 1-100       | Parallel file operations. Further capped by `UV_THREADPOOL_SIZE`               |
-| `FILESYSTEM_CONTEXT_SEARCH_WORKERS` | 0 (disabled)            | 0-32        | Worker-thread offload for `search_content` (uses one worker per search)        |
-| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                  | n/a         | Glob engine: `auto`, `fast-glob`, or `node`/`node:fs`                          |
-| `MAX_FILE_SIZE`                     | 10MB                    | 1MB-100MB   | Max text file size (`read_file`, `read_multiple_files`)                        |
-| `MAX_SEARCH_SIZE`                   | 1MB                     | 100KB-10MB  | Max file size for content search (`search_content`)                            |
-| `DEFAULT_DEPTH`                     | 10                      | 1-100       | Default max depth (`list_directory`, `search_files`)                           |
-| `DEFAULT_RESULTS`                   | 100                     | 10-10000    | Default max results (`search_files`, `search_content`)                         |
-| `DEFAULT_LIST_MAX_ENTRIES`          | 10000                   | 100-100000  | Default max entries (`list_directory`)                                         |
-| `DEFAULT_SEARCH_MAX_FILES`          | 20000                   | 100-100000  | Default max files scanned (`search_files`, `search_content`)                   |
-| `DEFAULT_SEARCH_TIMEOUT`            | 30000                   | 100-3600000 | Default operation timeout (`list_directory`, `search_files`, `search_content`) |
+| Variable                 | Default | Description                                               |
+| ------------------------ | ------- | --------------------------------------------------------- |
+| `MAX_FILE_SIZE`          | 10MB    | Max file size for read operations (range: 1MB-100MB)      |
+| `MAX_SEARCH_SIZE`        | 1MB     | Max file size for content search (range: 100KB-10MB)      |
+| `DEFAULT_SEARCH_TIMEOUT` | 30000   | Timeout for search/list operations (range: 100-3600000ms) |
 
-Note: `FILESYSTEM_CONTEXT_GLOB_ENGINE` is a string. `auto` uses Node's glob when options allow, otherwise it falls back to `fast-glob`.
-
-See [CONFIGURATION.md](CONFIGURATION.md) for profiles and examples.
+See [CONFIGURATION.md](CONFIGURATION.md) for examples and CLI usage.
 
 ## Tools
 

@@ -34,18 +34,9 @@ type GlobEngine = 'fast-glob' | 'node';
 
 type FastGlobEntry = fg.Entry;
 
-const RAW_GLOB_ENGINE =
-  process.env.FILESYSTEM_CONTEXT_GLOB_ENGINE?.toLowerCase() ?? 'auto';
-
 function resolveGlobEngine(options: GlobEntriesOptions): GlobEngine {
-  if (RAW_GLOB_ENGINE === 'fast-glob') return 'fast-glob';
-  if (RAW_GLOB_ENGINE === 'node' || RAW_GLOB_ENGINE === 'node:fs') {
-    return canUseNodeGlob(options) ? 'node' : 'fast-glob';
-  }
-  if (RAW_GLOB_ENGINE === 'auto') {
-    return canUseNodeGlob(options) ? 'node' : 'fast-glob';
-  }
-  return 'fast-glob';
+  // Auto behavior: prefer node glob when compatible, fall back to fast-glob
+  return canUseNodeGlob(options) ? 'node' : 'fast-glob';
 }
 
 function canUseNodeGlob(options: GlobEntriesOptions): boolean {

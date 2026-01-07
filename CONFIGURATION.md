@@ -1,6 +1,6 @@
 # Configuration Guide
 
-Environment variables for tuning performance and resource limits. All variables are optional. Defaults work for most use cases.
+All configuration is optional. Defaults work for most use cases.
 
 ## Directory Access
 
@@ -14,49 +14,13 @@ Environment variables for tuning performance and resource limits. All variables 
 
 ## Environment Variables
 
-Values are integers unless otherwise noted. Sizes are in bytes, timeouts are in
-milliseconds. Invalid integer values emit a warning and fall back to defaults
-(or are ignored for `UV_THREADPOOL_SIZE`). String options like
-`FILESYSTEM_CONTEXT_GLOB_ENGINE` fall back silently to `auto` behavior.
+All optional. Sizes in bytes, timeouts in milliseconds.
 
-### Performance and Concurrency
-
-| Variable                            | Default                     | Range  | Description                                                                                                                                       | Increase For                  | Decrease For            |
-| ----------------------------------- | --------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------- |
-| `UV_THREADPOOL_SIZE`                | (unset)                     | 1-1024 | libuv threadpool size (set before start). Caps parallelism.                                                                                       | Heavy fs/crypto load          | Memory-constrained      |
-| `FILESYSTEM_CONTEXT_CONCURRENCY`    | Auto (cores, min 4, cap 32) | 1-100  | Parallel file operations (further capped by `UV_THREADPOOL_SIZE`)                                                                                 | SSDs, many CPU cores          | HDDs, shared systems    |
-| `FILESYSTEM_CONTEXT_SEARCH_WORKERS` | 0 (disabled)                | 0-32   | Worker-thread offload for `search_content` (enabled when > 0; currently uses a single worker per search; capped to cores - 1, min 1 when enabled) | Large regex searches          | Small repos, low memory |
-| `FILESYSTEM_CONTEXT_GLOB_ENGINE`    | `auto`                      | n/a    | Glob implementation (`auto`, `fast-glob`, or `node`/`node:fs`). Auto-falls back to `fast-glob` when options require unsupported features.         | Reduce deps (if parity is OK) | Maximum feature parity  |
-
-> Note: `UV_THREADPOOL_SIZE` must be set before the process starts.
-
-### File Size Limits
-
-| Variable          | Default | Range      | Applies To                         | Increase For       | Decrease For      |
-| ----------------- | ------- | ---------- | ---------------------------------- | ------------------ | ----------------- |
-| `MAX_FILE_SIZE`   | 10MB    | 1MB-100MB  | `read_file`, `read_multiple_files` | Large logs/data    | Low memory        |
-| `MAX_SEARCH_SIZE` | 1MB     | 100KB-10MB | `search_content`                   | Large source files | Performance focus |
-
-`MAX_FILE_SIZE` is a hard cap for read tools; per-request `maxSize` values are
-clamped. `MAX_SEARCH_SIZE` sets the default `maxFileSize` for content search
-and can be overridden per request (up to 100MB). `read_multiple_files`
-enforces `maxTotalSize` (default 100MB, max 1GB).
-
-### Default Operation Limits
-
-| Variable                   | Default | Range       | Applies To                                         |
-| -------------------------- | ------- | ----------- | -------------------------------------------------- |
-| `DEFAULT_DEPTH`            | `10`    | 1-100       | `list_directory`, `search_files`                   |
-| `DEFAULT_RESULTS`          | `100`   | 10-10000    | `search_files`, `search_content`                   |
-| `DEFAULT_LIST_MAX_ENTRIES` | `10000` | 100-100000  | `list_directory`                                   |
-| `DEFAULT_SEARCH_MAX_FILES` | `20000` | 100-100000  | `search_files`, `search_content`                   |
-| `DEFAULT_SEARCH_TIMEOUT`   | `30000` | 100-3600000 | `list_directory`, `search_files`, `search_content` |
-
-Defaults apply when tool parameters are omitted. Tool-level `maxDepth` can be
-set to `0` to restrict listing/searching to the base directory, even though
-`DEFAULT_DEPTH` is constrained to 1-100. `read_file`, `read_multiple_files`,
-`get_file_info`, and `get_multiple_file_info` use fixed 30s timeouts (not
-configurable via env).
+| Variable                 | Default | Description                                               |
+| ------------------------ | ------- | --------------------------------------------------------- |
+| `MAX_FILE_SIZE`          | 10MB    | Max file size for read operations (range: 1MB-100MB)      |
+| `MAX_SEARCH_SIZE`        | 1MB     | Max file size for content search (range: 100KB-10MB)      |
+| `DEFAULT_SEARCH_TIMEOUT` | 30000   | Timeout for search/list operations (range: 100-3600000ms) |
 
 ## Configuration Examples
 
@@ -90,9 +54,7 @@ configurable via env).
         "${workspaceFolder}"
       ],
       "env": {
-        "FILESYSTEM_CONTEXT_CONCURRENCY": "30",
         "MAX_FILE_SIZE": "20971520",
-        "MAX_SEARCH_SIZE": "2097152",
         "DEFAULT_SEARCH_TIMEOUT": "60000"
       }
     }
@@ -118,56 +80,13 @@ configurable via env).
 }
 ```
 
-## Use Case Profiles
-
-**High-Performance Workstation**
-
-```json
-{
-  "env": {
-    "FILESYSTEM_CONTEXT_CONCURRENCY": "40",
-    "MAX_FILE_SIZE": "20971520",
-    "MAX_SEARCH_SIZE": "2097152",
-    "DEFAULT_SEARCH_MAX_FILES": "40000"
-  }
-}
-```
-
-_Use for: Fast SSD, many CPU cores, large repositories_
-
-**CI/CD Pipeline**
-
-```json
-{
-  "env": {
-    "FILESYSTEM_CONTEXT_CONCURRENCY": "10",
-    "MAX_SEARCH_SIZE": "524288"
-  }
-}
-```
-
-_Use for: Fast execution, minimal resources_
-
-**Resource-Constrained**
-
-```json
-{
-  "env": {
-    "FILESYSTEM_CONTEXT_CONCURRENCY": "5",
-    "MAX_FILE_SIZE": "5242880"
-  }
-}
-```
-
-_Use for: Containers, shared servers, slow disks_
-
 ## Troubleshooting
 
 | Issue                            | Solution                                 |
 | -------------------------------- | ---------------------------------------- |
 | Invalid regex or pattern         | Simplify pattern or set `isLiteral=true` |
 | Environment variable not applied | Restart client, verify JSON syntax       |
-| Invalid value warning            | Check range limits in tables above       |
+| Invalid value warning            | Check range limits in the table above    |
 
 ## Command Line Arguments
 

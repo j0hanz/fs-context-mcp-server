@@ -1,5 +1,4 @@
 import type { SearchContentResult } from '../../../config/types.js';
-import { SEARCH_WORKERS } from '../../constants.js';
 import { createTimedAbortSignal } from '../../fs-helpers.js';
 import { normalizePath } from '../../path-utils.js';
 import {
@@ -10,13 +9,8 @@ import {
   validateExistingPathDetailed,
 } from '../../path-validation.js';
 import { globEntries } from '../glob-engine.js';
-import {
-  buildWorkerOptions,
-  mergeOptions,
-  type SearchContentOptions,
-} from './options.js';
+import { mergeOptions, type SearchContentOptions } from './options.js';
 import { buildMatcher, scanFileResolved } from './scan-file.js';
-import { createSearchWorker } from './worker-client.js';
 
 function resolveNonSymlinkPath(
   entryPath: string,
@@ -41,9 +35,6 @@ export async function searchContent(
   );
   const root = await validateExistingDirectory(basePath, signal);
   const matcher = buildMatcher(pattern, opts);
-  const useWorkers = SEARCH_WORKERS > 0;
-  const worker = useWorkers ? createSearchWorker() : undefined;
-  const workerOptions = useWorkers ? buildWorkerOptions(opts) : undefined;
   const allowedDirs = getAllowedDirectories();
 
   let filesScanned = 0;
@@ -95,25 +86,14 @@ export async function searchContent(
         const { resolvedPath, requestedPath } = entry.dirent.isSymbolicLink()
           ? await validateExistingPathDetailed(entry.path, signal)
           : resolveNonSymlinkPath(entry.path, allowedDirs);
-        const scanResult = worker
-          ? await worker.scan(
-              {
-                resolvedPath,
-                requestedPath,
-                pattern,
-                options: workerOptions ?? buildWorkerOptions(opts),
-                maxMatches: remaining,
-              },
-              signal
-            )
-          : await scanFileResolved(
-              resolvedPath,
-              requestedPath,
-              matcher,
-              opts,
-              signal,
-              remaining
-            );
+        const scanResult = await scanFileResolved(
+          resolvedPath,
+          requestedPath,
+          matcher,
+          opts,
+          signal,
+          remaining
+        );
 
         if (scanResult.skippedTooLarge) {
           skippedTooLarge++;
@@ -156,9 +136,6 @@ export async function searchContent(
       },
     };
   } finally {
-    if (worker) {
-      await worker.close().catch(() => undefined);
-    }
     cleanup();
   }
 }
