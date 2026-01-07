@@ -3,6 +3,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import {
+  DEFAULT_EXCLUDE_PATTERNS,
   DEFAULT_SEARCH_MAX_FILES,
   DEFAULT_SEARCH_TIMEOUT_MS,
   MAX_SEARCHABLE_FILE_SIZE,
@@ -11,6 +12,7 @@ import { ErrorCode } from '../lib/errors.js';
 import { searchContent } from '../lib/file-operations/search/engine.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers/abort.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
+import { getAllowedDirectories } from '../lib/path-validation/allowed-directories.js';
 import {
   SearchContentInputSchema,
   SearchContentOutputSchema,
@@ -30,41 +32,40 @@ import {
 type SearchContentArgs = z.infer<typeof SearchContentInputSchema>;
 type SearchContentStructuredResult = z.infer<typeof SearchContentOutputSchema>;
 
+function resolvePathOrRoot(path: string | undefined): string {
+  if (path && path.trim().length > 0) return path;
+  const firstRoot = getAllowedDirectories()[0];
+  if (!firstRoot) {
+    throw new Error('No workspace roots configured. Use roots to check.');
+  }
+  return firstRoot;
+}
+
 async function handleSearchContent(
   args: SearchContentArgs,
   signal?: AbortSignal
 ): Promise<ToolResponse<SearchContentStructuredResult>> {
-  // User-provided options
-  const userOptions = {
-    filePattern: args.filePattern,
-    excludePatterns: args.excludePatterns,
-    caseSensitive: args.caseSensitive,
-    maxResults: args.maxResults,
-    isLiteral: args.isLiteral,
-  };
-
-  // Hardcode removed parameters with sensible defaults
+  const basePath = resolvePathOrRoot(args.path);
   const fullOptions = {
-    ...userOptions,
-    contextLines: args.contextLines,
+    filePattern: args.filePattern,
+    excludePatterns: args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS,
+    caseSensitive: false,
+    isLiteral: true,
+    contextLines: 0,
     maxFileSize: MAX_SEARCHABLE_FILE_SIZE,
     maxFilesScanned: DEFAULT_SEARCH_MAX_FILES,
     timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
     skipBinary: true,
-    includeHidden: false,
+    includeHidden: args.includeIgnored,
     wholeWord: false,
     baseNameMatch: false,
     caseSensitiveFileMatch: true,
     signal,
   };
 
-  const result = await searchContent(args.path, args.pattern, fullOptions);
+  const result = await searchContent(basePath, args.pattern, fullOptions);
 
   const structured = buildStructuredResult(result);
-  structured.effectiveOptions = {
-    ...userOptions,
-    contextLines: args.contextLines,
-  };
 
   return buildToolResponse(buildTextResult(result), structured);
 }
@@ -72,11 +73,9 @@ async function handleSearchContent(
 const SEARCH_CONTENT_TOOL = {
   title: 'Search Content',
   description:
-    'Search for text patterns within file contents using regular expressions (grep-like). ' +
-    'Returns matching lines with optional context lines before and after (default 2, configurable 0-10). ' +
-    'Use isLiteral=true for exact string matching. ' +
-    'Filter files with filePattern glob (e.g., "**/*.ts" for TypeScript only). ' +
-    'excludePatterns defaults to common dependency/build dirs (pass [] to disable).',
+    'Search for text within file contents (grep-like). ' +
+    'Returns matching lines. ' +
+    'Use includeIgnored=true to search in node_modules/dist for debugging.',
   inputSchema: SearchContentInputSchema,
   outputSchema: SearchContentOutputSchema,
   annotations: {
@@ -92,7 +91,7 @@ export function registerSearchContentTool(server: McpServer): void {
     extra: { signal: AbortSignal }
   ): Promise<ToolResult<SearchContentStructuredResult>> =>
     withToolDiagnostics(
-      'search_content',
+      'grep',
       () =>
         withToolErrorHandling(
           async () => {
@@ -107,10 +106,10 @@ export function registerSearchContentTool(server: McpServer): void {
             }
           },
           (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
+            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
         ),
-      { path: args.path }
+      { path: args.path ?? '.' }
     );
 
-  server.registerTool('search_content', SEARCH_CONTENT_TOOL, handler);
+  server.registerTool('grep', SEARCH_CONTENT_TOOL, handler);
 }

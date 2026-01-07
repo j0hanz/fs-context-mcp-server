@@ -49,9 +49,7 @@ await it('publishes tool diagnostics events when enabled', async () => {
       (value): value is { tool?: unknown; phase?: unknown } =>
         typeof value === 'object' && value !== null
     );
-    const toolEvents = events.filter(
-      (event) => event.tool === 'list_allowed_directories'
-    );
+    const toolEvents = events.filter((event) => event.tool === 'roots');
 
     assert.ok(toolEvents.length >= 2);
     assert.ok(toolEvents.some((event) => event.phase === 'start'));

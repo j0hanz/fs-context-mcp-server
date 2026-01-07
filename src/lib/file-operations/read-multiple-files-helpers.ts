@@ -6,18 +6,14 @@ import {
   readFile,
   readFileWithStats,
 } from '../fs-helpers/readers/read-file.js';
-import { assertLineRangeOptions } from '../line-range.js';
 
 export interface ReadMultipleResult {
   path: string;
   content?: string;
   truncated?: boolean;
   totalLines?: number;
-  readMode?: 'full' | 'head' | 'tail' | 'lineRange';
-  lineStart?: number;
-  lineEnd?: number;
+  readMode?: 'full' | 'head';
   head?: number;
-  tail?: number;
   linesRead?: number;
   hasMoreLines?: boolean;
   error?: string;
@@ -27,9 +23,7 @@ export interface NormalizedReadMultipleOptions {
   encoding: BufferEncoding;
   maxSize: number;
   maxTotalSize: number;
-  lineRange?: { start: number; end: number };
   head?: number;
-  tail?: number;
 }
 
 export interface ReadMultipleOptions {
@@ -37,9 +31,6 @@ export interface ReadMultipleOptions {
   maxSize?: number;
   maxTotalSize?: number;
   head?: number;
-  tail?: number;
-  lineStart?: number;
-  lineEnd?: number;
   signal?: AbortSignal;
 }
 
@@ -54,15 +45,11 @@ function buildReadOptions(options: NormalizedReadMultipleOptions): {
   encoding: BufferEncoding;
   maxSize: number;
   head?: number;
-  tail?: number;
-  lineRange?: { start: number; end: number };
 } {
   return {
     encoding: options.encoding,
     maxSize: options.maxSize,
     head: options.head,
-    tail: options.tail,
-    lineRange: options.lineRange,
   };
 }
 
@@ -86,10 +73,7 @@ async function readSingleFile(
       truncated: result.truncated,
       totalLines: result.totalLines,
       readMode: result.readMode,
-      lineStart: result.lineStart,
-      lineEnd: result.lineEnd,
       head: result.head,
-      tail: result.tail,
       linesRead: result.linesRead,
       hasMoreLines: result.hasMoreLines,
     },
@@ -97,11 +81,7 @@ async function readSingleFile(
 }
 
 export function isPartialRead(options: NormalizedReadMultipleOptions): boolean {
-  return (
-    options.lineRange !== undefined ||
-    options.head !== undefined ||
-    options.tail !== undefined
-  );
+  return options.head !== undefined;
 }
 
 export async function readFilesInParallel(
@@ -121,22 +101,8 @@ export async function readFilesInParallel(
 }
 
 function normalizeReadMultipleOptions(
-  options: ReadMultipleOptions,
-  pathLabel: string
+  options: ReadMultipleOptions
 ): NormalizedReadMultipleOptions {
-  assertLineRangeOptions(
-    {
-      lineStart: options.lineStart,
-      lineEnd: options.lineEnd,
-      head: options.head,
-      tail: options.tail,
-    },
-    pathLabel
-  );
-  const lineRange =
-    options.lineStart !== undefined && options.lineEnd !== undefined
-      ? { start: options.lineStart, end: options.lineEnd }
-      : undefined;
   return {
     encoding: options.encoding ?? 'utf-8',
     maxSize: Math.min(
@@ -144,20 +110,17 @@ function normalizeReadMultipleOptions(
       MAX_TEXT_FILE_SIZE
     ),
     maxTotalSize: options.maxTotalSize ?? 100 * 1024 * 1024,
-    lineRange,
     head: options.head,
-    tail: options.tail,
   };
 }
 
 export function resolveNormalizedOptions(
-  filePaths: readonly string[],
+  _filePaths: readonly string[],
   options: ReadMultipleOptions
 ): { normalized: NormalizedReadMultipleOptions; signal?: AbortSignal } {
-  const pathLabel = filePaths[0] ?? '<paths>';
   const { signal, ...rest } = options;
   return {
-    normalized: normalizeReadMultipleOptions(rest, pathLabel),
+    normalized: normalizeReadMultipleOptions(rest),
     signal,
   };
 }

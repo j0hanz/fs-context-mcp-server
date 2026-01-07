@@ -23,25 +23,6 @@ function assertFileStats(filePath: string, stats: Stats): void {
   }
 }
 
-function assertSingleReadMode(
-  filePath: string,
-  normalized: NormalizedOptions
-): void {
-  const optionsCount = [
-    normalized.lineRange,
-    normalized.head,
-    normalized.tail,
-  ].filter(Boolean).length;
-
-  if (optionsCount > 1) {
-    throw new McpError(
-      ErrorCode.E_INVALID_INPUT,
-      'Cannot specify multiple of lineRange, head, or tail simultaneously',
-      filePath
-    );
-  }
-}
-
 async function readFileWithStatsInternal(
   filePath: string,
   validPath: string,
@@ -51,7 +32,6 @@ async function readFileWithStatsInternal(
   assertNotAborted(normalized.signal);
 
   assertFileStats(filePath, stats);
-  assertSingleReadMode(filePath, normalized);
 
   if (normalized.skipBinary) {
     await assertNotBinary(validPath, filePath, normalized);

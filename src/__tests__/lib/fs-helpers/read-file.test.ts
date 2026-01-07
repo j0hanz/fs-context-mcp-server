@@ -12,13 +12,14 @@ void describe('readFile', () => {
       assert.ok(result.content.includes('# Test Project'));
     });
 
-    void it('readFile reads specific line ranges', async () => {
+    void it('readFile reads first N lines with head parameter', async () => {
       const result = await readFile(path.join(getTestDir(), 'multiline.txt'), {
-        lineRange: { start: 1, end: 5 },
+        head: 5,
       });
       assert.ok(result.content.includes('Line 1'));
       assert.ok(result.content.includes('Line 5'));
       assert.strictEqual(result.truncated, true);
+      assert.strictEqual(result.readMode, 'head');
     });
 
     void it('readFile rejects non-files', async () => {

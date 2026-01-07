@@ -26,18 +26,6 @@ void describe('readMultipleFiles edge cases', () => {
       );
     });
 
-    void it('readMultipleFiles rejects line range with head/tail', async () => {
-      const filePath = path.join(getTestDir(), 'multiline.txt');
-      await assert.rejects(
-        readMultipleFiles([filePath], {
-          lineStart: 1,
-          lineEnd: 2,
-          head: 1,
-        }),
-        /Cannot specify multiple/
-      );
-    });
-
     void it('readMultipleFiles applies maxTotalSize per entry even with duplicates', async () => {
       const filePath = path.join(getTestDir(), 'big-duplicate.log');
       const largeContent = 'A'.repeat(50_000);

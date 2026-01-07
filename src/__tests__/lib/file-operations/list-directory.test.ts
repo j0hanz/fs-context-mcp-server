@@ -20,8 +20,8 @@ void describe('listDirectory', () => {
       );
     });
 
-    void it('listDirectory lists recursively when specified', async () => {
-      const result = await listDirectory(getTestDir(), { recursive: true });
+    void it('listDirectory lists with pattern for nested files', async () => {
+      const result = await listDirectory(getTestDir(), { pattern: '**/*' });
       assert.strictEqual(
         result.entries.some((e) => e.name === 'index.ts'),
         true

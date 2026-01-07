@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getFileInfo } from '../lib/file-operations/file-info.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers/abort.js';
@@ -69,13 +70,13 @@ export function registerGetFileInfoTool(server: McpServer): void {
     extra: { signal?: AbortSignal }
   ): Promise<ToolResult<GetFileInfoStructuredResult>> =>
     withToolDiagnostics(
-      'get_file_info',
+      'stat',
       () =>
         withToolErrorHandling(
           async () => {
             const { signal, cleanup } = createTimedAbortSignal(
               extra.signal,
-              30000
+              DEFAULT_SEARCH_TIMEOUT_MS
             );
             try {
               return await handleGetFileInfo(args, signal);
@@ -89,5 +90,5 @@ export function registerGetFileInfoTool(server: McpServer): void {
       { path: args.path }
     );
 
-  server.registerTool('get_file_info', GET_FILE_INFO_TOOL, handler);
+  server.registerTool('stat', GET_FILE_INFO_TOOL, handler);
 }

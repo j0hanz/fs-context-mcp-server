@@ -1,9 +1,11 @@
 import {
-  DEFAULT_MAX_RESULTS,
   DEFAULT_SEARCH_MAX_FILES,
   DEFAULT_SEARCH_TIMEOUT_MS,
   MAX_SEARCHABLE_FILE_SIZE,
 } from '../../constants.js';
+
+// Internal default for grep tool
+const INTERNAL_MAX_RESULTS = 500;
 
 interface SearchOptions {
   filePattern: string;
@@ -32,14 +34,14 @@ const DEFAULTS: SearchOptions = {
   filePattern: '**/*',
   excludePatterns: [],
   caseSensitive: false,
-  maxResults: DEFAULT_MAX_RESULTS,
+  maxResults: INTERNAL_MAX_RESULTS,
   maxFileSize: MAX_SEARCHABLE_FILE_SIZE,
   maxFilesScanned: DEFAULT_SEARCH_MAX_FILES,
   timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
   skipBinary: true,
   contextLines: 0,
   wholeWord: false,
-  isLiteral: false,
+  isLiteral: true,
   includeHidden: false,
   baseNameMatch: false,
   caseSensitiveFileMatch: true,

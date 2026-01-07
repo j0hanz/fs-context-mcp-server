@@ -8,12 +8,10 @@ import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('listDirectory edge cases', () => {
   withFileOpsFixture((getTestDir) => {
-    void it('listDirectory handles maxDepth=0', async () => {
-      const result = await listDirectory(getTestDir(), {
-        recursive: true,
-        maxDepth: 0,
-      });
-      assert.strictEqual(result.summary.maxDepthReached, 0);
+    void it('listDirectory is always shallow (maxDepth=1)', async () => {
+      const result = await listDirectory(getTestDir());
+      // list_directory is always shallow - maxDepthReached should be 1
+      assert.strictEqual(result.summary.maxDepthReached, 1);
     });
 
     void it('listDirectory handles empty directory', async () => {

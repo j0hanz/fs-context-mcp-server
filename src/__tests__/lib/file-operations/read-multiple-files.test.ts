@@ -40,7 +40,7 @@ void describe('readMultipleFiles', () => {
       assert.strictEqual(results[1]?.path, filePath);
     });
 
-    void it('readMultipleFiles enforces total size cap for head/tail reads', async () => {
+    void it('readMultipleFiles enforces total size cap for head reads', async () => {
       const big1 = path.join(getTestDir(), 'big1.log');
       const big2 = path.join(getTestDir(), 'big2.log');
       const largeContent = 'A'.repeat(50_000);
@@ -59,17 +59,17 @@ void describe('readMultipleFiles', () => {
       await Promise.all([fs.rm(big1), fs.rm(big2)]).catch(() => {});
     });
 
-    void it('readMultipleFiles supports line range reads', async () => {
+    void it('readMultipleFiles supports head parameter', async () => {
       const filePath = path.join(getTestDir(), 'multiline.txt');
       const results = await readMultipleFiles([filePath], {
-        lineStart: 2,
-        lineEnd: 4,
+        head: 5,
       });
 
-      const content = results[0]?.content ?? '';
-      assert.strictEqual(content.split('\n')[0], 'Line 2');
-      assert.strictEqual(content.split('\n')[2], 'Line 4');
-      assert.strictEqual(results[0]?.truncated, true);
+      const content = results[0].content ?? '';
+      assert.ok(content.includes('Line 1'));
+      assert.ok(content.includes('Line 5'));
+      assert.strictEqual(results[0].truncated, true);
+      assert.strictEqual(results[0].readMode, 'head');
     });
   });
 });

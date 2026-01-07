@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-import {
-  DEFAULT_EXCLUDE_PATTERNS,
-  DEFAULT_MAX_RESULTS,
-} from '../../lib/constants.js';
-
 function isSafeGlobPattern(value: string): boolean {
   if (value.length === 0) return false;
 
@@ -20,38 +15,14 @@ function isSafeGlobPattern(value: string): boolean {
   return true;
 }
 
-const ExcludePatternsSchema = z
-  .array(
-    z
-      .string()
-      .max(500, 'Individual exclude pattern is too long')
-      .refine((val) => !val.includes('**/**/**'), {
-        error: 'Pattern too deeply nested (max 2 levels of **)',
-      })
-  )
-  .max(100, 'Too many exclude patterns (max 100)')
-  .optional()
-  .default(DEFAULT_EXCLUDE_PATTERNS);
-
-const CaseSensitiveSchema = z
-  .boolean()
-  .optional()
-  .default(false)
-  .describe('Case sensitive search');
-
-const MaxResultsSchema = z
-  .int({ error: 'maxResults must be an integer' })
-  .min(1, 'maxResults must be at least 1')
-  .max(10000, 'maxResults cannot exceed 10,000')
-  .optional()
-  .default(DEFAULT_MAX_RESULTS)
-  .describe('Maximum number of results to return');
-
 export const SearchFilesInputSchema = z.strictObject({
   path: z
     .string()
-    .min(1, 'Path cannot be empty')
-    .describe('Base directory to search from'),
+    .optional()
+    .describe(
+      'Base directory to search from (leave empty for workspace root). ' +
+        'Examples: "src", "lib", "tests"'
+    ),
   pattern: z
     .string()
     .min(1, 'Pattern cannot be empty')
@@ -75,35 +46,22 @@ export const SearchFilesInputSchema = z.strictObject({
     .describe(
       'Glob pattern to match files. Examples: "**/*.ts" (all TypeScript files), "src/**/*.js" (JS files in src), "*.json" (JSON files in current dir)'
     ),
-  excludePatterns: ExcludePatternsSchema.describe('Patterns to exclude'),
-  maxResults: MaxResultsSchema.describe(
-    'Maximum number of matches to return (prevents huge responses)'
-  ),
 });
-
-const ContextLinesSchema = z
-  .int({ error: 'contextLines must be an integer' })
-  .min(0, 'contextLines must be at least 0')
-  .max(10, 'contextLines cannot exceed 10')
-  .optional()
-  .default(2)
-  .describe(
-    'Number of lines to include before and after each match (0-10, default 2)'
-  );
 
 export const SearchContentInputSchema = z.strictObject({
   path: z
     .string()
-    .min(1, 'Path cannot be empty')
+    .optional()
     .describe(
-      'Absolute or relative path to the base directory to search within'
+      'Base directory to search within (leave empty for workspace root). ' +
+        'Examples: "src", "lib", "tests"'
     ),
   pattern: z
     .string()
     .min(1, 'Pattern cannot be empty')
     .max(1000, 'Pattern is too long (max 1000 characters)')
     .describe(
-      'Regular expression pattern to search for. Examples: "TODO|FIXME" (find todos), "function\\s+\\w+" (find function declarations), "import.*from" (find imports). Use isLiteral=true for exact string matching.'
+      'Text to search for. Examples: "TODO", "console.log", "import React"'
     ),
   filePattern: z
     .string()
@@ -115,18 +73,15 @@ export const SearchContentInputSchema = z.strictObject({
       error:
         'File pattern must be relative to the base path (no absolute or ".." segments)',
     })
-    .describe('Glob pattern to filter files'),
-  excludePatterns: ExcludePatternsSchema.describe(
-    'Glob patterns to exclude (e.g., "node_modules/**")'
-  ),
-  caseSensitive: CaseSensitiveSchema,
-  maxResults: MaxResultsSchema.describe('Maximum number of results'),
-  contextLines: ContextLinesSchema,
-  isLiteral: z
+    .describe(
+      'Glob pattern to filter files. Examples: "**/*.ts", "src/**/*.js"'
+    ),
+  includeIgnored: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      'Treat pattern as a literal string instead of regex. Special characters like ., *, ? will be escaped automatically. Use this when searching for exact text containing regex metacharacters.'
+      'Include normally ignored directories (node_modules, dist, .git, etc). ' +
+        'Set to true when debugging in dependencies.'
     ),
 });

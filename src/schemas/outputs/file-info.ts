@@ -25,9 +25,6 @@ export const GetMultipleFileInfoOutputSchema = z.object({
       total: z.number(),
       succeeded: z.number(),
       failed: z.number(),
-      totalSize: z
-        .number()
-        .describe('Total size of all successfully read files'),
     })
     .optional(),
   error: ErrorSchema.optional(),

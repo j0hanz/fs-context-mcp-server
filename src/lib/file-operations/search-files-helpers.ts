@@ -1,8 +1,10 @@
 import {
-  DEFAULT_MAX_RESULTS,
   DEFAULT_SEARCH_MAX_FILES,
   DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../constants.js';
+
+// Internal default for find tool - not exposed to MCP users
+const INTERNAL_MAX_RESULTS = 1000;
 
 export interface SearchFilesOptions {
   maxResults?: number;
@@ -27,7 +29,7 @@ export function normalizeOptions(
   options: SearchFilesOptions
 ): NormalizedOptions {
   return {
-    maxResults: options.maxResults ?? DEFAULT_MAX_RESULTS,
+    maxResults: options.maxResults ?? INTERNAL_MAX_RESULTS,
     sortBy: options.sortBy ?? 'path',
     maxDepth: options.maxDepth,
     maxFilesScanned: options.maxFilesScanned ?? DEFAULT_SEARCH_MAX_FILES,

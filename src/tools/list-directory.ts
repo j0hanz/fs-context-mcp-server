@@ -1,5 +1,3 @@
-import * as pathModule from 'node:path';
-
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
@@ -13,6 +11,7 @@ import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations/list-directory.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers/abort.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
+import { getAllowedDirectories } from '../lib/path-validation/allowed-directories.js';
 import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
@@ -32,13 +31,23 @@ type ListDirectoryStructuredEntry = NonNullable<
   ListDirectoryStructuredResult['entries']
 >[number];
 
+function resolvePathOrRoot(path: string | undefined): string {
+  if (path && path.trim().length > 0) return path;
+  const roots = getAllowedDirectories();
+  const firstRoot = roots[0];
+  if (!firstRoot) {
+    throw new Error('No workspace roots configured. Use roots to check.');
+  }
+  return firstRoot;
+}
+
 const LIST_DIRECTORY_TOOL = {
   title: 'List Directory',
   description:
-    'List entries in a directory with optional recursion. ' +
-    'Returns name (basename), relative path, type (file/directory/symlink), size, and modified date. ' +
-    'Use recursive=true to traverse nested folders. ' +
-    'Use excludePatterns to skip paths. For filtered file searches, use search_files instead.',
+    'List the immediate contents of a directory (non-recursive). ' +
+    'Returns name, relative path, type (file/directory/symlink), size, and modified date. ' +
+    'Omit path to list the workspace root. ' +
+    'For recursive searches, use find instead.',
   inputSchema: ListDirectoryInputSchema,
   outputSchema: ListDirectoryOutputSchema,
   annotations: {
@@ -55,30 +64,8 @@ function buildStructuredEntry(
     name: entry.name,
     relativePath: entry.relativePath,
     type: entry.type,
-    extension:
-      entry.type === 'file'
-        ? pathModule.extname(entry.name).replace('.', '') || undefined
-        : undefined,
     size: entry.size,
     modified: entry.modified?.toISOString(),
-    symlinkTarget: entry.symlinkTarget,
-  };
-}
-
-function buildStructuredSummary(
-  summary: Awaited<ReturnType<typeof listDirectory>>['summary']
-): ListDirectoryStructuredResult['summary'] {
-  return {
-    totalEntries: summary.totalEntries,
-    totalFiles: summary.totalFiles,
-    totalDirectories: summary.totalDirectories,
-    maxDepthReached: summary.maxDepthReached,
-    truncated: summary.truncated,
-    stoppedReason: summary.stoppedReason,
-    skippedInaccessible: summary.skippedInaccessible,
-    symlinksNotFollowed: summary.symlinksNotFollowed,
-    entriesScanned: summary.entriesScanned,
-    entriesVisible: summary.entriesVisible,
   };
 }
 
@@ -90,24 +77,7 @@ function buildStructuredResult(
     ok: true,
     path,
     entries: entries.map(buildStructuredEntry),
-    summary: buildStructuredSummary(summary),
-  };
-}
-
-function buildListDirectoryOptions(
-  options: Omit<ListDirectoryArgs, 'path'>,
-  signal?: AbortSignal
-): Parameters<typeof listDirectory>[1] {
-  return {
-    ...options,
-    includeHidden: false,
-    maxDepth: DEFAULT_MAX_DEPTH,
-    maxEntries: DEFAULT_LIST_MAX_ENTRIES,
-    timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
-    sortBy: 'name' as const,
-    includeSymlinkTargets: false,
-    pattern: undefined, // No pattern filtering
-    signal,
+    totalEntries: summary.totalEntries,
   };
 }
 
@@ -115,19 +85,20 @@ async function handleListDirectory(
   args: ListDirectoryArgs,
   signal?: AbortSignal
 ): Promise<ToolResponse<ListDirectoryStructuredResult>> {
-  const { path: dirPath, ...options } = args;
-  // Hardcode removed parameters with sensible defaults
-  const result = await listDirectory(
-    dirPath,
-    buildListDirectoryOptions(options, signal)
+  const dirPath = resolvePathOrRoot(args.path);
+  const result = await listDirectory(dirPath, {
+    includeHidden: false,
+    maxDepth: DEFAULT_MAX_DEPTH,
+    maxEntries: DEFAULT_LIST_MAX_ENTRIES,
+    timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS,
+    sortBy: 'name',
+    includeSymlinkTargets: false,
+    signal,
+  });
+  return buildToolResponse(
+    buildTextResult(result),
+    buildStructuredResult(result)
   );
-  const structured = buildStructuredResult(result);
-  structured.effectiveOptions = {
-    recursive: options.recursive,
-    excludePatterns: [...options.excludePatterns],
-  };
-  const textOutput = buildTextResult(result);
-  return buildToolResponse(textOutput, structured);
 }
 
 export function registerListDirectoryTool(server: McpServer): void {
@@ -136,7 +107,7 @@ export function registerListDirectoryTool(server: McpServer): void {
     extra: { signal: AbortSignal }
   ): Promise<ToolResult<ListDirectoryStructuredResult>> =>
     withToolDiagnostics(
-      'list_directory',
+      'ls',
       () =>
         withToolErrorHandling(
           async () => {
@@ -151,10 +122,14 @@ export function registerListDirectoryTool(server: McpServer): void {
             }
           },
           (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, args.path)
+            buildToolErrorResponse(
+              error,
+              ErrorCode.E_NOT_DIRECTORY,
+              args.path ?? '.'
+            )
         ),
-      { path: args.path }
+      { path: args.path ?? '.' }
     );
 
-  server.registerTool('list_directory', LIST_DIRECTORY_TOOL, handler);
+  server.registerTool('ls', LIST_DIRECTORY_TOOL, handler);
 }

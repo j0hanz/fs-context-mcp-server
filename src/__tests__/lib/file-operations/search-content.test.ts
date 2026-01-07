@@ -102,21 +102,21 @@ void describe('searchContent', () => {
 
     void it('searchContent rejects unsafe regex pattern "(a+)+"', async () => {
       await assert.rejects(
-        searchContent(getTestDir(), '(a+)+'),
+        searchContent(getTestDir(), '(a+)+', { isLiteral: false }),
         /ReDoS|unsafe/i
       );
     });
 
     void it('searchContent rejects unsafe regex pattern "([a-zA-Z]+)*"', async () => {
       await assert.rejects(
-        searchContent(getTestDir(), '([a-zA-Z]+)*'),
+        searchContent(getTestDir(), '([a-zA-Z]+)*', { isLiteral: false }),
         /ReDoS|unsafe/i
       );
     });
 
     void it('searchContent rejects unsafe regex pattern "(.*a){25}"', async () => {
       await assert.rejects(
-        searchContent(getTestDir(), '(.*a){25}'),
+        searchContent(getTestDir(), '(.*a){25}', { isLiteral: false }),
         /ReDoS|unsafe/i
       );
     });

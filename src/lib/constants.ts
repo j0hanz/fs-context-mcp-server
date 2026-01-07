@@ -61,9 +61,8 @@ export const SEARCH_WORKERS = parseEnvInt(
   16
 );
 
-// Hardcoded defaults (use per-call tool params to override)
+// Hardcoded defaults
 export const DEFAULT_MAX_DEPTH = 10;
-export const DEFAULT_MAX_RESULTS = 100;
 export const DEFAULT_LIST_MAX_ENTRIES = 10000;
 export const DEFAULT_SEARCH_MAX_FILES = 20000;
 

@@ -18,7 +18,7 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 
 ## Features
 
-- Directory listing with recursive support
+- Directory listing (immediate contents)
 - Path search with glob patterns (files and directories)
 - Content search with regex and context lines
 - File reading with head/tail/line ranges
@@ -27,16 +27,16 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 
 ## When to Use
 
-| Task                            | Tool                       |
-| ------------------------------- | -------------------------- |
-| Explore project structure       | `list_directory`           |
-| Find files or directories       | `search_files`             |
-| Search for code patterns/text   | `search_content`           |
-| Read source code                | `read_file`                |
-| Batch read multiple files       | `read_multiple_files`      |
-| Get file metadata (size, dates) | `get_file_info`            |
-| Batch get file metadata         | `get_multiple_file_info`   |
-| Check available directories     | `list_allowed_directories` |
+| Task                            | Tool        |
+| ------------------------------- | ----------- |
+| Explore project structure       | `ls`        |
+| Find files or directories       | `find`      |
+| Search for code patterns/text   | `grep`      |
+| Read source code                | `read`      |
+| Batch read multiple files       | `read_many` |
+| Get file metadata (size, dates) | `stat`      |
+| Batch get file metadata         | `stat_many` |
+| Check available directories     | `roots`     |
 
 ## Quick Start
 
@@ -136,7 +136,7 @@ All tools return both human-readable text and structured JSON. Structured
 responses include `ok`, `error` (with `code`, `message`, `path`, `suggestion`),
 and `effectiveOptions`/`summary` fields where applicable.
 
-### `list_allowed_directories`
+### `roots`
 
 List all directories that this server can access.
 
@@ -149,18 +149,17 @@ count, and a configuration hint in structured output.
 
 ---
 
-### `list_directory`
+### `ls`
 
-List contents of a directory with optional recursion.
+List the immediate contents of a directory (non-recursive).
 
 | Parameter               | Type     | Required | Default | Description                                              |
 | ----------------------- | -------- | -------- | ------- | -------------------------------------------------------- |
 | `path`                  | string   | Yes      | -       | Directory path to list                                   |
-| `recursive`             | boolean  | No       | `false` | List subdirectories recursively                          |
 | `includeHidden`         | boolean  | No       | `false` | Include hidden files and directories                     |
 | `excludePatterns`       | string[] | No       | `[]`    | Glob patterns to exclude                                 |
 | `pattern`               | string   | No       | -       | Glob pattern to include (relative, no `..`)              |
-| `maxDepth`              | number   | No       | `10`    | Maximum depth for recursive listing (0-100)              |
+| `maxDepth`              | number   | No       | `10`    | Maximum depth when using pattern (0-100)                 |
 | `maxEntries`            | number   | No       | `10000` | Maximum entries to return (1-100000)                     |
 | `timeoutMs`             | number   | No       | `30000` | Timeout in milliseconds                                  |
 | `sortBy`                | string   | No       | `name`  | Sort by: `name`, `size`, `modified`, `type`              |
@@ -173,32 +172,24 @@ entriesVisible, skippedInaccessible, symlinksNotFollowed).
 
 ---
 
-### `search_files`
+### `find`
 
-Search for paths (files and directories) using glob patterns.
+Search for files using glob patterns. Automatically excludes common dependency/build
+directories (node_modules, dist, .git, etc.).
 
-| Parameter         | Type     | Required | Default               | Description                                                  |
-| ----------------- | -------- | -------- | --------------------- | ------------------------------------------------------------ |
-| `path`            | string   | Yes      | -                     | Base directory to search from                                |
-| `pattern`         | string   | Yes      | -                     | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`)                |
-| `excludePatterns` | string[] | No       | built-in exclude list | Glob patterns to exclude                                     |
-| `maxResults`      | number   | No       | `100`                 | Maximum matches to return (1-10000)                          |
-| `sortBy`          | string   | No       | `path`                | Sort by: `name`, `size`, `modified`, `path`                  |
-| `maxDepth`        | number   | No       | `10`                  | Maximum directory depth to search (0-100)                    |
-| `maxFilesScanned` | number   | No       | `20000`               | Maximum files to scan before stopping                        |
-| `timeoutMs`       | number   | No       | `30000`               | Timeout in milliseconds                                      |
-| `baseNameMatch`   | boolean  | No       | `false`               | Match patterns without slashes against basenames             |
-| `skipSymlinks`    | boolean  | No       | `true`                | Must remain true; symlink traversal is disabled for security |
-| `includeHidden`   | boolean  | No       | `false`               | Include hidden files and directories                         |
+| Parameter    | Type   | Required | Default | Description                                   |
+| ------------ | ------ | -------- | ------- | --------------------------------------------- |
+| `path`       | string | Yes      | -       | Base directory to search from                 |
+| `pattern`    | string | Yes      | -       | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`) |
+| `maxResults` | number | No       | `100`   | Maximum matches to return (1-10000)           |
 
 Returns: Matching paths with relative path, type, size, and modified date.
 Structured output includes `effectiveOptions` and a `summary` (matched,
 filesScanned, truncated/stoppedReason, skippedInaccessible).
-Directories may appear as type `other` in structured output.
 
 ---
 
-### `read_file`
+### `read`
 
 Read the contents of a text file.
 
@@ -223,7 +214,7 @@ totalLines, hasMoreLines, truncated, effectiveOptions).
 
 ---
 
-### `read_multiple_files`
+### `read_many`
 
 Read multiple files in parallel.
 
@@ -249,7 +240,7 @@ effectiveOptions.
 
 ---
 
-### `get_file_info`
+### `stat`
 
 Get detailed metadata about a file or directory.
 
@@ -262,7 +253,7 @@ permissions, isHidden, MIME type, and symlink target (if applicable).
 
 ---
 
-### `get_multiple_file_info`
+### `stat_many`
 
 Get metadata for multiple files/directories in parallel.
 
@@ -276,7 +267,7 @@ Returns: Array of file info with individual success/error status, plus summary
 
 ---
 
-### `search_content`
+### `grep`
 
 Search for text content within files using regular expressions.
 
@@ -494,15 +485,15 @@ node-tests/                # Isolated Node.js checks
 
 ## Troubleshooting
 
-| Issue                    | Solution                                                                                 |
-| ------------------------ | ---------------------------------------------------------------------------------------- |
-| "Access denied" error    | Ensure the path is within an allowed directory. Use `list_allowed_directories` to check. |
-| "Path does not exist"    | Verify the path exists. Use `list_directory` to explore available files.                 |
-| "File too large"         | Use `head`/`tail` or increase `maxSize`.                                                 |
-| "Binary file" warning    | Set `skipBinary=false` in `read_file` to read as text.                                   |
-| No directories available | Pass explicit paths, use `--allow-cwd`, or ensure the client provides MCP Roots.         |
-| Symlink blocked          | Symlinks that resolve outside allowed directories are blocked.                           |
-| Invalid regex/pattern    | Simplify the regex or set `isLiteral=true` for exact matches.                            |
+| Issue                    | Solution                                                                     |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| "Access denied" error    | Ensure the path is within an allowed directory. Use `roots` to check.        |
+| "Path does not exist"    | Verify the path exists. Use `ls` to explore available files.                 |
+| "File too large"         | Use `head` or increase `maxSize`.                                            |
+| "Binary file" warning    | Set `skipBinary=false` in `read` to read as text.                            |
+| No directories available | Pass explicit paths, use `--allow-cwd`, or ensure the client provides Roots. |
+| Symlink blocked          | Symlinks that resolve outside allowed directories are blocked.               |
+| Invalid regex/pattern    | Simplify the regex or set `isLiteral=true` for exact matches.                |
 
 ## Contributing
 

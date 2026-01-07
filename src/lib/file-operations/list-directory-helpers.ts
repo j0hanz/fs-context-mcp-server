@@ -15,7 +15,6 @@ import {
 } from './list-directory-entry.js';
 
 export interface ListDirectoryOptions {
-  recursive?: boolean;
   includeHidden?: boolean;
   excludePatterns?: readonly string[];
   maxDepth?: number;
@@ -42,7 +41,6 @@ export function normalizeOptions(
   options: ListDirectoryOptions
 ): NormalizedOptions {
   return {
-    recursive: options.recursive ?? false,
     includeHidden: options.includeHidden ?? false,
     excludePatterns: options.excludePatterns ?? [],
     maxDepth: options.maxDepth ?? DEFAULT_MAX_DEPTH,
@@ -75,8 +73,8 @@ function needsStatsForSort(sortBy: NormalizedOptions['sortBy']): boolean {
   return sortBy === 'size' || sortBy === 'modified';
 }
 
-function resolveMaxDepth(normalized: NormalizedOptions): number {
-  return normalized.recursive ? normalized.maxDepth : 1;
+function resolveMaxDepth(): number {
+  return 1; // Always shallow listing; use search_files for recursive
 }
 
 function shouldStopScan(
@@ -101,7 +99,7 @@ function createEntryStream(
 ): AsyncIterable<EntryCandidate> {
   return globEntries({
     cwd: basePath,
-    pattern: normalized.pattern ?? (normalized.recursive ? '**/*' : '*'),
+    pattern: normalized.pattern ?? '*',
     excludePatterns: normalized.excludePatterns,
     includeHidden: normalized.includeHidden,
     baseNameMatch: false,
@@ -176,7 +174,7 @@ export async function executeListDirectory(
   summary: ListDirectoryResult['summary'];
 }> {
   const needsStats = needsStatsForSort(normalized.sortBy);
-  const maxDepth = resolveMaxDepth(normalized);
+  const maxDepth = resolveMaxDepth();
   const { entries, totals, truncated, stoppedReason } = await collectEntries(
     basePath,
     normalized,

@@ -31,26 +31,18 @@ export function buildFileInfoPayload(info: FileInfo): {
 
 export function formatFileInfoDetails(info: FileInfo): string {
   const lines = [
-    `Name: ${info.name}`,
-    `Path: ${info.path}`,
-    `Type: ${info.type}`,
-    `Size: ${formatBytes(info.size)}`,
-    `Created: ${info.created.toISOString()}`,
-    `Modified: ${info.modified.toISOString()}`,
-    `Accessed: ${info.accessed.toISOString()}`,
-    `Permissions: ${info.permissions}`,
-    `Hidden: ${info.isHidden ? 'Yes' : 'No'}`,
+    `${info.name} (${info.type})`,
+    `  Path: ${info.path}`,
+    `  Size: ${formatBytes(info.size)}`,
+    `  Modified: ${info.modified.toISOString()}`,
   ];
 
-  if (info.mimeType) lines.push(`MIME Type: ${info.mimeType}`);
-  if (info.symlinkTarget) {
-    lines.push(`Symlink Target: ${info.symlinkTarget}`);
-  }
+  if (info.mimeType) lines.push(`  Type: ${info.mimeType}`);
+  if (info.symlinkTarget) lines.push(`  Target: ${info.symlinkTarget}`);
 
   return joinLines(lines);
 }
 
 export function formatFileInfoSummary(path: string, info: FileInfo): string {
-  const mime = info.mimeType ? ` | ${info.mimeType}` : '';
-  return `${path} | ${info.type} | ${formatBytes(info.size)}${mime}`;
+  return `${path} (${info.type}, ${formatBytes(info.size)})`;
 }

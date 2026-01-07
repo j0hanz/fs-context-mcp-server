@@ -15,25 +15,7 @@ export function joinLines(lines: readonly string[]): string {
 export function formatOperationSummary(summary: {
   truncated?: boolean;
   truncatedReason?: string;
-  tip?: string;
-  skippedInaccessible?: number;
-  symlinksNotFollowed?: number;
-  skippedTooLarge?: number;
-  skippedBinary?: number;
-  linesSkippedDueToRegexTimeout?: number;
 }): string {
-  const notes: string[] = [];
-  if (summary.truncated) {
-    notes.push(`[truncated: ${summary.truncatedReason ?? 'limit reached'}]`);
-    if (summary.tip) notes.push(`[tip: ${summary.tip}]`);
-  }
-  const addNote = (count: number | undefined, label: string): void => {
-    if (count && count > 0) notes.push(`[${count} ${label}]`);
-  };
-  addNote(summary.skippedTooLarge, 'skipped: too large');
-  addNote(summary.skippedBinary, 'skipped: binary');
-  addNote(summary.skippedInaccessible, 'skipped: inaccessible');
-  addNote(summary.symlinksNotFollowed, 'symlinks not followed');
-  addNote(summary.linesSkippedDueToRegexTimeout, 'lines skipped: regex budget');
-  return notes.length > 0 ? `\n${notes.join(' ')}` : '';
+  if (!summary.truncated) return '';
+  return `\n[truncated: ${summary.truncatedReason ?? 'limit reached'}]`;
 }

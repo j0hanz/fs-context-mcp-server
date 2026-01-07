@@ -10,24 +10,24 @@ explicitly allowed directories and never write to disk.
 
 ## Quick Reference
 
-| Goal                | Tool                       | Key Parameters                      |
-| ------------------- | -------------------------- | ----------------------------------- |
-| Check access        | `list_allowed_directories` | -                                   |
-| List contents       | `list_directory`           | `recursive`, `excludePatterns`      |
-| Find files          | `search_files`             | `pattern` (glob), `maxResults`      |
-| Search in files     | `search_content`           | `pattern` (regex), `contextLines`   |
-| Read file           | `read_file`                | `head`, `tail`, `lineStart/lineEnd` |
-| Read multiple files | `read_multiple_files`      | `paths[]` - preferred for 2+        |
-| File metadata       | `get_file_info`            | `path`                              |
-| Batch file metadata | `get_multiple_file_info`   | `paths[]` - preferred for 2+        |
+| Goal                | Tool        | Key Parameters                    |
+| ------------------- | ----------- | --------------------------------- |
+| Check access        | `roots`     | -                                 |
+| List contents       | `ls`        | `path`                            |
+| Find files          | `find`      | `pattern` (glob), `maxResults`    |
+| Search in files     | `grep`      | `pattern` (regex), `contextLines` |
+| Read file           | `read`      | `head`                            |
+| Read multiple files | `read_many` | `paths[]` - preferred for 2+      |
+| File metadata       | `stat`      | `path`                            |
+| Batch file metadata | `stat_many` | `paths[]` - preferred for 2+      |
 
 ---
 
 ## Core Concepts
 
 - **Allowed directories:** All tools only operate inside the allowed roots.
-  Run `list_allowed_directories` first to confirm scope.
-- **Globs vs regex:** `search_files` uses glob patterns, `search_content` uses
+  Run `roots` first to confirm scope.
+- **Globs vs regex:** `find` uses glob patterns, `grep` uses
   regex (set `isLiteral=true` to search for exact text).
 - **Symlinks:** Symlinks are never followed for security.
 
@@ -38,22 +38,22 @@ explicitly allowed directories and never write to disk.
 ### Project discovery
 
 ```text
-list_allowed_directories
-list_directory(path=".", recursive=true, maxDepth=3)
-read_multiple_files(["package.json", "README.md"])
+roots
+ls(path=".")
+read_many(["package.json", "README.md"])
 ```
 
 ### Find and read code
 
 ```text
-search_files(pattern="**/*.ts")
-read_multiple_files([...results])
+find(pattern="**/*.ts")
+read_many([...results])
 ```
 
 ### Search patterns in code
 
 ```text
-search_content(pattern="TODO|FIXME", filePattern="**/*.ts", contextLines=2)
+grep(pattern="TODO|FIXME", filePattern="**/*.ts", contextLines=2)
 ```
 
 ---
@@ -74,21 +74,20 @@ search_content(pattern="TODO|FIXME", filePattern="**/*.ts", contextLines=2)
 
 **Do:**
 
-- Use `read_multiple_files` for 2+ files (parallel, resilient).
+- Use `read_many` for 2+ files (parallel, resilient).
 - Set `maxResults` limits on searches for large codebases.
-- Use `excludePatterns=["node_modules/**", ".git/**", "dist/**"]`.
 - Preview large files with `head=50` before full reads.
 
 **Don't:**
 
-- Loop `read_file` for multiple files.
+- Loop `read` for multiple files.
 - Search without `maxResults` on large codebases.
 
 ---
 
 ## Tool Details
 
-### `list_allowed_directories`
+### `roots`
 
 List all directories this server can access.
 
@@ -98,88 +97,71 @@ List all directories this server can access.
 
 ---
 
-### `list_directory`
+### `ls`
 
-List contents of a directory with optional recursion. Returns entry name,
+List the immediate contents of a directory (non-recursive). Returns entry name,
 relative path, type, size, and modified date. Symlinks are not followed.
 
-| Parameter         | Default | Description            |
-| ----------------- | ------- | ---------------------- |
-| `path`            | -       | Directory path         |
-| `recursive`       | false   | Include subdirectories |
-| `excludePatterns` | []      | Glob patterns to skip  |
+| Parameter | Default | Description    |
+| --------- | ------- | -------------- |
+| `path`    | -       | Directory path |
 
-For filtered file searches (e.g., "find all \*.ts files"), use `search_files` instead.
+For recursive or filtered file searches, use `find` instead.
 
 ---
 
-### `search_files`
+### `find`
 
-Find files (not directories) using glob patterns.
+Find files using glob patterns. Automatically excludes common dependency/build
+directories (node_modules, dist, .git, etc.).
 
-| Parameter         | Default  | Description                           |
-| ----------------- | -------- | ------------------------------------- |
-| `path`            | -        | Base directory                        |
-| `pattern`         | -        | Glob: `**/*.ts`, `src/**`             |
-| `excludePatterns` | built-in | Patterns to skip (pass [] to disable) |
-| `maxResults`      | 100      | Limit (up to 10,000)                  |
-
----
-
-### `search_content`
-
-Grep-like search across file contents using regex. Returns matching lines
-with 2 lines of context before and after each match.
-
-| Parameter         | Default  | Description                                |
-| ----------------- | -------- | ------------------------------------------ |
-| `path`            | -        | Base directory                             |
-| `pattern`         | -        | Regex: `TODO\|FIXME`                       |
-| `filePattern`     | `**/*`   | Glob filter for files                      |
-| `excludePatterns` | built-in | Glob patterns to skip (pass [] to disable) |
-| `caseSensitive`   | false    | Case-sensitive matching                    |
-| `isLiteral`       | false    | Treat pattern as literal string            |
-| `maxResults`      | 100      | Maximum matches to return                  |
-
-Note: `excludePatterns` uses a built-in list of common dependency/build
-folders (e.g., `node_modules`, `dist`, `build`, `coverage`, `.git`, `.vscode`).
-Pass `excludePatterns: []` to disable it.
+| Parameter    | Default | Description               |
+| ------------ | ------- | ------------------------- |
+| `path`       | -       | Base directory            |
+| `pattern`    | -       | Glob: `**/*.ts`, `src/**` |
+| `maxResults` | 100     | Limit (up to 10,000)      |
 
 ---
 
-### `read_file`
+### `grep`
 
-Read a single text file with optional line selection.
+Grep-like search across file contents using regex.
 
-| Parameter   | Default | Description            |
-| ----------- | ------- | ---------------------- |
-| `path`      | -       | File path              |
-| `head`      | -       | First N lines          |
-| `tail`      | -       | Last N lines           |
-| `lineStart` | -       | Start line (1-indexed) |
-| `lineEnd`   | -       | End line (inclusive)   |
-
-Note: `head`/`tail` cannot be combined with `lineStart`/`lineEnd`.
+| Parameter       | Default | Description                          |
+| --------------- | ------- | ------------------------------------ |
+| `path`          | -       | Base directory                       |
+| `pattern`       | -       | Regex: `TODO\|FIXME`                 |
+| `filePattern`   | `**/*`  | Glob filter for files                |
+| `caseSensitive` | false   | Case-sensitive matching              |
+| `isLiteral`     | false   | Treat pattern as literal string      |
+| `maxResults`    | 100     | Maximum matches to return            |
+| `contextLines`  | 0       | Lines of context before/after (0-10) |
 
 ---
 
-### `read_multiple_files`
+### `read`
+
+Read a single text file.
+
+| Parameter | Default | Description   |
+| --------- | ------- | ------------- |
+| `path`    | -       | File path     |
+| `head`    | -       | First N lines |
+
+---
+
+### `read_many`
 
 Read multiple files in parallel. Each file reports success or error.
 
-| Parameter   | Default | Description                     |
-| ----------- | ------- | ------------------------------- |
-| `paths`     | -       | Array (max 100)                 |
-| `head`      | -       | First N lines each              |
-| `tail`      | -       | Last N lines each               |
-| `lineStart` | -       | Start line (1-indexed) per file |
-| `lineEnd`   | -       | End line (inclusive) per file   |
-
-Note: `head`/`tail` cannot be combined with `lineStart`/`lineEnd`.
+| Parameter | Default | Description     |
+| --------- | ------- | --------------- |
+| `paths`   | -       | Array (max 100) |
+| `head`    | -       | First N lines   |
 
 ---
 
-### `get_file_info`
+### `stat`
 
 Get metadata about a file or directory without reading contents.
 
@@ -187,12 +169,11 @@ Get metadata about a file or directory without reading contents.
 | --------- | ------- | ------------------------- |
 | `path`    | -       | Path to file or directory |
 
-Returns: name, path, type, size, created, modified, accessed, permissions,
-isHidden, mimeType, symlinkTarget (if applicable).
+Returns: name, path, type, size, modified, mimeType, symlinkTarget.
 
 ---
 
-### `get_multiple_file_info`
+### `stat_many`
 
 Get metadata for multiple files/directories in parallel.
 
@@ -200,23 +181,20 @@ Get metadata for multiple files/directories in parallel.
 | --------- | ------- | ------------------------ |
 | `paths`   | -       | Array of paths (max 100) |
 
-Returns: Array of file info with individual success/error status, plus
-summary (total, succeeded, failed, totalSize).
-
 ---
 
 ## Error Codes
 
-| Code                  | Cause                        | Solution                          |
-| --------------------- | ---------------------------- | --------------------------------- |
-| `E_ACCESS_DENIED`     | Path outside allowed dirs    | Check `list_allowed_directories`  |
-| `E_NOT_FOUND`         | Path does not exist          | Verify path with `list_directory` |
-| `E_NOT_FILE`          | Expected file, got directory | Use `list_directory` instead      |
-| `E_NOT_DIRECTORY`     | Expected directory, got file | Use `read_file` instead           |
-| `E_TOO_LARGE`         | File exceeds size limit      | Use `head/tail` for partial reads |
-| `E_TIMEOUT`           | Operation took too long      | Reduce scope or use `maxResults`  |
-| `E_INVALID_PATTERN`   | Malformed glob/regex         | Check pattern syntax              |
-| `E_PERMISSION_DENIED` | OS-level access denied       | Check file permissions            |
+| Code                  | Cause                        | Solution               |
+| --------------------- | ---------------------------- | ---------------------- |
+| `E_ACCESS_DENIED`     | Path outside allowed dirs    | Check `roots`          |
+| `E_NOT_FOUND`         | Path does not exist          | Verify path with `ls`  |
+| `E_NOT_FILE`          | Expected file, got directory | Use `ls` instead       |
+| `E_NOT_DIRECTORY`     | Expected directory, got file | Use `read` instead     |
+| `E_TOO_LARGE`         | File exceeds size limit      | Use `head` for partial |
+| `E_TIMEOUT`           | Operation took too long      | Use `maxResults`       |
+| `E_INVALID_PATTERN`   | Malformed glob/regex         | Check pattern syntax   |
+| `E_PERMISSION_DENIED` | OS-level access denied       | Check file permissions |
 
 ---
 

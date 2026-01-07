@@ -1,67 +1,28 @@
 import { z } from 'zod';
 
-import {
-  applyLineRangeIssues,
-  HeadLinesSchema,
-  LineEndSchema,
-  LineStartSchema,
-  TailLinesSchema,
-} from '../line-range-schemas.js';
+import { HeadLinesSchema } from '../line-range-schemas.js';
 
-const ReadFileBaseSchema = z.strictObject({
+export const ReadFileInputSchema = z.strictObject({
   path: z
     .string()
     .min(1, 'Path cannot be empty')
-    .describe('Path to the file to read'),
-  lineStart: LineStartSchema,
-  lineEnd: LineEndSchema,
+    .describe(
+      'Path to the file to read. ' +
+        'Examples: "README.md", "src/index.ts", "package.json"'
+    ),
   head: HeadLinesSchema.describe(
-    'Read only the first N lines of the file (memory efficient for large files)'
-  ),
-  tail: TailLinesSchema.describe(
-    'Read only the last N lines of the file (memory efficient for large files)'
+    'Read only the first N lines of the file (useful for previewing large files)'
   ),
 });
 
-export const ReadFileInputSchema = ReadFileBaseSchema.superRefine(
-  (data, ctx) => {
-    applyLineRangeIssues(
-      {
-        lineStart: data.lineStart,
-        lineEnd: data.lineEnd,
-        head: data.head,
-        tail: data.tail,
-      },
-      ctx
-    );
-  }
-);
-
-const ReadMultipleFilesBaseSchema = z.strictObject({
+export const ReadMultipleFilesInputSchema = z.strictObject({
   paths: z
     .array(z.string().min(1, 'Path cannot be empty'))
     .min(1, 'At least one path is required')
     .max(100, 'Cannot read more than 100 files at once')
-    .describe('Array of file paths to read'),
+    .describe(
+      'Array of file paths to read. ' +
+        'Examples: ["README.md", "package.json"], ["src/index.ts", "src/server.ts"]'
+    ),
   head: HeadLinesSchema.describe('Read only the first N lines of each file'),
-  tail: TailLinesSchema.describe('Read only the last N lines of each file'),
-  lineStart: LineStartSchema.describe(
-    'Start line (1-indexed) for reading a range from each file'
-  ),
-  lineEnd: LineEndSchema.describe(
-    'End line (inclusive) for reading a range from each file'
-  ),
 });
-
-export const ReadMultipleFilesInputSchema =
-  ReadMultipleFilesBaseSchema.superRefine((data, ctx) => {
-    applyLineRangeIssues(
-      {
-        lineStart: data.lineStart,
-        lineEnd: data.lineEnd,
-        head: data.head,
-        tail: data.tail,
-      },
-      ctx
-    );
-  });

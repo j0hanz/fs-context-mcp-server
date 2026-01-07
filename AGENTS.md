@@ -130,8 +130,8 @@ coverage/               # Test coverage reports (gitignored in CI)
 ### Agent safety rules
 
 - **Never** run destructive filesystem commands
-- Always use `list_allowed_directories` to verify access scope
-- Prefer `read_multiple_files` over looping `read_file`
+- Always use `roots` to verify access scope
+- Prefer `read_many` over looping `read`
 - Set `maxResults`, `maxDepth`, `maxEntries` limits on searches
 
 ## Pull Request / Commit Guidelines
@@ -156,22 +156,22 @@ npm run lint && npm run type-check && npm run build && npm run test
 
 ## Troubleshooting
 
-| Issue                    | Solution                                                             |
-| ------------------------ | -------------------------------------------------------------------- |
-| "Access denied" error    | Path outside allowed roots. Use `list_allowed_directories` to check. |
-| "Path does not exist"    | Verify path with `list_directory`.                                   |
-| "File too large"         | Use `head`/`tail` params or increase `maxSize`.                      |
-| "Binary file" warning    | Set `skipBinary=false` if intentional.                               |
-| No directories available | Pass CLI paths, use `--allow-cwd`, or configure MCP Roots.           |
-| Invalid regex/pattern    | Simplify pattern or set `isLiteral=true`.                            |
-| Build fails              | Run `npm run clean` then `npm run build`.                            |
-| Tests fail after changes | Ensure `src/instructions.md` exists (copied during build).           |
+| Issue                    | Solution                                                   |
+| ------------------------ | ---------------------------------------------------------- |
+| "Access denied" error    | Path outside allowed roots. Use `roots` to check.          |
+| "Path does not exist"    | Verify path with `ls`.                                     |
+| "File too large"         | Use `head` param or increase `maxSize`.                    |
+| "Binary file" warning    | Set `skipBinary=false` if intentional.                     |
+| No directories available | Pass CLI paths, use `--allow-cwd`, or configure MCP Roots. |
+| Invalid regex/pattern    | Simplify pattern or set `isLiteral=true`.                  |
+| Build fails              | Run `npm run clean` then `npm run build`.                  |
+| Tests fail after changes | Ensure `src/instructions.md` exists (copied during build). |
 
 ## Agent Operating Rules
 
-- **Search before edit:** Use `search_files` and `search_content` to understand context.
+- **Search before edit:** Use `find` and `grep` to understand context.
 - **Read docs first:** Check `README.md`, `CONFIGURATION.md`, and `src/instructions.md`.
 - **Verify paths:** Always use absolute paths; avoid `..` traversal.
-- **Prefer batch tools:** `read_multiple_files` and `get_multiple_file_info` for efficiency.
+- **Prefer batch tools:** `read_many` and `stat_many` for efficiency.
 - **Set limits:** Always specify `maxResults`, `maxDepth` on searches to avoid timeouts.
 - **No destructive commands:** This is a read-only server—no file modifications.

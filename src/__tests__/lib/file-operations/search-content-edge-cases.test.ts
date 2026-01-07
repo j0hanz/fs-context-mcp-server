@@ -23,7 +23,7 @@ void describe('searchContent edge cases', () => {
 
     void it('searchContent throws on invalid regex syntax', async () => {
       await assert.rejects(
-        searchContent(getTestDir(), '(?'),
+        searchContent(getTestDir(), '(?', { isLiteral: false }),
         /Invalid regular expression|ReDoS/i
       );
     });

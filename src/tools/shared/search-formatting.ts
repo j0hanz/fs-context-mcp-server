@@ -32,67 +32,9 @@ function normalizeMatches(result: SearchContentResult): NormalizedMatch[] {
   return normalized;
 }
 
-function groupMatchesByFile(
-  matches: NormalizedMatch[]
-): Map<string, NormalizedMatch[]> {
-  const byFile = new Map<string, NormalizedMatch[]>();
-  for (const match of matches) {
-    const list = byFile.get(match.relativeFile) ?? [];
-    list.push(match);
-    byFile.set(match.relativeFile, list);
-  }
-  return byFile;
-}
-
-function formatContextLines(
-  context: readonly string[] | undefined,
-  startLine: number
-): string[] {
-  return (context ?? []).map(
-    (line, idx) =>
-      `    ${String(startLine + idx).padStart(LINE_NUMBER_PAD_WIDTH)}: ${line}`
-  );
-}
-
-function formatMatchBlock(
-  match: SearchContentResult['matches'][number]
-): string[] {
-  const before = formatContextLines(
-    match.contextBefore,
-    match.line - (match.contextBefore?.length ?? 0)
-  );
-  const after = formatContextLines(match.contextAfter, match.line + 1);
-  const lines = [
-    ...before,
-    `  > ${String(match.line).padStart(LINE_NUMBER_PAD_WIDTH)}: ${match.content}`,
-    ...after,
-  ];
-  if (before.length || after.length) lines.push('    ---');
-  return lines;
-}
-
-function formatFileMatches(file: string, matches: NormalizedMatch[]): string[] {
-  const matchCount = matches.reduce((sum, m) => sum + m.matchCount, 0);
-  const lines: string[] = [
-    `${file} (${matchCount} match${matchCount === 1 ? '' : 'es'}):`,
-  ];
-  for (const match of matches) {
-    lines.push(...formatMatchBlock(match));
-  }
-  lines.push('');
-  return lines;
-}
-
-function formatContentMatches(matches: NormalizedMatch[]): string {
-  if (matches.length === 0) return 'No matches';
-
-  const byFile = groupMatchesByFile(matches);
-  const lines: string[] = [`Found ${matches.length}:`];
-  for (const [file, fileMatches] of byFile) {
-    lines.push(...formatFileMatches(file, fileMatches));
-  }
-
-  return joinLines(lines);
+function formatMatchLine(match: NormalizedMatch): string {
+  const lineNum = String(match.line).padStart(LINE_NUMBER_PAD_WIDTH);
+  return `  ${match.relativeFile}:${lineNum}: ${match.content}`;
 }
 
 function buildStructuredMatches(
@@ -104,89 +46,43 @@ function buildStructuredMatches(
     content: match.content,
     contextBefore: match.contextBefore ? [...match.contextBefore] : undefined,
     contextAfter: match.contextAfter ? [...match.contextAfter] : undefined,
-    matchCount: match.matchCount,
   }));
-}
-
-function buildStructuredSummary(
-  summary: SearchContentResult['summary']
-): SearchContentStructuredResult['summary'] {
-  return {
-    filesScanned: summary.filesScanned,
-    filesMatched: summary.filesMatched,
-    totalMatches: summary.matches,
-    truncated: summary.truncated,
-    skippedTooLarge: summary.skippedTooLarge || undefined,
-    skippedBinary: summary.skippedBinary || undefined,
-    skippedInaccessible: summary.skippedInaccessible || undefined,
-    linesSkippedDueToRegexTimeout:
-      summary.linesSkippedDueToRegexTimeout || undefined,
-    stoppedReason: summary.stoppedReason,
-  };
 }
 
 export function buildStructuredResult(
   result: SearchContentResult
 ): SearchContentStructuredResult {
-  const { basePath, pattern, filePattern, summary } = result;
+  const { summary } = result;
   const normalizedMatches = normalizeMatches(result);
   return {
     ok: true,
-    basePath,
-    pattern,
-    filePattern,
     matches: buildStructuredMatches(normalizedMatches),
-    summary: buildStructuredSummary(summary),
+    totalMatches: summary.matches,
+    truncated: summary.truncated,
   };
 }
 
-function buildTruncationInfo(result: SearchContentResult): {
-  truncatedReason?: string;
-  tip?: string;
-} {
-  if (!result.summary.truncated) return {};
-  if (result.summary.stoppedReason === 'timeout') {
-    return {
-      truncatedReason: 'search timed out',
-      tip: 'Increase timeoutMs, use more specific filePattern, or add excludePatterns to narrow scope.',
-    };
-  }
-  if (result.summary.stoppedReason === 'maxResults') {
-    return {
-      truncatedReason: `reached max results limit (${result.summary.matches})`,
-    };
-  }
-  if (result.summary.stoppedReason === 'maxFiles') {
-    return {
-      truncatedReason: `reached max files limit (${result.summary.filesScanned} scanned)`,
-    };
-  }
-  return {};
+function getTruncatedReason(
+  summary: SearchContentResult['summary']
+): string | undefined {
+  if (!summary.truncated) return undefined;
+  if (summary.stoppedReason === 'timeout') return 'timeout';
+  return `max results (${summary.matches})`;
 }
 
 export function buildTextResult(result: SearchContentResult): string {
   const { summary } = result;
-  const { truncatedReason, tip } = buildTruncationInfo(result);
-  const header = joinLines([
-    `Base path: ${result.basePath}`,
-    `Pattern: ${result.pattern}`,
-    `File pattern: ${result.filePattern}`,
-  ]);
   const normalizedMatches = normalizeMatches(result);
-  let textOutput = joinLines([header, formatContentMatches(normalizedMatches)]);
-  textOutput += formatOperationSummary({
-    truncated: summary.truncated,
-    truncatedReason,
-    tip,
-    skippedTooLarge: summary.skippedTooLarge,
-    skippedBinary: summary.skippedBinary,
-    skippedInaccessible: summary.skippedInaccessible,
-    linesSkippedDueToRegexTimeout: summary.linesSkippedDueToRegexTimeout,
-  });
 
-  if (summary.truncated && !tip) {
-    textOutput += `\nScanned ${summary.filesScanned} files, found ${summary.matches} matches in ${summary.filesMatched} files.`;
-  }
+  if (normalizedMatches.length === 0) return 'No matches';
 
-  return textOutput;
+  const truncatedReason = getTruncatedReason(summary);
+
+  return (
+    joinLines([
+      `Found ${normalizedMatches.length}:`,
+      ...normalizedMatches.map(formatMatchLine),
+    ]) +
+    formatOperationSummary({ truncated: summary.truncated, truncatedReason })
+  );
 }
