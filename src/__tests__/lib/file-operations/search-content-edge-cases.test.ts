@@ -1,3 +1,5 @@
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
@@ -68,6 +70,21 @@ void describe('searchContent edge cases', () => {
         filePattern: '**/*.md',
       });
       assert.strictEqual(result.matches.length, 0);
+    });
+
+    void it('searchContent escapes regex metacharacters for case-insensitive literal matching', async () => {
+      const token = 'A.*(B)[C]\\D?+^${}';
+      const filePath = path.join(getTestDir(), 'literal-regex-metachars.txt');
+      await fs.writeFile(filePath, `${token} ${token}\n`);
+
+      const result = await searchContent(getTestDir(), token.toLowerCase(), {
+        isLiteral: true,
+        filePattern: '**/*.txt',
+      });
+
+      assert.strictEqual(result.matches.length, 1);
+      assert.strictEqual(result.matches[0]?.matchCount, 2);
+      await fs.rm(filePath).catch(() => {});
     });
   });
 });

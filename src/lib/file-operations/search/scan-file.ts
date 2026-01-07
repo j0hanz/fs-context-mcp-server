@@ -85,6 +85,14 @@ export function buildMatcher(
   pattern: string,
   options: MatcherOptions
 ): Matcher {
+  if (options.isLiteral && !options.wholeWord && !options.caseSensitive) {
+    if (pattern.length === 0) {
+      return (): number => 0;
+    }
+
+    return buildRegexMatcher(escapeLiteral(pattern), false);
+  }
+
   if (options.isLiteral && !options.wholeWord) {
     return buildLiteralMatcher(pattern, options);
   }
