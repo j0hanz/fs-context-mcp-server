@@ -26,7 +26,6 @@ const ALLOWED_FS_IMPORT_FILES = new Set<string>([
   'src/server.ts',
   'src/tools/list-allowed-dirs.ts',
   'src/lib/path-validation.ts',
-  'src/lib/file-operations.ts',
   'src/lib/fs-helpers.ts',
 ]);
 const ALLOWED_FS_IMPORT_PREFIXES = [
@@ -37,10 +36,11 @@ const ALLOWED_FS_IMPORT_PREFIXES = [
 
 function isAllowedFsImportFile(relPath: string): boolean {
   const normalized = normalizeRelPath(relPath);
-  if (ALLOWED_FS_IMPORT_FILES.has(normalized)) return true;
-  return ALLOWED_FS_IMPORT_PREFIXES.some((prefix) =>
-    normalized.startsWith(prefix)
-  );
+  return ALLOWED_FS_IMPORT_FILES.has(normalized)
+    ? true
+    : ALLOWED_FS_IMPORT_PREFIXES.some((prefix) =>
+        normalized.startsWith(prefix)
+      );
 }
 
 async function listSourceFiles(repoRoot: string): Promise<string[]> {
@@ -61,8 +61,8 @@ async function collectFsImportOffenders(
     sourceFiles.map(async (relPath) => {
       const absPath = path.join(repoRoot, relPath);
       const content = await fs.readFile(absPath, 'utf-8');
-      if (!hasFsImport(content)) return null;
-      return allowFsImport(relPath) ? null : relPath;
+      const isOffender = hasFsImport(content) && !allowFsImport(relPath);
+      return isOffender ? relPath : null;
     })
   );
   return results.filter((value): value is string => value !== null);
@@ -83,7 +83,7 @@ void describe('filesystem boundary', () => {
       [],
       `Unexpected node:fs imports detected outside boundary modules. ` +
         `To keep "validate-before-access" auditable, route filesystem access through ` +
-        `src/lib/file-operations.ts and src/lib/fs-helpers.ts (and validate paths in src/lib/path-validation.ts).`
+        `src/lib/file-operations/* and src/lib/fs-helpers.ts (and validate paths in src/lib/path-validation.ts).`
     );
   });
 });

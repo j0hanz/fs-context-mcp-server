@@ -8,7 +8,7 @@ import {
   MAX_SEARCHABLE_FILE_SIZE,
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
-import { searchContent } from '../lib/file-operations.js';
+import { searchContent } from '../lib/file-operations/search/engine.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
 import {

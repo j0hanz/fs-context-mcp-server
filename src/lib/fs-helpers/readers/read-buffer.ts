@@ -20,14 +20,15 @@ function createTooLargeError(
 }
 
 class BufferCollector extends Writable {
-  private chunks: Buffer[] = [];
-  private totalSize = 0;
+  #chunks: Buffer[] = [];
+  #totalSize = 0;
+  #maxSize: number;
+  #requestedPath: string;
 
-  constructor(
-    private readonly maxSize: number,
-    private readonly requestedPath: string
-  ) {
+  constructor(maxSize: number, requestedPath: string) {
     super({ autoDestroy: true });
+    this.#maxSize = maxSize;
+    this.#requestedPath = requestedPath;
   }
 
   override _write(
@@ -36,21 +37,21 @@ class BufferCollector extends Writable {
     callback: (error?: Error | null) => void
   ): void {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    this.totalSize += buffer.length;
+    this.#totalSize += buffer.length;
 
-    if (this.totalSize > this.maxSize) {
+    if (this.#totalSize > this.#maxSize) {
       callback(
-        createTooLargeError(this.totalSize, this.maxSize, this.requestedPath)
+        createTooLargeError(this.#totalSize, this.#maxSize, this.#requestedPath)
       );
       return;
     }
 
-    this.chunks.push(buffer);
+    this.#chunks.push(buffer);
     callback();
   }
 
   getResult(): Buffer {
-    return Buffer.concat(this.chunks, this.totalSize);
+    return Buffer.concat(this.#chunks, this.#totalSize);
   }
 }
 

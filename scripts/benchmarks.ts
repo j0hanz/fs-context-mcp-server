@@ -5,15 +5,13 @@ import { performance } from 'node:perf_hooks';
 
 import RE2 from 're2';
 
-import {
-  getFileInfo,
-  listDirectory,
-  readFile,
-  readMultipleFiles,
-  searchContent,
-  searchFiles,
-} from '../src/lib/file-operations.js';
+import { getFileInfo } from '../src/lib/file-operations/file-info.js';
+import { listDirectory } from '../src/lib/file-operations/list-directory.js';
+import { readMultipleFiles } from '../src/lib/file-operations/read-multiple-files.js';
+import { searchFiles } from '../src/lib/file-operations/search-files.js';
+import { searchContent } from '../src/lib/file-operations/search/engine.js';
 import { buildMatcher } from '../src/lib/file-operations/search/scan-file.js';
+import { readFile } from '../src/lib/fs-helpers/readers/read-file.js';
 import { setAllowedDirectories } from '../src/lib/path-validation.js';
 
 interface BenchmarkResult {

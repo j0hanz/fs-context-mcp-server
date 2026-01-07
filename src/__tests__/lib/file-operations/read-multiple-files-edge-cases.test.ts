@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { readMultipleFiles } from '../../../lib/file-operations.js';
+import { readMultipleFiles } from '../../../lib/file-operations/read-multiple-files.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('readMultipleFiles edge cases', () => {

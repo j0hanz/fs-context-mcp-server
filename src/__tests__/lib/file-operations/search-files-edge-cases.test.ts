@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { searchFiles } from '../../../lib/file-operations.js';
+import { searchFiles } from '../../../lib/file-operations/search-files.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('searchFiles edge cases', () => {

@@ -1,6 +1,17 @@
 import { z } from 'zod';
 
-import { ListExcludePatternsSchema } from '../input-helpers.js';
+const ListExcludePatternsSchema = z
+  .array(
+    z
+      .string()
+      .max(500, 'Individual exclude pattern is too long')
+      .refine((val) => !val.includes('**/**/**'), {
+        error: 'Pattern too deeply nested (max 2 levels of **)',
+      })
+  )
+  .max(100, 'Too many exclude patterns (max 100)')
+  .optional()
+  .default([]);
 
 export const ListDirectoryInputSchema = z.strictObject({
   path: z

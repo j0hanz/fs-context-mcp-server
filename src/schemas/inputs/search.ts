@@ -1,11 +1,51 @@
 import { z } from 'zod';
 
 import {
-  CaseSensitiveSchema,
-  ExcludePatternsSchema,
-  isSafeGlobPattern,
-  MaxResultsSchema,
-} from '../input-helpers.js';
+  DEFAULT_EXCLUDE_PATTERNS,
+  DEFAULT_MAX_RESULTS,
+} from '../../lib/constants.js';
+
+function isSafeGlobPattern(value: string): boolean {
+  if (value.length === 0) return false;
+
+  const absolutePattern = /^([/\\]|[A-Za-z]:[/\\]|\\\\)/u;
+  if (absolutePattern.test(value)) {
+    return false;
+  }
+
+  if (/[\\/]\.\.(?:[/\\]|$)/u.test(value) || value.startsWith('..')) {
+    return false;
+  }
+
+  return true;
+}
+
+const ExcludePatternsSchema = z
+  .array(
+    z
+      .string()
+      .max(500, 'Individual exclude pattern is too long')
+      .refine((val) => !val.includes('**/**/**'), {
+        error: 'Pattern too deeply nested (max 2 levels of **)',
+      })
+  )
+  .max(100, 'Too many exclude patterns (max 100)')
+  .optional()
+  .default(DEFAULT_EXCLUDE_PATTERNS);
+
+const CaseSensitiveSchema = z
+  .boolean()
+  .optional()
+  .default(false)
+  .describe('Case sensitive search');
+
+const MaxResultsSchema = z
+  .int({ error: 'maxResults must be an integer' })
+  .min(1, 'maxResults must be at least 1')
+  .max(10000, 'maxResults cannot exceed 10,000')
+  .optional()
+  .default(DEFAULT_MAX_RESULTS)
+  .describe('Maximum number of results to return');
 
 export const SearchFilesInputSchema = z.strictObject({
   path: z

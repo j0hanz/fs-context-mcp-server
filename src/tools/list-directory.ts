@@ -15,7 +15,7 @@ import {
   DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
-import { listDirectory } from '../lib/file-operations.js';
+import { listDirectory } from '../lib/file-operations/list-directory.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
 import {

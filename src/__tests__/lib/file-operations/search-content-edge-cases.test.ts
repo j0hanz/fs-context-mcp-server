@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { searchContent } from '../../../lib/file-operations.js';
+import { searchContent } from '../../../lib/file-operations/search/engine.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('searchContent edge cases', () => {
@@ -29,14 +29,13 @@ void describe('searchContent edge cases', () => {
     });
 
     void it('searchContent respects maxResults limit', async () => {
-      const result = await searchContent(getTestDir(), '\\w+', {
+      const result = await searchContent(getTestDir(), 'export', {
         filePattern: '**/*.ts',
         maxResults: 1,
       });
-      assert.ok(result.matches.length <= 1);
-      if (result.matches.length === 1) {
-        assert.strictEqual(result.summary.truncated, true);
-      }
+      assert.strictEqual(result.matches.length, 1);
+      assert.strictEqual(result.summary.truncated, true);
+      assert.strictEqual(result.summary.stoppedReason, 'maxResults');
     });
 
     void it('searchContent respects maxFilesScanned limit', async () => {

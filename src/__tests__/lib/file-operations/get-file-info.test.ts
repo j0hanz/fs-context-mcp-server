@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { getFileInfo } from '../../../lib/file-operations.js';
+import { getFileInfo } from '../../../lib/file-operations/file-info.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('getFileInfo', () => {

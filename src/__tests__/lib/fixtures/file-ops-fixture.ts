@@ -75,11 +75,12 @@ export async function acquireFileOpsFixture(): Promise<FileOpsFixture> {
 }
 
 export async function releaseFileOpsFixture(): Promise<void> {
-  if (activeUsers === 0) return;
-  activeUsers -= 1;
-  if (activeUsers !== 0 || !sharedFixture) return;
-  const { testDir } = sharedFixture;
-  sharedFixture = null;
-  fixturePromise = null;
-  await cleanupFixture(testDir);
+  const previousUsers = activeUsers;
+  activeUsers = Math.max(0, activeUsers - 1);
+  const shouldCleanup =
+    previousUsers > 0 && activeUsers === 0 && sharedFixture !== null;
+  const testDir = shouldCleanup ? (sharedFixture?.testDir ?? '') : '';
+  sharedFixture = shouldCleanup ? null : sharedFixture;
+  fixturePromise = shouldCleanup ? null : fixturePromise;
+  await (shouldCleanup ? cleanupFixture(testDir) : Promise.resolve());
 }

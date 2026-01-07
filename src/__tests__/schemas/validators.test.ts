@@ -35,95 +35,141 @@ function validateHeadTail(head?: number, tail?: number): void {
 }
 
 void describe('validators', () => {
-  const validLineRangeCases = [
-    {
-      name: 'valid lineRange with both lineStart and lineEnd',
-      params: { lineStart: 1, lineEnd: 10, path: '/test/file.txt' },
-    },
-    {
-      name: 'no line options',
-      params: { path: '/test/file.txt' },
-    },
-    {
-      name: 'head option alone',
-      params: { head: 10, path: '/test/file.txt' },
-    },
-    {
-      name: 'tail option alone',
-      params: { tail: 10, path: '/test/file.txt' },
-    },
-    {
-      name: 'lineEnd equal to lineStart',
-      params: { lineStart: 5, lineEnd: 5, path: '/test/file.txt' },
-    },
-  ];
-
-  validLineRangeCases.forEach((testCase) => {
-    void it(`validateLineRange accepts ${testCase.name}`, () => {
-      assert.doesNotThrow(() => {
-        validateLineRange(testCase.params);
+  void it('validateLineRange accepts valid lineRange with both lineStart and lineEnd', () => {
+    assert.doesNotThrow(() => {
+      validateLineRange({
+        lineStart: 1,
+        lineEnd: 10,
+        path: '/test/file.txt',
       });
     });
   });
 
-  const invalidLineRangeCases = [
-    {
-      name: 'lineStart without lineEnd',
-      params: { lineStart: 5, path: '/test/file.txt' },
-      message: 'lineStart requires lineEnd',
-    },
-    {
-      name: 'lineEnd without lineStart',
-      params: { lineEnd: 10, path: '/test/file.txt' },
-      message: 'lineEnd requires lineStart',
-    },
-    {
-      name: 'lineEnd < lineStart',
-      params: { lineStart: 10, lineEnd: 5, path: '/test/file.txt' },
-      message: 'lineEnd (5) must be >= lineStart (10)',
-    },
-    {
-      name: 'lineRange with head',
-      params: { lineStart: 1, lineEnd: 10, head: 5, path: '/test/file.txt' },
-      message: 'Cannot specify multiple',
-    },
-    {
-      name: 'lineRange with tail',
-      params: { lineStart: 1, lineEnd: 10, tail: 5, path: '/test/file.txt' },
-      message: 'Cannot specify multiple',
-    },
-    {
-      name: 'head with tail',
-      params: { head: 5, tail: 5, path: '/test/file.txt' },
-      message: 'Cannot specify multiple',
-    },
-  ];
-
-  invalidLineRangeCases.forEach((testCase) => {
-    void it(`validateLineRange rejects ${testCase.name}`, () => {
-      expectMcpError(
-        () => {
-          validateLineRange(testCase.params);
-        },
-        {
-          code: ErrorCode.E_INVALID_INPUT,
-          messageIncludes: testCase.message,
-        }
-      );
+  void it('validateLineRange accepts no line options', () => {
+    assert.doesNotThrow(() => {
+      validateLineRange({ path: '/test/file.txt' });
     });
   });
 
-  const validHeadTailCases: [number | undefined, number | undefined][] = [
-    [10, undefined],
-    [undefined, 10],
-    [undefined, undefined],
-  ];
+  void it('validateLineRange accepts head option alone', () => {
+    assert.doesNotThrow(() => {
+      validateLineRange({ head: 10, path: '/test/file.txt' });
+    });
+  });
 
-  validHeadTailCases.forEach(([head, tail]) => {
-    void it('validateHeadTail accepts valid head/tail combination', () => {
-      assert.doesNotThrow(() => {
-        validateHeadTail(head, tail);
-      });
+  void it('validateLineRange accepts tail option alone', () => {
+    assert.doesNotThrow(() => {
+      validateLineRange({ tail: 10, path: '/test/file.txt' });
+    });
+  });
+
+  void it('validateLineRange accepts lineEnd equal to lineStart', () => {
+    assert.doesNotThrow(() => {
+      validateLineRange({ lineStart: 5, lineEnd: 5, path: '/test/file.txt' });
+    });
+  });
+
+  void it('validateLineRange rejects lineStart without lineEnd', () => {
+    expectMcpError(
+      () => {
+        validateLineRange({ lineStart: 5, path: '/test/file.txt' });
+      },
+      {
+        code: ErrorCode.E_INVALID_INPUT,
+        messageIncludes: 'lineStart requires lineEnd',
+      }
+    );
+  });
+
+  void it('validateLineRange rejects lineEnd without lineStart', () => {
+    expectMcpError(
+      () => {
+        validateLineRange({ lineEnd: 10, path: '/test/file.txt' });
+      },
+      {
+        code: ErrorCode.E_INVALID_INPUT,
+        messageIncludes: 'lineEnd requires lineStart',
+      }
+    );
+  });
+
+  void it('validateLineRange rejects lineEnd < lineStart', () => {
+    expectMcpError(
+      () => {
+        validateLineRange({
+          lineStart: 10,
+          lineEnd: 5,
+          path: '/test/file.txt',
+        });
+      },
+      {
+        code: ErrorCode.E_INVALID_INPUT,
+        messageIncludes: 'lineEnd (5) must be >= lineStart (10)',
+      }
+    );
+  });
+
+  void it('validateLineRange rejects lineRange with head', () => {
+    expectMcpError(
+      () => {
+        validateLineRange({
+          lineStart: 1,
+          lineEnd: 10,
+          head: 5,
+          path: '/test/file.txt',
+        });
+      },
+      {
+        code: ErrorCode.E_INVALID_INPUT,
+        messageIncludes: 'Cannot specify multiple',
+      }
+    );
+  });
+
+  void it('validateLineRange rejects lineRange with tail', () => {
+    expectMcpError(
+      () => {
+        validateLineRange({
+          lineStart: 1,
+          lineEnd: 10,
+          tail: 5,
+          path: '/test/file.txt',
+        });
+      },
+      {
+        code: ErrorCode.E_INVALID_INPUT,
+        messageIncludes: 'Cannot specify multiple',
+      }
+    );
+  });
+
+  void it('validateLineRange rejects head with tail', () => {
+    expectMcpError(
+      () => {
+        validateLineRange({ head: 5, tail: 5, path: '/test/file.txt' });
+      },
+      {
+        code: ErrorCode.E_INVALID_INPUT,
+        messageIncludes: 'Cannot specify multiple',
+      }
+    );
+  });
+
+  void it('validateHeadTail accepts head only', () => {
+    assert.doesNotThrow(() => {
+      validateHeadTail(10, undefined);
+    });
+  });
+
+  void it('validateHeadTail accepts tail only', () => {
+    assert.doesNotThrow(() => {
+      validateHeadTail(undefined, 10);
+    });
+  });
+
+  void it('validateHeadTail accepts neither head nor tail', () => {
+    assert.doesNotThrow(() => {
+      validateHeadTail(undefined, undefined);
     });
   });
 

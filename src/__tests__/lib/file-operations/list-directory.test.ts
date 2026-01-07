@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { listDirectory } from '../../../lib/file-operations.js';
+import { listDirectory } from '../../../lib/file-operations/list-directory.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('listDirectory', () => {

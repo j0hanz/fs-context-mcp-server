@@ -28,25 +28,31 @@ void describe('findUTF8Boundary', () => {
   });
 
   void it('returns 0 for non-positive positions', async () => {
-    if (!handle) throw new Error('Missing file handle');
-    assert.strictEqual(await findUTF8Boundary(handle, 0), 0);
+    assert.ok(handle, 'Missing file handle');
+    const fileHandle = handle;
+    assert.strictEqual(await findUTF8Boundary(fileHandle, 0), 0);
   });
 
   void it('aligns to the start of a multibyte sequence', async () => {
-    if (!handle) throw new Error('Missing file handle');
+    assert.ok(handle, 'Missing file handle');
+    const fileHandle = handle;
     const buffer = Buffer.from(CONTENT, 'utf8');
     const euroStart = buffer.indexOf(Buffer.from(EURO_CHAR));
     const insideEuro = euroStart + 1;
 
-    assert.strictEqual(await findUTF8Boundary(handle, insideEuro), euroStart);
+    assert.strictEqual(
+      await findUTF8Boundary(fileHandle, insideEuro),
+      euroStart
+    );
   });
 
   void it('returns the previous boundary when positioned at a later character', async () => {
-    if (!handle) throw new Error('Missing file handle');
+    assert.ok(handle, 'Missing file handle');
+    const fileHandle = handle;
     const buffer = Buffer.from(CONTENT, 'utf8');
     const asciiPos = buffer.indexOf(Buffer.from('B'));
     const euroStart = buffer.indexOf(Buffer.from(EURO_CHAR));
 
-    assert.strictEqual(await findUTF8Boundary(handle, asciiPos), euroStart);
+    assert.strictEqual(await findUTF8Boundary(fileHandle, asciiPos), euroStart);
   });
 });

@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { searchFiles } from '../../../lib/file-operations.js';
+import { searchFiles } from '../../../lib/file-operations/search-files.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('searchFiles', () => {
@@ -17,9 +17,8 @@ void describe('searchFiles', () => {
         true
       );
       const first = result.results.find((r) => r.type === 'file');
-      if (first) {
-        assert.ok(first.modified instanceof Date);
-      }
+      assert.ok(first);
+      assert.ok(first.modified instanceof Date);
     });
 
     void it('searchFiles finds markdown files', async () => {

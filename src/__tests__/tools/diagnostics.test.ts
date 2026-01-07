@@ -8,6 +8,12 @@ import { registerListAllowedDirectoriesTool } from '../../tools/list-allowed-dir
 
 type ToolHandler = () => Promise<unknown>;
 
+const restoreEnv = (key: string, previous: string | undefined): void => {
+  void (previous === undefined
+    ? Reflect.deleteProperty(process.env, key)
+    : (process.env[key] = previous));
+};
+
 void it('publishes tool diagnostics events when enabled', async () => {
   const previousEnabled = process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS;
   const previousDetail = process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL;
@@ -50,15 +56,7 @@ void it('publishes tool diagnostics events when enabled', async () => {
     assert.ok(toolEvents.some((event) => event.phase === 'end'));
   } finally {
     diagnosticsChannel.unsubscribe('filesystem-context:tool', onMessage);
-    if (previousEnabled === undefined) {
-      delete process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS;
-    } else {
-      process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS = previousEnabled;
-    }
-    if (previousDetail === undefined) {
-      delete process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL;
-    } else {
-      process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL = previousDetail;
-    }
+    restoreEnv('FILESYSTEM_CONTEXT_DIAGNOSTICS', previousEnabled);
+    restoreEnv('FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL', previousDetail);
   }
 });

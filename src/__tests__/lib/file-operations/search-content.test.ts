@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { searchContent } from '../../../lib/file-operations.js';
+import { searchContent } from '../../../lib/file-operations/search/engine.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('searchContent', () => {
@@ -100,24 +100,53 @@ void describe('searchContent', () => {
       );
     });
 
-    const unsafePatterns = ['(a+)+', '([a-zA-Z]+)*', '(.*a){25}'];
-    unsafePatterns.forEach((pattern) => {
-      void it(`searchContent rejects unsafe regex pattern "${pattern}"`, async () => {
-        await assert.rejects(
-          searchContent(getTestDir(), pattern),
-          /ReDoS|unsafe/i
-        );
-      });
+    void it('searchContent rejects unsafe regex pattern "(a+)+"', async () => {
+      await assert.rejects(
+        searchContent(getTestDir(), '(a+)+'),
+        /ReDoS|unsafe/i
+      );
     });
 
-    const safePatterns = ['hello', 'world\\d+', '[a-z]+', 'function\\s+\\w+'];
-    safePatterns.forEach((pattern) => {
-      void it(`searchContent accepts safe regex pattern "${pattern}"`, async () => {
-        const result = await searchContent(getTestDir(), pattern, {
-          filePattern: '**/*.ts',
-        });
-        assert.ok(result);
+    void it('searchContent rejects unsafe regex pattern "([a-zA-Z]+)*"', async () => {
+      await assert.rejects(
+        searchContent(getTestDir(), '([a-zA-Z]+)*'),
+        /ReDoS|unsafe/i
+      );
+    });
+
+    void it('searchContent rejects unsafe regex pattern "(.*a){25}"', async () => {
+      await assert.rejects(
+        searchContent(getTestDir(), '(.*a){25}'),
+        /ReDoS|unsafe/i
+      );
+    });
+
+    void it('searchContent accepts safe regex pattern "hello"', async () => {
+      const result = await searchContent(getTestDir(), 'hello', {
+        filePattern: '**/*.ts',
       });
+      assert.ok(result);
+    });
+
+    void it('searchContent accepts safe regex pattern "world\\d+"', async () => {
+      const result = await searchContent(getTestDir(), 'world\\d+', {
+        filePattern: '**/*.ts',
+      });
+      assert.ok(result);
+    });
+
+    void it('searchContent accepts safe regex pattern "[a-z]+"', async () => {
+      const result = await searchContent(getTestDir(), '[a-z]+', {
+        filePattern: '**/*.ts',
+      });
+      assert.ok(result);
+    });
+
+    void it('searchContent accepts safe regex pattern "function\\s+\\w+"', async () => {
+      const result = await searchContent(getTestDir(), 'function\\s+\\w+', {
+        filePattern: '**/*.ts',
+      });
+      assert.ok(result);
     });
 
     void it('searchContent returns context lines when requested', async () => {
