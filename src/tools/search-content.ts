@@ -8,6 +8,7 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchContent } from '../lib/file-operations/search/engine.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers/abort.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
 import { getAllowedDirectories } from '../lib/path-validation/allowed-directories.js';
 import {
@@ -18,12 +19,10 @@ import {
   buildStructuredResult,
   buildTextResult,
 } from './shared/search-formatting.js';
-import { withTimedSignal } from './shared/with-timed-signal.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
   type ToolResponse,
-  type ToolResult,
   withToolErrorHandling,
 } from './tool-response.js';
 
@@ -83,34 +82,6 @@ async function handleSearchContent(
   );
 }
 
-async function runSearchContentWithTimeout(
-  args: SearchContentArgs,
-  signal: AbortSignal
-): Promise<ToolResponse<SearchContentStructuredResult>> {
-  return await withTimedSignal(
-    signal,
-    args.timeoutMs,
-    handleSearchContent.bind(null, args)
-  );
-}
-
-function mapSearchContentError(
-  args: SearchContentArgs,
-  error: unknown
-): ToolResult<SearchContentStructuredResult> {
-  return buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.');
-}
-
-async function runSearchContentWithErrorHandling(
-  args: SearchContentArgs,
-  extra: { signal: AbortSignal }
-): Promise<ToolResult<SearchContentStructuredResult>> {
-  return await withToolErrorHandling(
-    runSearchContentWithTimeout.bind(null, args, extra.signal),
-    mapSearchContentError.bind(null, args)
-  );
-}
-
 const SEARCH_CONTENT_TOOL = {
   title: 'Search Content',
   description:
@@ -127,15 +98,26 @@ const SEARCH_CONTENT_TOOL = {
 } as const;
 
 export function registerSearchContentTool(server: McpServer): void {
-  const handler = (
-    args: SearchContentArgs,
-    extra: { signal: AbortSignal }
-  ): Promise<ToolResult<SearchContentStructuredResult>> =>
+  server.registerTool('grep', SEARCH_CONTENT_TOOL, (args, extra) =>
     withToolDiagnostics(
       'grep',
-      runSearchContentWithErrorHandling.bind(null, args, extra),
+      () =>
+        withToolErrorHandling(
+          async () => {
+            const { signal, cleanup } = createTimedAbortSignal(
+              extra.signal,
+              args.timeoutMs
+            );
+            try {
+              return await handleSearchContent(args, signal);
+            } finally {
+              cleanup();
+            }
+          },
+          (error) =>
+            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
+        ),
       { path: args.path ?? '.' }
-    );
-
-  server.registerTool('grep', SEARCH_CONTENT_TOOL, handler);
+    )
+  );
 }

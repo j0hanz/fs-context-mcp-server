@@ -4,6 +4,7 @@ import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations/list-directory.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers/abort.js';
 import { withToolDiagnostics } from '../lib/observability/diagnostics.js';
 import { getAllowedDirectories } from '../lib/path-validation/allowed-directories.js';
 import {
@@ -11,12 +12,10 @@ import {
   ListDirectoryOutputSchema,
 } from '../schemas/index.js';
 import { buildTextResult } from './list-directory-formatting.js';
-import { withTimedSignal } from './shared/with-timed-signal.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
   type ToolResponse,
-  type ToolResult,
   withToolErrorHandling,
 } from './tool-response.js';
 
@@ -98,50 +97,31 @@ async function handleListDirectory(
   );
 }
 
-async function runListDirectoryWithTimeout(
-  args: ListDirectoryArgs,
-  signal: AbortSignal
-): Promise<ToolResponse<ListDirectoryStructuredResult>> {
-  return await withTimedSignal(
-    signal,
-    args.timeoutMs,
-    handleListDirectory.bind(null, args)
-  );
-}
-
-function mapListDirectoryError(
-  args: ListDirectoryArgs,
-  error: unknown
-): ToolResult<ListDirectoryStructuredResult> {
-  return buildToolErrorResponse(
-    error,
-    ErrorCode.E_NOT_DIRECTORY,
-    args.path ?? '.'
-  );
-}
-
-async function runListDirectoryWithErrorHandling(
-  args: ListDirectoryArgs,
-  extra: { signal: AbortSignal }
-): Promise<ToolResult<ListDirectoryStructuredResult>> {
-  return await withToolErrorHandling(
-    runListDirectoryWithTimeout.bind(null, args, extra.signal),
-    mapListDirectoryError.bind(null, args)
-  );
-}
-
-function createListDirectoryHandler(): (
-  args: ListDirectoryArgs,
-  extra: { signal: AbortSignal }
-) => Promise<ToolResult<ListDirectoryStructuredResult>> {
-  return (args, extra) =>
+export function registerListDirectoryTool(server: McpServer): void {
+  server.registerTool('ls', LIST_DIRECTORY_TOOL, (args, extra) =>
     withToolDiagnostics(
       'ls',
-      runListDirectoryWithErrorHandling.bind(null, args, extra),
+      () =>
+        withToolErrorHandling(
+          async () => {
+            const { signal, cleanup } = createTimedAbortSignal(
+              extra.signal,
+              args.timeoutMs
+            );
+            try {
+              return await handleListDirectory(args, signal);
+            } finally {
+              cleanup();
+            }
+          },
+          (error) =>
+            buildToolErrorResponse(
+              error,
+              ErrorCode.E_NOT_DIRECTORY,
+              args.path ?? '.'
+            )
+        ),
       { path: args.path ?? '.' }
-    );
-}
-
-export function registerListDirectoryTool(server: McpServer): void {
-  server.registerTool('ls', LIST_DIRECTORY_TOOL, createListDirectoryHandler());
+    )
+  );
 }
