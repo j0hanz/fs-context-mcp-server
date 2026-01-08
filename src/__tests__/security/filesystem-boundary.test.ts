@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import fg from 'fast-glob';
+import { glob } from 'tinyglobby';
 
 function getRepoRoot(): string {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -44,11 +44,12 @@ function isAllowedFsImportFile(relPath: string): boolean {
 }
 
 async function listSourceFiles(repoRoot: string): Promise<string[]> {
-  return await fg(['src/**/*.ts'], {
+  return await glob('src/**/*.ts', {
     cwd: repoRoot,
     ignore: ['src/__tests__/**'],
     onlyFiles: true,
     dot: false,
+    expandDirectories: false,
   });
 }
 

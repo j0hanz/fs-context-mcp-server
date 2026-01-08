@@ -1,6 +1,7 @@
+import * as fs from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 
-import fg from 'fast-glob';
+import { glob } from 'tinyglobby';
 
 import {
   publishOpsTraceEnd,
@@ -35,42 +36,67 @@ export interface GlobEntriesOptions {
   suppressErrors?: boolean;
 }
 
-type FastGlobEntry = fg.Entry;
+function normalizePattern(pattern: string, baseNameMatch: boolean): string {
+  const normalized = pattern.replace(/\\/gu, '/');
+  if (!baseNameMatch) return normalized;
+  if (normalized.includes('/')) return normalized;
+  return `**/${normalized}`;
+}
 
-async function* fastGlobEntries(
+function normalizeIgnorePatterns(
+  patterns: readonly string[]
+): readonly string[] {
+  return patterns.map((pattern) => pattern.replace(/\\/gu, '/'));
+}
+
+async function buildEntry(
+  entryPath: string,
+  options: GlobEntriesOptions
+): Promise<GlobEntry | null> {
+  try {
+    const stats = options.followSymbolicLinks
+      ? await fs.stat(entryPath)
+      : await fs.lstat(entryPath);
+    return {
+      path: entryPath,
+      dirent: stats,
+      stats: options.stats ? stats : undefined,
+    };
+  } catch (error) {
+    if (options.suppressErrors) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function* tinyGlobbyEntries(
   options: GlobEntriesOptions
 ): AsyncGenerator<GlobEntry> {
-  const stream = fg.stream(options.pattern, {
+  const pattern = normalizePattern(options.pattern, options.baseNameMatch);
+  const entries = await glob(pattern, {
     cwd: options.cwd,
     absolute: true,
     dot: options.includeHidden,
-    ignore: [...options.excludePatterns],
+    ignore: normalizeIgnorePatterns(options.excludePatterns),
     followSymbolicLinks: options.followSymbolicLinks,
-    baseNameMatch: options.baseNameMatch,
-    caseSensitiveMatch: options.caseSensitiveMatch,
     onlyFiles: options.onlyFiles,
-    stats: options.stats,
-    objectMode: true,
     deep: options.maxDepth ?? Number.POSITIVE_INFINITY,
-    suppressErrors: options.suppressErrors,
+    caseSensitiveMatch: options.caseSensitiveMatch,
+    expandDirectories: false,
   });
 
-  for await (const entry of stream as AsyncIterable<
-    FastGlobEntry | string | Buffer
-  >) {
-    if (typeof entry === 'string' || Buffer.isBuffer(entry)) continue;
-    yield {
-      path: entry.path,
-      dirent: entry.dirent,
-      stats: entry.stats,
-    };
+  for (const entryPath of entries) {
+    const entry = await buildEntry(entryPath, options);
+    if (!entry) continue;
+    yield entry;
   }
 }
 
 export async function* globEntries(
   options: GlobEntriesOptions
 ): AsyncGenerator<GlobEntry> {
-  const engine = 'fast-glob';
+  const engine = 'tinyglobby';
 
   const traceContext = shouldPublishOpsTrace()
     ? {
@@ -81,7 +107,7 @@ export async function* globEntries(
   if (traceContext) publishOpsTraceStart(traceContext);
 
   try {
-    yield* fastGlobEntries(options);
+    yield* tinyGlobbyEntries(options);
   } catch (error: unknown) {
     if (traceContext) publishOpsTraceError(traceContext, error);
     throw error;

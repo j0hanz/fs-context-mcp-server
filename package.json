@@ -51,9 +51,9 @@
   "homepage": "https://github.com/j0hanz/fs-context-mcp-server#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
-    "fast-glob": "^3.3.3",
     "re2": "^1.23.0",
     "safe-regex2": "^5.0.0",
+    "tinyglobby": "^0.2.15",
     "zod": "^4.3.5"
   },
   "devDependencies": {
