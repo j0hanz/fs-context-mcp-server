@@ -64,7 +64,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Package** | [\`@j0hanz/filesystem-context-mcp\`](https://www.npmjs.com/package/@j0hanz/filesystem-context-mcp) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Package** | [\`@j0hanz/fs-context-mcp\`](https://www.npmjs.com/package/@j0hanz/fs-context-mcp) |" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Registry** | npmjs.com |" >> $GITHUB_STEP_SUMMARY
           echo "| **Auth** | 🔐 Trusted Publishing (OIDC) |" >> $GITHUB_STEP_SUMMARY
@@ -77,9 +77,9 @@ jobs:
           echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
           echo "{" >> $GITHUB_STEP_SUMMARY
           echo "  \"mcpServers\": {" >> $GITHUB_STEP_SUMMARY
-          echo "    \"filesystem\": {" >> $GITHUB_STEP_SUMMARY
+          echo "    \"fs-context\": {" >> $GITHUB_STEP_SUMMARY
           echo "      \"command\": \"npx\"," >> $GITHUB_STEP_SUMMARY
-          echo "      \"args\": [\"-y\", \"@j0hanz/filesystem-context-mcp@${{ steps.version.outputs.version }}\", \"/path/to/dir\"]" >> $GITHUB_STEP_SUMMARY
+          echo "      \"args\": [\"-y\", \"@j0hanz/fs-context-mcp@${{ steps.version.outputs.version }}\", \"/path/to/dir\"]" >> $GITHUB_STEP_SUMMARY
           echo "    }" >> $GITHUB_STEP_SUMMARY
           echo "  }" >> $GITHUB_STEP_SUMMARY
           echo "}" >> $GITHUB_STEP_SUMMARY
@@ -87,5 +87,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Direct installation:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "npm install -g @j0hanz/filesystem-context-mcp" >> $GITHUB_STEP_SUMMARY
+          echo "npm install -g @j0hanz/fs-context-mcp" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

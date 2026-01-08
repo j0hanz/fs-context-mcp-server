@@ -29,13 +29,9 @@ All optional. Sizes in bytes, timeouts in milliseconds.
 ```json
 {
   "servers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
-        "${workspaceFolder}"
-      ]
+      "args": ["-y", "@j0hanz/fs-context-mcp@latest", "${workspaceFolder}"]
     }
   }
 }
@@ -46,13 +42,9 @@ All optional. Sizes in bytes, timeouts in milliseconds.
 ```json
 {
   "servers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
-        "${workspaceFolder}"
-      ],
+      "args": ["-y", "@j0hanz/fs-context-mcp@latest", "${workspaceFolder}"],
       "env": {
         "MAX_FILE_SIZE": "20971520",
         "DEFAULT_SEARCH_TIMEOUT": "60000"
@@ -67,11 +59,11 @@ All optional. Sizes in bytes, timeouts in milliseconds.
 ```json
 {
   "servers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
       "args": [
         "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
+        "@j0hanz/fs-context-mcp@latest",
         "${workspaceFolder}",
         "C:\\additional\\path"
       ]
@@ -92,16 +84,16 @@ All optional. Sizes in bytes, timeouts in milliseconds.
 
 ```bash
 # Single directory
-filesystem-context-mcp /path/to/project
+fs-context-mcp /path/to/project
 
 # Multiple directories
-filesystem-context-mcp /path/to/dir1 /path/to/dir2
+fs-context-mcp /path/to/dir1 /path/to/dir2
 
 # Allow current working directory (optional)
-filesystem-context-mcp --allow-cwd
+fs-context-mcp --allow-cwd
 
 # Allow current directory plus explicit roots
-filesystem-context-mcp --allow-cwd /path/to/project
+fs-context-mcp --allow-cwd /path/to/project
 ```
 
 ---

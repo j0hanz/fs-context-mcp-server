@@ -52,10 +52,10 @@ export const DEFAULT_SEARCH_TIMEOUT_MS = parseEnvInt(
 /**
  * Number of search worker threads to use.
  * Default: CPU cores (capped at 8 for optimal I/O performance).
- * Configurable via FILESYSTEM_CONTEXT_SEARCH_WORKERS env var.
+ * Configurable via FS_CONTEXT_SEARCH_WORKERS env var.
  */
 export const SEARCH_WORKERS = parseEnvInt(
-  'FILESYSTEM_CONTEXT_SEARCH_WORKERS',
+  'FS_CONTEXT_SEARCH_WORKERS',
   Math.min(availableParallelism(), 8),
   1,
   16

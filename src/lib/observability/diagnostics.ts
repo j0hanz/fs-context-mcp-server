@@ -36,11 +36,9 @@ export interface OpsTraceContext {
   [key: string]: unknown;
 }
 
-const TOOL_CHANNEL = channel('filesystem-context:tool');
-const PERF_CHANNEL = channel('filesystem-context:perf');
-const OPS_TRACE = tracingChannel<unknown, OpsTraceContext>(
-  'filesystem-context:ops'
-);
+const TOOL_CHANNEL = channel('fs-context:tool');
+const PERF_CHANNEL = channel('fs-context:perf');
+const OPS_TRACE = tracingChannel<unknown, OpsTraceContext>('fs-context:ops');
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -62,13 +60,12 @@ function resolveDiagnosticsOk(result: unknown): boolean | undefined {
 }
 
 function parseDiagnosticsEnabled(): boolean {
-  const normalized =
-    process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS?.trim().toLowerCase();
+  const normalized = process.env.FS_CONTEXT_DIAGNOSTICS?.trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 function parseDiagnosticsDetail(): DiagnosticsDetail {
-  const normalized = process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL?.trim();
+  const normalized = process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL?.trim();
   if (normalized === '2') return 2;
   if (normalized === '1') return 1;
   return 0;

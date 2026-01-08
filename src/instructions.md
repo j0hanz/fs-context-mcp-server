@@ -1,4 +1,4 @@
-# Filesystem Context MCP Server
+# FS Context MCP Server
 
 > Read-only tools for exploring directories, searching files, and reading
 > content via the Model Context Protocol (MCP).

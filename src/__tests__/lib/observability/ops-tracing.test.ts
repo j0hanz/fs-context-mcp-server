@@ -26,10 +26,10 @@ const restoreEnv = (key: string, previous: string | undefined): void => {
 };
 
 function enableDiagnosticsEnv(): DiagnosticsEnvSnapshot {
-  const previousEnabled = process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS;
-  const previousDetail = process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL;
-  process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS = '1';
-  process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL = '0';
+  const previousEnabled = process.env.FS_CONTEXT_DIAGNOSTICS;
+  const previousDetail = process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL;
+  process.env.FS_CONTEXT_DIAGNOSTICS = '1';
+  process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL = '0';
   return {
     diagnostics: previousEnabled,
     diagnosticsDetail: previousDetail,
@@ -37,11 +37,8 @@ function enableDiagnosticsEnv(): DiagnosticsEnvSnapshot {
 }
 
 function restoreDiagnosticsEnv(snapshot: DiagnosticsEnvSnapshot): void {
-  restoreEnv('FILESYSTEM_CONTEXT_DIAGNOSTICS', snapshot.diagnostics);
-  restoreEnv(
-    'FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL',
-    snapshot.diagnosticsDetail
-  );
+  restoreEnv('FS_CONTEXT_DIAGNOSTICS', snapshot.diagnostics);
+  restoreEnv('FS_CONTEXT_DIAGNOSTICS_DETAIL', snapshot.diagnosticsDetail);
 }
 
 function subscribeOpsTracing(): OpsTracingSubscription {
@@ -54,21 +51,15 @@ function subscribeOpsTracing(): OpsTracingSubscription {
     publishedEnd.push(message);
   };
 
-  diagnosticsChannel.subscribe('tracing:filesystem-context:ops:start', onStart);
-  diagnosticsChannel.subscribe('tracing:filesystem-context:ops:end', onEnd);
+  diagnosticsChannel.subscribe('tracing:fs-context:ops:start', onStart);
+  diagnosticsChannel.subscribe('tracing:fs-context:ops:end', onEnd);
 
   return {
     publishedStart,
     publishedEnd,
     unsubscribe: () => {
-      diagnosticsChannel.unsubscribe(
-        'tracing:filesystem-context:ops:start',
-        onStart
-      );
-      diagnosticsChannel.unsubscribe(
-        'tracing:filesystem-context:ops:end',
-        onEnd
-      );
+      diagnosticsChannel.unsubscribe('tracing:fs-context:ops:start', onStart);
+      diagnosticsChannel.unsubscribe('tracing:fs-context:ops:end', onEnd);
     },
   };
 }

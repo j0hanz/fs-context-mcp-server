@@ -1,20 +1,20 @@
-# Filesystem Context MCP Server
+# FS Context MCP Server
 
-<img src="docs/logo.png" alt="Filesystem Context MCP Server Logo" width="125">
+<img src="docs/logo.png" alt="FS Context MCP Server Logo" width="125">
 
 A secure, read-only MCP server for filesystem scanning, searching, and analysis with comprehensive security validation.
 
-[![npm version](https://img.shields.io/npm/v/@j0hanz/filesystem-context-mcp.svg)](https://www.npmjs.com/package/@j0hanz/filesystem-context-mcp)
-[![License](https://img.shields.io/npm/l/@j0hanz/filesystem-context-mcp)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/@j0hanz/fs-context-mcp.svg)](https://www.npmjs.com/package/@j0hanz/fs-context-mcp)
+[![License](https://img.shields.io/npm/l/@j0hanz/fs-context-mcp)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-blue)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.25.1-purple)](https://modelcontextprotocol.io)
 
 ## One-Click Install
 
-[![Install with NPX in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=filesystem-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D)[![Install with NPX in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=filesystem-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D&quality=insiders)
+[![Install with NPX in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=fs-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D)[![Install with NPX in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=fs-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D&quality=insiders)
 
-[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=filesystem-context&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZmlsZXN5c3RlbS1jb250ZXh0LW1jcEBsYXRlc3QiLCIke3dvcmtzcGFjZUZvbGRlcn0iXX0=)
+[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=fs-context&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZnMtY29udGV4dC1tY3BAbGF0ZXN0IiwiJHt3b3Jrc3BhY2VGb2xkZXJ9Il19)
 
 ## Features
 
@@ -45,13 +45,13 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 Allow the current working directory explicitly:
 
 ```bash
-npx -y @j0hanz/filesystem-context-mcp@latest --allow-cwd
+npx -y @j0hanz/fs-context-mcp@latest --allow-cwd
 ```
 
 Or pass explicit directories:
 
 ```bash
-npx -y @j0hanz/filesystem-context-mcp@latest /path/to/project /path/to/docs
+npx -y @j0hanz/fs-context-mcp@latest /path/to/project /path/to/docs
 ```
 
 If your MCP client supports the Roots protocol, you can omit directory arguments and let the client provide allowed directories. Otherwise, pass explicit directories or use `--allow-cwd`.
@@ -63,13 +63,9 @@ Add to `.vscode/mcp.json`:
 ```json
 {
   "servers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
-        "${workspaceFolder}"
-      ]
+      "args": ["-y", "@j0hanz/fs-context-mcp@latest", "${workspaceFolder}"]
     }
   }
 }
@@ -80,21 +76,21 @@ Add to `.vscode/mcp.json`:
 ### NPX (no install)
 
 ```bash
-npx -y @j0hanz/filesystem-context-mcp@latest /path/to/dir1 /path/to/dir2
+npx -y @j0hanz/fs-context-mcp@latest /path/to/dir1 /path/to/dir2
 ```
 
 ### Global installation
 
 ```bash
-npm install -g @j0hanz/filesystem-context-mcp
-filesystem-context-mcp /path/to/your/project
+npm install -g @j0hanz/fs-context-mcp
+fs-context-mcp /path/to/your/project
 ```
 
 ### From source
 
 ```bash
-git clone https://github.com/j0hanz/filesystem-context-mcp-server.git
-cd filesystem-context-mcp-server
+git clone https://github.com/j0hanz/fs-context-mcp-server.git
+cd fs-context-mcp-server
 npm install
 npm run build
 node dist/index.js /path/to/your/project
@@ -332,13 +328,9 @@ Add to `.vscode/mcp.json` (recommended) or `.vscode/settings.json`:
 ```json
 {
   "servers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
-        "${workspaceFolder}"
-      ]
+      "args": ["-y", "@j0hanz/fs-context-mcp@latest", "${workspaceFolder}"]
     }
   }
 }
@@ -355,13 +347,9 @@ Add to `.vscode/mcp.json` (recommended) or `.vscode/settings.json`:
 ```json
 {
   "mcpServers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
-        "C:\\path\\to\\project"
-      ]
+      "args": ["-y", "@j0hanz/fs-context-mcp@latest", "C:\\path\\to\\project"]
     }
   }
 }
@@ -379,13 +367,9 @@ Add to Cursor's MCP configuration:
 ```json
 {
   "mcpServers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
-        "${workspaceFolder}"
-      ]
+      "args": ["-y", "@j0hanz/fs-context-mcp@latest", "${workspaceFolder}"]
     }
   }
 }
@@ -399,9 +383,9 @@ Add to Cursor's MCP configuration:
 Add to `~/.codex/config.toml`:
 
 ```toml
-[mcp_servers.filesystem-context]
+[mcp_servers.fs-context]
 command = "npx"
-args = ["-y", "@j0hanz/filesystem-context-mcp@latest", "/path/to/your/project"]
+args = ["-y", "@j0hanz/fs-context-mcp@latest", "/path/to/your/project"]
 ```
 
 If your client supports MCP Roots, you can omit the path. Otherwise, pass a path or `--allow-cwd`.
@@ -416,13 +400,9 @@ Add to Windsurf's MCP configuration:
 ```json
 {
   "mcpServers": {
-    "filesystem-context": {
+    "fs-context": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@j0hanz/filesystem-context-mcp@latest",
-        "${workspaceFolder}"
-      ]
+      "args": ["-y", "@j0hanz/fs-context-mcp@latest", "${workspaceFolder}"]
     }
   }
 }

@@ -3,7 +3,7 @@
 ## Project Overview
 
 - **Purpose**: Read-only MCP (Model Context Protocol) server for secure filesystem exploration, searching, and analysis
-- **Package**: `@j0hanz/filesystem-context-mcp` (npm)
+- **Package**: `@j0hanz/fs-context-mcp` (npm)
 - **Stack**: TypeScript 5.9, Node.js 20+, ESM modules
 - **Dependencies**: `@modelcontextprotocol/sdk`, `zod`, `fast-glob`, `re2`, `safe-regex2`
 

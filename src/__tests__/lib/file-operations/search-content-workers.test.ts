@@ -121,7 +121,7 @@ function spawnSearchProcess(
     cwd: projectRoot,
     env: {
       ...process.env,
-      FILESYSTEM_CONTEXT_SEARCH_WORKERS: String(workers),
+      FS_CONTEXT_SEARCH_WORKERS: String(workers),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

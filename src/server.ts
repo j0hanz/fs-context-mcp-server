@@ -80,7 +80,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
 
   const server = new McpServer(
     {
-      name: 'filesystem-context-mcp',
+      name: 'fs-context-mcp',
       version: SERVER_VERSION,
     },
     {

@@ -27,10 +27,10 @@ const restoreEnv = (key: string, previous: string | undefined): void => {
 };
 
 function enableDiagnosticsEnv(): DiagnosticsEnvSnapshot {
-  const previousEnabled = process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS;
-  const previousDetail = process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL;
-  process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS = '1';
-  process.env.FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL = '0';
+  const previousEnabled = process.env.FS_CONTEXT_DIAGNOSTICS;
+  const previousDetail = process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL;
+  process.env.FS_CONTEXT_DIAGNOSTICS = '1';
+  process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL = '0';
   return {
     diagnostics: previousEnabled,
     diagnosticsDetail: previousDetail,
@@ -38,11 +38,8 @@ function enableDiagnosticsEnv(): DiagnosticsEnvSnapshot {
 }
 
 function restoreDiagnosticsEnv(snapshot: DiagnosticsEnvSnapshot): void {
-  restoreEnv('FILESYSTEM_CONTEXT_DIAGNOSTICS', snapshot.diagnostics);
-  restoreEnv(
-    'FILESYSTEM_CONTEXT_DIAGNOSTICS_DETAIL',
-    snapshot.diagnosticsDetail
-  );
+  restoreEnv('FS_CONTEXT_DIAGNOSTICS', snapshot.diagnostics);
+  restoreEnv('FS_CONTEXT_DIAGNOSTICS_DETAIL', snapshot.diagnosticsDetail);
 }
 
 function subscribeDiagnostics(channel: string): DiagnosticsSubscription {
@@ -134,7 +131,7 @@ function assertPerfEvents(events: { tool?: unknown; elu?: unknown }[]): void {
 
 await it('publishes tool diagnostics events when enabled', async () => {
   const envSnapshot = enableDiagnosticsEnv();
-  const subscription = subscribeDiagnostics('filesystem-context:tool');
+  const subscription = subscribeDiagnostics('fs-context:tool');
 
   try {
     await invokeRootsTool();
@@ -148,7 +145,7 @@ await it('publishes tool diagnostics events when enabled', async () => {
 
 await it('publishes perf diagnostics events when enabled', async () => {
   const envSnapshot = enableDiagnosticsEnv();
-  const subscription = subscribeDiagnostics('filesystem-context:perf');
+  const subscription = subscribeDiagnostics('fs-context:perf');
 
   try {
     await invokeRootsTool();
