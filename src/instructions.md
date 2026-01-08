@@ -26,7 +26,9 @@ explicitly allowed directories and never write to disk.
 ## Core Concepts
 
 - **Allowed directories:** All tools only operate inside the allowed roots.
-  Run `roots` first to confirm scope.
+  Run `roots` first to confirm scope. If nothing is configured and the client
+  provides no roots, the server defaults to the current working directory and
+  logs a warning.
 - **Globs vs regex:** `find` uses glob patterns, `grep` uses
   regex (set `isLiteral=true` to search for exact text).
 - **Symlinks:** Symlinks are never followed for security.
@@ -100,7 +102,8 @@ List all directories this server can access.
 ### `ls`
 
 List the immediate contents of a directory (non-recursive). Returns entry name,
-relative path, type, size, and modified date. Symlinks are not followed.
+relative path, type, size, and modified date. Omit `path` to use the first
+allowed root. Symlinks are not followed.
 
 | Parameter | Default | Description    |
 | --------- | ------- | -------------- |
@@ -113,7 +116,8 @@ For recursive or filtered file searches, use `find` instead.
 ### `find`
 
 Find files using glob patterns. Automatically excludes common dependency/build
-directories (node_modules, dist, .git, etc.).
+directories (node_modules, dist, .git, etc.). Omit `path` to use the first
+allowed root.
 
 | Parameter    | Default | Description               |
 | ------------ | ------- | ------------------------- |
@@ -125,23 +129,25 @@ directories (node_modules, dist, .git, etc.).
 
 ### `grep`
 
-Grep-like search across file contents using regex.
+Grep-like search across file contents using regex. Omit `path` to use the first
+allowed root.
 
-| Parameter       | Default | Description                          |
-| --------------- | ------- | ------------------------------------ |
-| `path`          | -       | Base directory                       |
-| `pattern`       | -       | Regex: `TODO\|FIXME`                 |
-| `filePattern`   | `**/*`  | Glob filter for files                |
-| `caseSensitive` | false   | Case-sensitive matching              |
-| `isLiteral`     | false   | Treat pattern as literal string      |
-| `maxResults`    | 100     | Maximum matches to return            |
-| `contextLines`  | 0       | Lines of context before/after (0-10) |
+| Parameter        | Default | Description                          |
+| ---------------- | ------- | ------------------------------------ |
+| `path`           | -       | Base directory                       |
+| `pattern`        | -       | Regex: `TODO\|FIXME`                 |
+| `filePattern`    | `**/*`  | Glob filter for files                |
+| `caseSensitive`  | false   | Case-sensitive matching              |
+| `isLiteral`      | false   | Treat pattern as literal string      |
+| `maxResults`     | 100     | Maximum matches to return            |
+| `contextLines`   | 0       | Lines of context before/after (0-10) |
+| `includeIgnored` | false   | Include ignored dirs (node_modules)  |
 
 ---
 
 ### `read`
 
-Read a single text file.
+Read a single text file (UTF-8). Binary files are rejected.
 
 | Parameter | Default | Description   |
 | --------- | ------- | ------------- |
@@ -152,7 +158,8 @@ Read a single text file.
 
 ### `read_many`
 
-Read multiple files in parallel. Each file reports success or error.
+Read multiple files in parallel. Each file reports success or error. Binary
+files are not filtered.
 
 | Parameter | Default | Description     |
 | --------- | ------- | --------------- |

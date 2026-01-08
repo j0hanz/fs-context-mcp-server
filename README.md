@@ -21,7 +21,7 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 - Directory listing (immediate contents)
 - Path search with glob patterns (files and directories)
 - Content search with regex and context lines
-- File reading with head/tail/line ranges
+- File reading with head previews (first N lines)
 - Batch reads and metadata lookups in parallel
 - Security: path validation, symlink escape protection, read-only operations
 
@@ -54,7 +54,7 @@ Or pass explicit directories:
 npx -y @j0hanz/fs-context-mcp@latest /path/to/project /path/to/docs
 ```
 
-If your MCP client supports the Roots protocol, you can omit directory arguments and let the client provide allowed directories. Otherwise, pass explicit directories or use `--allow-cwd`.
+If your MCP client supports the Roots protocol, you can omit directory arguments and let the client provide allowed directories. Otherwise, pass explicit directories or use `--allow-cwd` (if neither is provided, the server defaults to the current working directory).
 
 ### VS Code (workspace folder)
 
@@ -105,7 +105,7 @@ Access is always restricted to explicitly allowed directories.
 3. MCP Roots from the client are used next:
    - If CLI and/or `--allow-cwd` are provided, only roots inside those baseline directories are accepted.
    - If no baseline is provided, roots become the allowed directories.
-4. If nothing is configured and the client provides no roots, the server has no access and logs a warning.
+4. If nothing is configured and the client provides no roots, the server defaults to the current working directory and logs a warning.
 
 Notes:
 
@@ -118,19 +118,20 @@ All configuration is optional. Sizes in bytes, timeouts in milliseconds.
 
 ### Environment Variables
 
-| Variable                 | Default | Description                                               |
-| ------------------------ | ------- | --------------------------------------------------------- |
-| `MAX_FILE_SIZE`          | 10MB    | Max file size for read operations (range: 1MB-100MB)      |
-| `MAX_SEARCH_SIZE`        | 1MB     | Max file size for content search (range: 100KB-10MB)      |
-| `DEFAULT_SEARCH_TIMEOUT` | 30000   | Timeout for search/list operations (range: 100-3600000ms) |
+| Variable                    | Default           | Description                                               |
+| --------------------------- | ----------------- | --------------------------------------------------------- |
+| `MAX_FILE_SIZE`             | 10MB              | Max file size for read operations (range: 1MB-100MB)      |
+| `MAX_SEARCH_SIZE`           | 1MB               | Max file size for content search (range: 100KB-10MB)      |
+| `DEFAULT_SEARCH_TIMEOUT`    | 30000             | Timeout for search/list operations (range: 100-3600000ms) |
+| `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 1-16)                       |
 
 See [CONFIGURATION.md](CONFIGURATION.md) for examples and CLI usage.
 
 ## Tools
 
 All tools return both human-readable text and structured JSON. Structured
-responses include `ok`, `error` (with `code`, `message`, `path`, `suggestion`),
-and `effectiveOptions`/`summary` fields where applicable.
+responses include `ok`, optional `error` (with `code`, `message`, `path`,
+`suggestion`), plus the tool-specific fields documented below.
 
 ### `roots`
 
@@ -140,48 +141,47 @@ List all directories that this server can access.
 | --------- | ---- | -------- | ------- | ----------- |
 | (none)    | -    | -        | -       | -           |
 
-Returns: Allowed directory paths plus access status (accessible/readable),
-count, and a configuration hint in structured output.
+Returns: Allowed directory paths. Structured output includes `ok` and
+`directories`.
 
 ---
 
 ### `ls`
 
-List the immediate contents of a directory (non-recursive).
+List the immediate contents of a directory (non-recursive). Omit `path` to use
+the first allowed root.
 
-| Parameter               | Type     | Required | Default | Description                                              |
-| ----------------------- | -------- | -------- | ------- | -------------------------------------------------------- |
-| `path`                  | string   | Yes      | -       | Directory path to list                                   |
-| `includeHidden`         | boolean  | No       | `false` | Include hidden files and directories                     |
-| `excludePatterns`       | string[] | No       | `[]`    | Glob patterns to exclude                                 |
-| `pattern`               | string   | No       | -       | Glob pattern to include (relative, no `..`)              |
-| `maxDepth`              | number   | No       | `10`    | Maximum depth when using pattern (0-100)                 |
-| `maxEntries`            | number   | No       | `10000` | Maximum entries to return (1-100000)                     |
-| `timeoutMs`             | number   | No       | `30000` | Timeout in milliseconds                                  |
-| `sortBy`                | string   | No       | `name`  | Sort by: `name`, `size`, `modified`, `type`              |
-| `includeSymlinkTargets` | boolean  | No       | `false` | Include symlink target paths (symlinks are not followed) |
+| Parameter               | Type     | Required | Default      | Description                                              |
+| ----------------------- | -------- | -------- | ------------ | -------------------------------------------------------- |
+| `path`                  | string   | No       | `first root` | Directory path to list (omit to use first root)          |
+| `includeHidden`         | boolean  | No       | `false`      | Include hidden files and directories                     |
+| `excludePatterns`       | string[] | No       | `[]`         | Glob patterns to exclude                                 |
+| `pattern`               | string   | No       | -            | Glob pattern to include (relative, no `..`)              |
+| `maxDepth`              | number   | No       | `10`         | Maximum depth when using pattern (0-100)                 |
+| `maxEntries`            | number   | No       | `10000`      | Maximum entries to return (1-100000)                     |
+| `timeoutMs`             | number   | No       | `30000`      | Timeout in milliseconds                                  |
+| `sortBy`                | string   | No       | `name`       | Sort by: `name`, `size`, `modified`, `type`              |
+| `includeSymlinkTargets` | boolean  | No       | `false`      | Include symlink target paths (symlinks are not followed) |
 
-Returns: Entries with name, relativePath, type, extension, size, modified time,
-and symlink target. Structured output includes `effectiveOptions` and a
-`summary` (totals, maxDepthReached, truncated/stoppedReason, entriesScanned,
-entriesVisible, skippedInaccessible, symlinksNotFollowed).
+Returns: Entries with name, relativePath, type, size, and modified time.
+Structured output includes `ok`, `path`, `entries`, and `totalEntries`.
 
 ---
 
 ### `find`
 
 Search for files using glob patterns. Automatically excludes common dependency/build
-directories (node_modules, dist, .git, etc.).
+directories (node_modules, dist, .git, etc.). Omit `path` to search from the
+first allowed root.
 
-| Parameter    | Type   | Required | Default | Description                                   |
-| ------------ | ------ | -------- | ------- | --------------------------------------------- |
-| `path`       | string | Yes      | -       | Base directory to search from                 |
-| `pattern`    | string | Yes      | -       | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`) |
-| `maxResults` | number | No       | `100`   | Maximum matches to return (1-10000)           |
+| Parameter    | Type   | Required | Default      | Description                                            |
+| ------------ | ------ | -------- | ------------ | ------------------------------------------------------ |
+| `path`       | string | No       | `first root` | Base directory to search from (omit to use first root) |
+| `pattern`    | string | Yes      | -            | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`)          |
+| `maxResults` | number | No       | `100`        | Maximum matches to return (1-10000)                    |
 
-Returns: Matching paths with relative path, type, size, and modified date.
-Structured output includes `effectiveOptions` and a `summary` (matched,
-filesScanned, truncated/stoppedReason, skippedInaccessible).
+Returns: Matching paths (relative) with size and modified date. Structured
+output includes `ok`, `results`, `totalMatches`, and `truncated`.
 
 ---
 
@@ -189,24 +189,18 @@ filesScanned, truncated/stoppedReason, skippedInaccessible).
 
 Read the contents of a text file.
 
-| Parameter    | Type    | Required | Default | Description                                                         |
-| ------------ | ------- | -------- | ------- | ------------------------------------------------------------------- |
-| `path`       | string  | Yes      | -       | File path to read                                                   |
-| `encoding`   | string  | No       | `utf-8` | File encoding (`utf-8`, `utf8`, `ascii`, `base64`, `hex`, `latin1`) |
-| `maxSize`    | number  | No       | 10MB    | Maximum file size in bytes (capped by `MAX_FILE_SIZE`)              |
-| `skipBinary` | boolean | No       | `true`  | Reject likely-binary files                                          |
-| `lineStart`  | number  | No       | -       | Start line (1-indexed) for range reading                            |
-| `lineEnd`    | number  | No       | -       | End line (inclusive) for range reading                              |
-| `head`       | number  | No       | -       | Read only first N lines                                             |
-| `tail`       | number  | No       | -       | Read only last N lines                                              |
+| Parameter | Type   | Required | Default | Description             |
+| --------- | ------ | -------- | ------- | ----------------------- |
+| `path`    | string | Yes      | -       | File path to read       |
+| `head`    | number | No       | -       | Read only first N lines |
 
 Notes:
 
-- `head`, `tail`, and `lineStart/lineEnd` are mutually exclusive.
-- `lineStart` and `lineEnd` must be provided together.
+- Reads are UTF-8 text only; binary files are rejected.
+- Max file size is capped by `MAX_FILE_SIZE` (default 10MB).
 
-Returns: File content plus structured metadata (readMode, linesRead,
-totalLines, hasMoreLines, truncated, effectiveOptions).
+Returns: File content plus structured metadata (`ok`, `path`, `content`,
+`truncated`, `totalLines`).
 
 ---
 
@@ -214,25 +208,20 @@ totalLines, hasMoreLines, truncated, effectiveOptions).
 
 Read multiple files in parallel.
 
-| Parameter      | Type     | Required | Default | Description                                                |
-| -------------- | -------- | -------- | ------- | ---------------------------------------------------------- |
-| `paths`        | string[] | Yes      | -       | Array of file paths (max 100)                              |
-| `encoding`     | string   | No       | `utf-8` | File encoding                                              |
-| `maxSize`      | number   | No       | 10MB    | Maximum size per file in bytes (capped by `MAX_FILE_SIZE`) |
-| `maxTotalSize` | number   | No       | 100MB   | Maximum total size across all files (max 1GB)              |
-| `head`         | number   | No       | -       | Read only first N lines of each file                       |
-| `tail`         | number   | No       | -       | Read only last N lines of each file                        |
-| `lineStart`    | number   | No       | -       | Start line (1-indexed) for each file                       |
-| `lineEnd`      | number   | No       | -       | End line (inclusive) for each file                         |
+| Parameter | Type     | Required | Default | Description                          |
+| --------- | -------- | -------- | ------- | ------------------------------------ |
+| `paths`   | string[] | Yes      | -       | Array of file paths (max 100)        |
+| `head`    | number   | No       | -       | Read only first N lines of each file |
 
 Notes:
 
-- `lineStart` and `lineEnd` must be provided together.
-- `head`, `tail`, and `lineStart/lineEnd` are mutually exclusive.
-- No binary detection is performed; use `read_file` with `skipBinary=true` for checks.
+- Reads files as UTF-8 text; binary files are not filtered. Max size per file
+  is capped by `MAX_FILE_SIZE` (default 10MB).
+- Total read budget across all files is capped at 100MB.
+- No binary detection is performed; use `read` for single-file safety checks.
 
-Returns: Per-file content or error, plus structured summary and
-effectiveOptions.
+Returns: Per-file content or error, plus structured summary (`total`,
+`succeeded`, `failed`).
 
 ---
 
@@ -244,8 +233,9 @@ Get detailed metadata about a file or directory.
 | --------- | ------ | -------- | ------- | ------------------------- |
 | `path`    | string | Yes      | -       | Path to file or directory |
 
-Returns: name, path, type, size, created/modified/accessed timestamps,
-permissions, isHidden, MIME type, and symlink target (if applicable).
+Returns: name, path, type, size, timestamps (created/modified/accessed),
+permissions, hidden status, MIME type (for files), and symlink target (if
+applicable).
 
 ---
 
@@ -253,44 +243,43 @@ permissions, isHidden, MIME type, and symlink target (if applicable).
 
 Get metadata for multiple files/directories in parallel.
 
-| Parameter         | Type     | Required | Default | Description                       |
-| ----------------- | -------- | -------- | ------- | --------------------------------- |
-| `paths`           | string[] | Yes      | -       | Array of paths to query (max 100) |
-| `includeMimeType` | boolean  | No       | `true`  | Include MIME type detection       |
+| Parameter | Type     | Required | Default | Description                       |
+| --------- | -------- | -------- | ------- | --------------------------------- |
+| `paths`   | string[] | Yes      | -       | Array of paths to query (max 100) |
 
 Returns: Array of file info with individual success/error status, plus summary
-(total, succeeded, failed, totalSize).
+(total, succeeded, failed).
 
 ---
 
 ### `grep`
 
-Search for text content within files using regular expressions.
+Search for text content within files using regular expressions. Omit `path` to
+search from the first allowed root.
 
-| Parameter                | Type     | Required | Default               | Description                                                |
-| ------------------------ | -------- | -------- | --------------------- | ---------------------------------------------------------- |
-| `path`                   | string   | Yes      | -                     | Base directory to search in                                |
-| `pattern`                | string   | Yes      | -                     | Regex pattern to search for                                |
-| `filePattern`            | string   | No       | `**/*`                | Glob pattern to filter files                               |
-| `excludePatterns`        | string[] | No       | built-in exclude list | Glob patterns to exclude                                   |
-| `caseSensitive`          | boolean  | No       | `false`               | Case-sensitive search                                      |
-| `maxResults`             | number   | No       | `100`                 | Maximum number of results                                  |
-| `maxFileSize`            | number   | No       | 1MB                   | Maximum file size to scan (default from `MAX_SEARCH_SIZE`) |
-| `maxFilesScanned`        | number   | No       | `20000`               | Maximum files to scan before stopping                      |
-| `timeoutMs`              | number   | No       | `30000`               | Timeout in milliseconds                                    |
-| `skipBinary`             | boolean  | No       | `true`                | Skip likely-binary files                                   |
-| `includeHidden`          | boolean  | No       | `false`               | Include hidden files and directories                       |
-| `contextLines`           | number   | No       | `0`                   | Lines of context before/after match (0-10)                 |
-| `wholeWord`              | boolean  | No       | `false`               | Match whole words only                                     |
-| `isLiteral`              | boolean  | No       | `false`               | Treat pattern as literal string (escape regex chars)       |
-| `baseNameMatch`          | boolean  | No       | `false`               | Match file patterns without slashes against basenames      |
-| `caseSensitiveFileMatch` | boolean  | No       | `true`                | Case-sensitive filename matching                           |
+| Parameter                | Type     | Required | Default               | Description                                                             |
+| ------------------------ | -------- | -------- | --------------------- | ----------------------------------------------------------------------- |
+| `path`                   | string   | No       | `first root`          | Base directory to search in (omit to use first root)                    |
+| `pattern`                | string   | Yes      | -                     | Regex pattern to search for                                             |
+| `filePattern`            | string   | No       | `**/*`                | Glob pattern to filter files                                            |
+| `excludePatterns`        | string[] | No       | built-in exclude list | Glob patterns to exclude (overrides built-in list)                      |
+| `caseSensitive`          | boolean  | No       | `false`               | Case-sensitive search                                                   |
+| `maxResults`             | number   | No       | `100`                 | Maximum number of results                                               |
+| `maxFileSize`            | number   | No       | 1MB                   | Maximum file size to scan (default from `MAX_SEARCH_SIZE`)              |
+| `maxFilesScanned`        | number   | No       | `20000`               | Maximum files to scan before stopping                                   |
+| `timeoutMs`              | number   | No       | `30000`               | Timeout in milliseconds                                                 |
+| `skipBinary`             | boolean  | No       | `true`                | Skip likely-binary files                                                |
+| `includeHidden`          | boolean  | No       | `false`               | Include hidden files and directories                                    |
+| `includeIgnored`         | boolean  | No       | `false`               | Include ignored dirs (node_modules, dist) and disable built-in excludes |
+| `contextLines`           | number   | No       | `0`                   | Lines of context before/after match (0-10)                              |
+| `wholeWord`              | boolean  | No       | `false`               | Match whole words only                                                  |
+| `isLiteral`              | boolean  | No       | `false`               | Treat pattern as literal string (escape regex chars)                    |
+| `baseNameMatch`          | boolean  | No       | `false`               | Match file patterns without slashes against basenames                   |
+| `caseSensitiveFileMatch` | boolean  | No       | `true`                | Case-sensitive filename matching                                        |
 
 Returns: Matching lines with file path, line number, content, and optional
-context. Structured output includes `effectiveOptions` and a `summary`
-(filesScanned/filesMatched, totalMatches, truncated/stoppedReason,
-skippedTooLarge/skippedBinary/skippedInaccessible,
-linesSkippedDueToRegexTimeout).
+context. Structured output includes `ok`, `matches`, `totalMatches`, and
+`truncated`.
 Matched line content is trimmed to 200 characters.
 
 ---
@@ -300,7 +289,7 @@ files: `node_modules`, `dist`, `build`, `coverage`, `.git`, `.vscode`, `.idea`,
 `.DS_Store`, `.next`, `.nuxt`, `.output`, `.svelte-kit`, `.cache`, `.yarn`,
 `jspm_packages`, `bower_components`, `out`, `tmp`, `.temp`,
 `npm-debug.log`, `yarn-debug.log`, `yarn-error.log`, `Thumbs.db`. Pass
-`excludePatterns: []` to disable it.
+`excludePatterns: []` or `includeIgnored: true` to disable it.
 
 ## Error Codes
 
@@ -445,7 +434,6 @@ This server implements multiple layers of security:
 | `npm run lint`          | Run ESLint                                                         |
 | `npm run format`        | Format code with Prettier                                          |
 | `npm run type-check`    | TypeScript type checking                                           |
-| `npm run bench`         | Run benchmarks                                                     |
 | `npm run inspector`     | Test with MCP Inspector                                            |
 
 ### Project Structure
@@ -469,8 +457,8 @@ node-tests/                # Isolated Node.js checks
 | ------------------------ | ---------------------------------------------------------------------------- |
 | "Access denied" error    | Ensure the path is within an allowed directory. Use `roots` to check.        |
 | "Path does not exist"    | Verify the path exists. Use `ls` to explore available files.                 |
-| "File too large"         | Use `head` or increase `maxSize`.                                            |
-| "Binary file" warning    | Set `skipBinary=false` in `read` to read as text.                            |
+| "File too large"         | Use `head` or increase `MAX_FILE_SIZE`.                                      |
+| "Binary file" warning    | `read` only supports UTF-8 text and rejects binary files.                    |
 | No directories available | Pass explicit paths, use `--allow-cwd`, or ensure the client provides Roots. |
 | Symlink blocked          | Symlinks that resolve outside allowed directories are blocked.               |
 | Invalid regex/pattern    | Simplify the regex or set `isLiteral=true` for exact matches.                |
