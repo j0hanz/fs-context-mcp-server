@@ -2,8 +2,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { DEFAULT_SEARCH_TIMEOUT_MS } from './lib/constants.js';
-import { createTimedAbortSignal } from './lib/fs-helpers/abort.js';
-import { setAllowedDirectoriesResolved } from './lib/path-validation/allowed-directories.js';
+import { createTimedAbortSignal } from './lib/fs-helpers.js';
+import { setAllowedDirectoriesResolved } from './lib/path-validation.js';
 import { createServer, parseArgs, startServer } from './server.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;

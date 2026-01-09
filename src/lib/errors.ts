@@ -1,5 +1,4 @@
-import { joinLines } from '../config/formatting.js';
-import { ErrorCode } from '../config/types.js';
+import { ErrorCode, joinLines } from '../config.js';
 
 export { ErrorCode };
 

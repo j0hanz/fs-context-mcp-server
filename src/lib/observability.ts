@@ -1,14 +1,67 @@
 import { createHash } from 'node:crypto';
 import { channel, tracingChannel } from 'node:diagnostics_channel';
+import { type EventLoopUtilization, performance } from 'node:perf_hooks';
 
-import {
-  resolveDiagnosticsErrorMessage,
-  resolveDiagnosticsOk,
-} from './diagnostics-helpers.js';
-import {
-  captureEventLoopUtilization,
-  diffEventLoopUtilization,
-} from './perf.js';
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function hasBooleanOk(value: unknown): value is { ok: boolean } {
+  return isObject(value) && typeof value.ok === 'boolean';
+}
+
+function resolveDiagnosticsOk(result: unknown): boolean | undefined {
+  if (!isObject(result)) return undefined;
+  if (result.isError === true) return false;
+  if (hasBooleanOk(result)) return result.ok;
+
+  const structured = result.structuredContent;
+  if (hasBooleanOk(structured)) return structured.ok;
+
+  return undefined;
+}
+
+function resolvePrimitiveDiagnosticsMessage(
+  error: unknown
+): string | undefined {
+  if (typeof error === 'string') return error;
+  if (typeof error === 'number' || typeof error === 'boolean') {
+    return String(error);
+  }
+  if (typeof error === 'bigint') return error.toString();
+  if (typeof error === 'symbol') return error.description ?? 'symbol';
+  return undefined;
+}
+
+function resolveObjectDiagnosticsMessage(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  if (isObject(error) && typeof error.message === 'string') {
+    return error.message;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveDiagnosticsErrorMessage(error?: unknown): string | undefined {
+  if (error === undefined || error === null) return undefined;
+  return (
+    resolvePrimitiveDiagnosticsMessage(error) ??
+    resolveObjectDiagnosticsMessage(error)
+  );
+}
+
+function captureEventLoopUtilization(): EventLoopUtilization {
+  return performance.eventLoopUtilization();
+}
+
+function diffEventLoopUtilization(
+  start: EventLoopUtilization
+): EventLoopUtilization {
+  return performance.eventLoopUtilization(start);
+}
 
 type DiagnosticsDetail = 0 | 1 | 2;
 
@@ -60,11 +113,11 @@ function hashPath(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
-function normalizePathForDiagnostics(path: string): string | undefined {
+function normalizePathForDiagnostics(pathValue: string): string | undefined {
   const detail = parseDiagnosticsDetail();
   if (detail === 0) return undefined;
-  if (detail === 2) return path;
-  return hashPath(path);
+  if (detail === 2) return pathValue;
+  return hashPath(pathValue);
 }
 
 function normalizeOpsTraceContext(context: OpsTraceContext): OpsTraceContext {

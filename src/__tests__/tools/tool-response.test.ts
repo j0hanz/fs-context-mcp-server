@@ -2,10 +2,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
 import { ErrorCode } from '../../lib/errors.js';
-import {
-  buildToolErrorResponse,
-  buildToolResponse,
-} from '../../tools/tool-response.js';
+import { buildToolErrorResponse, buildToolResponse } from '../../tools.js';
 
 void it('buildToolResponse includes JSON content matching structuredContent', () => {
   const structured = { ok: true, value: 123 };

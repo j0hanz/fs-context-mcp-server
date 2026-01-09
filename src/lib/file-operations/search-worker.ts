@@ -1,9 +1,6 @@
 /**
  * Worker thread script for parallel file content searching.
  *
- * This script runs in a worker thread and handles file scanning requests.
- * It receives scan requests via parentPort and returns results.
- *
  * Protocol:
  * - Receive: { type: 'scan', id, resolvedPath, requestedPath, pattern, matcherOptions, scanOptions }
  * - Send: { type: 'result', id, result } | { type: 'error', id, error }
@@ -12,11 +9,15 @@
  */
 import { parentPort, workerData } from 'node:worker_threads';
 
-import type { ContentMatch } from '../../../config/types.js';
-import { isProbablyBinary } from '../../fs-helpers/binary-detect.js';
-import type { Matcher, MatcherOptions, ScanFileOptions } from './scan-file.js';
-import { buildMatcher } from './scan-file.js';
-import { scanFileInWorker } from './worker-scan.js';
+import type { ContentMatch } from '../../config.js';
+import { isProbablyBinary } from '../fs-helpers.js';
+import {
+  buildMatcher,
+  type Matcher,
+  type MatcherOptions,
+  scanFileInWorker,
+  type ScanFileOptions,
+} from './search-content.js';
 
 interface ScanRequest {
   type: 'scan';
@@ -59,7 +60,6 @@ interface ScanError {
 
 type WorkerResponse = ScanResult | ScanError;
 
-// Cache matchers by pattern+options to avoid rebuilding
 const matcherCache = new Map<string, Matcher>();
 
 function getMatcherCacheKey(pattern: string, options: MatcherOptions): string {
@@ -74,7 +74,6 @@ function getCachedMatcher(pattern: string, options: MatcherOptions): Matcher {
   const cached = matcherCache.get(key);
 
   if (cached) {
-    // Refresh insertion order (simple LRU-ish behavior)
     matcherCache.delete(key);
     matcherCache.set(key, cached);
     return cached;
@@ -83,7 +82,6 @@ function getCachedMatcher(pattern: string, options: MatcherOptions): Matcher {
   const matcher = buildMatcher(pattern, options);
   matcherCache.set(key, matcher);
 
-  // Limit cache size to prevent memory leaks
   if (matcherCache.size > 100) {
     const firstKey = matcherCache.keys().next().value;
     if (firstKey !== undefined) {
@@ -94,7 +92,6 @@ function getCachedMatcher(pattern: string, options: MatcherOptions): Matcher {
   return matcher;
 }
 
-// Track cancelled requests
 const cancelledRequests = new Set<number>();
 
 function consumeCancelled(id: number): boolean {
@@ -135,13 +132,11 @@ async function handleScanRequest(request: ScanRequest): Promise<void> {
     maxMatches,
   } = request;
 
-  // Check if already cancelled before starting
   if (consumeCancelled(id)) return;
 
   try {
     const matcher = getCachedMatcher(pattern, matcherOptions);
 
-    // Check cancellation periodically during scan
     const isCancelled = (): boolean => cancelledRequests.has(id);
 
     const result = await scanFileInWorker(
@@ -154,11 +149,9 @@ async function handleScanRequest(request: ScanRequest): Promise<void> {
       isProbablyBinary
     );
 
-    // Don't send result if cancelled
     if (consumeCancelled(id)) return;
     parentPort?.postMessage(buildScanResponse(id, result));
   } catch (err) {
-    // Don't send error if cancelled
     if (consumeCancelled(id)) return;
     parentPort?.postMessage(buildErrorResponse(id, err));
   }
@@ -178,11 +171,9 @@ function handleMessage(message: WorkerRequest): void {
   }
 }
 
-// Initialize worker
 if (parentPort) {
   parentPort.on('message', handleMessage);
 
-  // Log worker startup in debug mode
   const data = workerData as { debug?: boolean; threadId?: number } | null;
   if (data?.debug) {
     console.error(

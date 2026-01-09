@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { ErrorCode } from '../../lib/errors.js';
-import { normalizePath } from '../../lib/path-utils.js';
-import { setAllowedDirectoriesResolved } from '../../lib/path-validation/allowed-directories.js';
-import { toAccessDeniedWithHint } from '../../lib/path-validation/path-errors.js';
+import { normalizePath } from '../../lib/path-validation.js';
+import {
+  setAllowedDirectoriesResolved,
+  toAccessDeniedWithHint,
+} from '../../lib/path-validation.js';
 
 void describe('path-validation errors', () => {
   afterEach(async () => {

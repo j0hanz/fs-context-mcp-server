@@ -13,8 +13,8 @@ const shouldSkip = isSourceContext;
 // Create a test script that will run searchContent with workers enabled
 // Uses compiled code paths for proper module resolution
 const testScript = `
-import { searchContent } from './dist/lib/file-operations/search/engine.js';
-import { setAllowedDirectoriesResolved } from './dist/lib/path-validation/allowed-directories.js';
+import { searchContent } from './dist/lib/file-operations/search-content.js';
+import { setAllowedDirectoriesResolved } from './dist/lib/path-validation.js';
 
 async function main() {
   const testDir = process.argv[2];

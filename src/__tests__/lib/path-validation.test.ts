@@ -4,12 +4,12 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { normalizePath } from '../../lib/path-utils.js';
+import { normalizePath } from '../../lib/path-validation.js';
 import {
   getAllowedDirectories,
   setAllowedDirectoriesResolved,
-} from '../../lib/path-validation/allowed-directories.js';
-import { validateExistingPath } from '../../lib/path-validation/validate-existing.js';
+  validateExistingPath,
+} from '../../lib/path-validation.js';
 
 interface TestFixture {
   testDir: string;

@@ -2,8 +2,10 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
-import { normalizePath } from '../../../lib/path-utils.js';
-import { setAllowedDirectoriesResolved } from '../../../lib/path-validation/allowed-directories.js';
+import {
+  normalizePath,
+  setAllowedDirectoriesResolved,
+} from '../../../lib/path-validation.js';
 
 interface FileOpsFixture {
   testDir: string;

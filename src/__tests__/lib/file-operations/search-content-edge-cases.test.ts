@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { searchContent } from '../../../lib/file-operations/search/engine.js';
+import { searchContent } from '../../../lib/file-operations/search-content.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 function registerSearchContentEdgeBasics(getTestDir: () => string): void {

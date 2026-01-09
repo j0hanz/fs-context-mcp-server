@@ -4,7 +4,7 @@ import { it } from 'node:test';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { registerListAllowedDirectoriesTool } from '../../tools/list-allowed-dirs.js';
+import { registerListAllowedDirectoriesTool } from '../../tools.js';
 import {
   enableDiagnosticsEnv,
   restoreDiagnosticsEnv,

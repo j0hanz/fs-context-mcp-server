@@ -8,7 +8,7 @@ import {
   publishOpsTraceError,
   publishOpsTraceStart,
   shouldPublishOpsTrace,
-} from '../observability/diagnostics.js';
+} from '../observability.js';
 
 interface DirentLike {
   isDirectory(): boolean;

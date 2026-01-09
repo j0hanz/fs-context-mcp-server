@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
-import { sortSearchResults } from '../../../lib/file-operations/sorting.js';
+import { sortSearchResults } from '../../../lib/file-operations/search-files.js';
 
 void it('sortSearchResults uses path as a deterministic tie-breaker for name sort', () => {
   const results = [{ path: '/b/file.txt' }, { path: '/a/file.txt' }];

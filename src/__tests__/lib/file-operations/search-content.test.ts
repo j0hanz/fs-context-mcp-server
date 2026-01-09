@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { searchContent } from '../../../lib/file-operations/search/engine.js';
+import { searchContent } from '../../../lib/file-operations/search-content.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 const unsafePatterns = ['(a+)+', '([a-zA-Z]+)*', '(.*a){25}'];
@@ -111,29 +111,23 @@ function registerSearchContentUnsafePatternTests(
   getTestDir: () => string
 ): void {
   unsafePatterns.forEach((pattern) => {
-    void it(
-      `searchContent rejects unsafe regex pattern "${pattern}"`,
-      async () => {
-        await assert.rejects(
-          searchContent(getTestDir(), pattern, { isLiteral: false }),
-          /ReDoS|unsafe/i
-        );
-      }
-    );
+    void it(`searchContent rejects unsafe regex pattern "${pattern}"`, async () => {
+      await assert.rejects(
+        searchContent(getTestDir(), pattern, { isLiteral: false }),
+        /ReDoS|unsafe/i
+      );
+    });
   });
 }
 
 function registerSearchContentSafePatternTests(getTestDir: () => string): void {
   safePatterns.forEach((pattern) => {
-    void it(
-      `searchContent accepts safe regex pattern "${pattern}"`,
-      async () => {
-        const result = await searchContent(getTestDir(), pattern, {
-          filePattern: '**/*.ts',
-        });
-        assert.ok(result);
-      }
-    );
+    void it(`searchContent accepts safe regex pattern "${pattern}"`, async () => {
+      const result = await searchContent(getTestDir(), pattern, {
+        filePattern: '**/*.ts',
+      });
+      assert.ok(result);
+    });
   });
 }
 
