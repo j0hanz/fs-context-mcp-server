@@ -57,7 +57,7 @@ export const DEFAULT_SEARCH_TIMEOUT_MS = parseEnvInt(
 export const SEARCH_WORKERS = parseEnvInt(
   'FS_CONTEXT_SEARCH_WORKERS',
   Math.min(availableParallelism(), 8),
-  1,
+  0,
   16
 );
 

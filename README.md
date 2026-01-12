@@ -123,7 +123,7 @@ All configuration is optional. Sizes in bytes, timeouts in milliseconds.
 | `MAX_FILE_SIZE`             | 10MB              | Max file size for read operations (range: 1MB-100MB)      |
 | `MAX_SEARCH_SIZE`           | 1MB               | Max file size for content search (range: 100KB-10MB)      |
 | `DEFAULT_SEARCH_TIMEOUT`    | 30000             | Timeout for search/list operations (range: 100-3600000ms) |
-| `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 1-16)                       |
+| `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)           |
 
 See [CONFIGURATION.md](CONFIGURATION.md) for examples and CLI usage.
 

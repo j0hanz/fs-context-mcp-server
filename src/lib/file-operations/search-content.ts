@@ -2,7 +2,7 @@ import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
 import type { ReadStream } from 'node:fs';
 import readline from 'node:readline';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
 import RE2 from 're2';
@@ -820,6 +820,7 @@ const WORKER_SCRIPT_PATH = path.join(
   currentDir,
   isSourceContext ? 'search-worker.ts' : 'search-worker.js'
 );
+const WORKER_SCRIPT_URL = pathToFileURL(WORKER_SCRIPT_PATH);
 
 const MAX_RESPAWNS = 3;
 
@@ -897,20 +898,26 @@ function selectSlot(
   nextSlotIndex: number,
   maxRespawns: number
 ): { slot: WorkerSlot | null; nextSlotIndex: number } {
-  let attempts = 0;
-  let index = nextSlotIndex;
+  let bestSlot: WorkerSlot | null = null;
+  let bestNextSlotIndex = nextSlotIndex;
+  let bestPending = Number.POSITIVE_INFINITY;
 
-  while (attempts < slots.length) {
+  for (let offset = 0; offset < slots.length; offset++) {
+    const index = (nextSlotIndex + offset) % slots.length;
     const slot = slots[index];
-    index = (index + 1) % slots.length;
-    attempts++;
+    if (!slot) continue;
+    if (!slot.worker && slot.respawnCount >= maxRespawns) continue;
 
-    if (slot && (slot.worker || slot.respawnCount < maxRespawns)) {
-      return { slot, nextSlotIndex: index };
+    const pendingSize = slot.pending.size;
+    if (pendingSize < bestPending) {
+      bestSlot = slot;
+      bestPending = pendingSize;
+      bestNextSlotIndex = (index + 1) % slots.length;
+      if (bestPending === 0) break;
     }
   }
 
-  return { slot: null, nextSlotIndex: index };
+  return { slot: bestSlot, nextSlotIndex: bestNextSlotIndex };
 }
 
 function attachWorkerHandlers(
@@ -967,10 +974,11 @@ class SearchWorkerPool {
         debug: this.debug,
         threadId: slot.index,
       },
-      execArgv: isSourceContext ? ['--import', 'tsx'] : undefined,
+      type: 'module',
+      execArgv: isSourceContext ? ['--import', 'tsx/esm'] : undefined,
     };
 
-    const worker = new Worker(WORKER_SCRIPT_PATH, workerOptions);
+    const worker = new Worker(WORKER_SCRIPT_URL, workerOptions);
 
     worker.unref();
     const logEntry = (entry: string): void => {
@@ -1119,13 +1127,14 @@ function isWorkerPoolAvailable(): boolean {
 
 let poolInstance: SearchWorkerPool | null = null;
 let poolSize = 0;
+let poolDebug = false;
 
 function getSearchWorkerPool(size: number, debug = false): SearchWorkerPool {
   if (size <= 0) {
     throw new Error('Pool size must be positive');
   }
 
-  if (poolInstance && poolSize === size) {
+  if (poolInstance && poolSize === size && poolDebug === debug) {
     return poolInstance;
   }
 
@@ -1135,6 +1144,7 @@ function getSearchWorkerPool(size: number, debug = false): SearchWorkerPool {
 
   poolInstance = new SearchWorkerPool({ size, debug });
   poolSize = size;
+  poolDebug = debug;
 
   return poolInstance;
 }
@@ -1170,13 +1180,14 @@ function createParallelScanConfig(
   maxResults: number,
   signal: AbortSignal
 ): ParallelScanConfig {
+  const debug = process.env.FS_CONTEXT_SEARCH_WORKERS_DEBUG === '1';
   return {
-    pool: getSearchWorkerPool(SEARCH_WORKERS),
+    pool: getSearchWorkerPool(SEARCH_WORKERS, debug),
     pattern,
     matcherOptions,
     scanOptions,
     maxResults,
-    maxInFlight: Math.min(SEARCH_WORKERS, Math.max(1, maxResults)),
+    maxInFlight: Math.max(1, SEARCH_WORKERS),
     signal,
   };
 }
@@ -1375,7 +1386,8 @@ function buildScanOptions(opts: ResolvedOptions): ScanFileOptions {
 }
 
 function shouldUseWorkers(): boolean {
-  return isWorkerPoolAvailable() && SEARCH_WORKERS > 0;
+  // Multi-CPU only: require at least 2 workers to justify thread overhead.
+  return isWorkerPoolAvailable() && SEARCH_WORKERS >= 2;
 }
 
 function buildTraceContext(opts: ResolvedOptions): OpsTraceContext | undefined {
