@@ -1076,21 +1076,14 @@ class SearchWorkerPool {
     const scanRequest = this.buildScanRequest(id, request);
     const promise = this.createScanPromise(slot, worker, scanRequest);
     const cancel = this.createCancel(slot, worker, id);
-    const task = {
-      id,
-      promise,
-      cancel,
-      outcome: Promise.resolve(undefined as unknown as WorkerOutcome),
-    } satisfies Omit<ScanTask, 'outcome'> & { outcome: ScanTask['outcome'] };
-
-    task.outcome = promise.then(
+    const outcome = promise.then(
       (result) => ({ task, result }),
       (error: unknown) => ({
         task,
         error: error instanceof Error ? error : new Error(String(error)),
       })
     );
-
+    const task: ScanTask = { id, promise, cancel, outcome };
     return task;
   }
 

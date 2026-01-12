@@ -7,6 +7,7 @@ import {
   DEFAULT_LIST_MAX_ENTRIES,
   DEFAULT_MAX_DEPTH,
   DEFAULT_SEARCH_TIMEOUT_MS,
+  PARALLEL_CONCURRENCY,
 } from '../constants.js';
 import { createTimedAbortSignal } from '../fs-helpers.js';
 import { validateExistingDirectory } from '../path-validation.js';
@@ -245,18 +246,45 @@ async function collectEntries(
   let stoppedReason:
     | ListDirectoryResult['summary']['stoppedReason']
     | undefined;
+  const pending: Promise<void>[] = [];
+  let scheduledCount = 0;
 
   const stream = createEntryStream(basePath, normalized, maxDepth, needsStats);
 
+  const flushPending = async (): Promise<void> => {
+    if (pending.length === 0) return;
+    await Promise.allSettled(pending.splice(0));
+  };
+
   for await (const entry of stream) {
-    const stop = shouldStopScan(signal, entries.length, normalized.maxEntries);
+    const stop = shouldStopScan(signal, scheduledCount, normalized.maxEntries);
     if (stop.stop) {
       truncated = true;
       stoppedReason = stop.reason;
       break;
     }
 
-    await appendEntry(basePath, entry, normalized, needsStats, totals, entries);
+    scheduledCount += 1;
+    const task = appendEntry(
+      basePath,
+      entry,
+      normalized,
+      needsStats,
+      totals,
+      entries
+    );
+    if (normalized.includeSymlinkTargets) {
+      pending.push(task);
+      if (pending.length >= PARALLEL_CONCURRENCY) {
+        await flushPending();
+      }
+    } else {
+      await task;
+    }
+  }
+
+  if (normalized.includeSymlinkTargets) {
+    await flushPending();
   }
 
   return { entries, totals, truncated, stoppedReason };

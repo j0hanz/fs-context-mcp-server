@@ -205,26 +205,7 @@ function buildSearchTextResult(
   result: Awaited<ReturnType<typeof searchContent>>
 ): string {
   const { summary } = result;
-  const normalizedMatches = (() => {
-    const relativeByFile = new Map<string, string>();
-    const normalized = result.matches.map((match, index) => {
-      const cached = relativeByFile.get(match.file);
-      const relative = cached ?? path.relative(result.basePath, match.file);
-      if (!cached) relativeByFile.set(match.file, relative);
-      return {
-        ...match,
-        relativeFile: relative,
-        index,
-      };
-    });
-    normalized.sort((a, b) => {
-      const fileCompare = a.relativeFile.localeCompare(b.relativeFile);
-      if (fileCompare !== 0) return fileCompare;
-      if (a.line !== b.line) return a.line - b.line;
-      return a.index - b.index;
-    });
-    return normalized;
-  })();
+  const normalizedMatches = normalizeSearchMatches(result);
 
   if (normalizedMatches.length === 0) return 'No matches';
 
@@ -255,26 +236,7 @@ function buildSearchTextResult(
 function buildStructuredSearchResult(
   result: Awaited<ReturnType<typeof searchContent>>
 ): z.infer<typeof SearchContentOutputSchema> {
-  const normalizedMatches = (() => {
-    const relativeByFile = new Map<string, string>();
-    const normalized = result.matches.map((match, index) => {
-      const cached = relativeByFile.get(match.file);
-      const relative = cached ?? path.relative(result.basePath, match.file);
-      if (!cached) relativeByFile.set(match.file, relative);
-      return {
-        ...match,
-        relativeFile: relative,
-        index,
-      };
-    });
-    normalized.sort((a, b) => {
-      const fileCompare = a.relativeFile.localeCompare(b.relativeFile);
-      if (fileCompare !== 0) return fileCompare;
-      if (a.line !== b.line) return a.line - b.line;
-      return a.index - b.index;
-    });
-    return normalized;
-  })();
+  const normalizedMatches = normalizeSearchMatches(result);
 
   return {
     ok: true,
@@ -290,6 +252,35 @@ function buildStructuredSearchResult(
     totalMatches: result.summary.matches,
     truncated: result.summary.truncated,
   };
+}
+
+type SearchContentResultValue = Awaited<ReturnType<typeof searchContent>>;
+type NormalizedSearchMatch = SearchContentResultValue['matches'][number] & {
+  relativeFile: string;
+  index: number;
+};
+
+function normalizeSearchMatches(
+  result: SearchContentResultValue
+): NormalizedSearchMatch[] {
+  const relativeByFile = new Map<string, string>();
+  const normalized = result.matches.map((match, index) => {
+    const cached = relativeByFile.get(match.file);
+    const relative = cached ?? path.relative(result.basePath, match.file);
+    if (!cached) relativeByFile.set(match.file, relative);
+    return {
+      ...match,
+      relativeFile: relative,
+      index,
+    };
+  });
+  normalized.sort((a, b) => {
+    const fileCompare = a.relativeFile.localeCompare(b.relativeFile);
+    if (fileCompare !== 0) return fileCompare;
+    if (a.line !== b.line) return a.line - b.line;
+    return a.index - b.index;
+  });
+  return normalized;
 }
 
 interface FileInfoPayload {
