@@ -471,7 +471,7 @@ dist/                      # Build output (generated)
 | "Binary file" warning    | `read` only supports UTF-8 text and rejects binary files.                    |
 | No directories available | Pass explicit paths, use `--allow-cwd`, or ensure the client provides Roots. |
 | Symlink blocked          | Symlinks that resolve outside allowed directories are blocked.               |
-| Invalid regex/pattern    | Simplify the regex or set `isLiteral=true` for exact matches.                |
+| Invalid regex/pattern    | Simplify the regex or use literal mode (`isLiteral=true`, default).          |
 
 ## Contributing
 
