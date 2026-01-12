@@ -92,7 +92,7 @@ export function buildToolResponse<T>(
   return buildContentBlock(text, structuredContent);
 }
 
-export type ToolResponse<T> = ReturnType<typeof buildToolResponse<T>> &
+type ToolResponse<T> = ReturnType<typeof buildToolResponse<T>> &
   Record<string, unknown>;
 
 interface ToolErrorStructuredContent extends Record<string, unknown> {
@@ -113,7 +113,7 @@ interface ToolErrorResponse extends Record<string, unknown> {
 
 export type ToolResult<T> = ToolResponse<T> | ToolErrorResponse;
 
-export async function withToolErrorHandling<T>(
+async function withToolErrorHandling<T>(
   run: () => Promise<ToolResponse<T>>,
   onError: (error: unknown) => ToolResult<T>
 ): Promise<ToolResult<T>> {
@@ -588,7 +588,7 @@ async function handleSearchFiles(
   return buildToolResponse(text, structured);
 }
 
-export function registerSearchFilesTool(server: McpServer): void {
+function registerSearchFilesTool(server: McpServer): void {
   server.registerTool('find', SEARCH_FILES_TOOL, (args, extra) =>
     withToolDiagnostics(
       'find',
@@ -645,7 +645,7 @@ async function handleReadFile(
   return buildToolResponse(result.content, structured);
 }
 
-export function registerReadFileTool(server: McpServer): void {
+function registerReadFileTool(server: McpServer): void {
   const handler = (
     args: z.infer<typeof ReadFileInputSchema>,
     extra: { signal?: AbortSignal }
@@ -713,7 +713,7 @@ async function handleReadMultipleFiles(
   return buildToolResponse(text, structured);
 }
 
-export function registerReadMultipleFilesTool(server: McpServer): void {
+function registerReadMultipleFilesTool(server: McpServer): void {
   server.registerTool('read_many', READ_MULTIPLE_FILES_TOOL, (args, extra) => {
     const primaryPath = args.paths[0] ?? '';
     return withToolDiagnostics(
@@ -756,7 +756,7 @@ async function handleGetFileInfo(
   return buildToolResponse(formatFileInfoDetails(info), structured);
 }
 
-export function registerGetFileInfoTool(server: McpServer): void {
+function registerGetFileInfoTool(server: McpServer): void {
   server.registerTool('stat', GET_FILE_INFO_TOOL, (args, extra) =>
     withToolDiagnostics(
       'stat',
@@ -819,7 +819,7 @@ async function handleGetMultipleFileInfo(
   return buildToolResponse(text, structured);
 }
 
-export function registerGetMultipleFileInfoTool(server: McpServer): void {
+function registerGetMultipleFileInfoTool(server: McpServer): void {
   server.registerTool(
     'stat_many',
     GET_MULTIPLE_FILE_INFO_TOOL,
@@ -906,7 +906,7 @@ async function handleSearchContent(
   );
 }
 
-export function registerSearchContentTool(server: McpServer): void {
+function registerSearchContentTool(server: McpServer): void {
   server.registerTool('grep', SEARCH_CONTENT_TOOL, (args, extra) =>
     withToolDiagnostics(
       'grep',

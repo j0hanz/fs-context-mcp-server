@@ -38,13 +38,13 @@ function resolveWithinRoot(root: string, input: string): string | null {
   return null;
 }
 
-export function isPathWithinRoot(root: string, candidate: string): boolean {
+function isPathWithinRoot(root: string, candidate: string): boolean {
   return resolveWithinRoot(root, candidate) !== null;
 }
 
 const PATH_SEPARATOR = process.platform === 'win32' ? '\\' : '/';
 
-export function normalizeForComparison(value: string): string {
+function normalizeForComparison(value: string): string {
   return process.platform === 'win32' ? value.toLowerCase() : value;
 }
 
@@ -232,7 +232,7 @@ function ensureNoWindowsDriveRelativePath(requestedPath: string): void {
   );
 }
 
-export function validateRequestedPath(requestedPath: string): string {
+function validateRequestedPath(requestedPath: string): string {
   ensureNonEmptyPath(requestedPath);
   ensureNoNullBytes(requestedPath);
   ensureNoReservedWindowsNames(requestedPath);
@@ -278,7 +278,7 @@ function buildAllowedDirectoriesHint(): string {
     : 'No allowed directories configured.';
 }
 
-export function toMcpError(requestedPath: string, error: unknown): McpError {
+function toMcpError(requestedPath: string, error: unknown): McpError {
   const code = isNodeError(error) ? error.code : undefined;
   const mapping = code ? NODE_ERROR_MAP[code] : undefined;
   if (mapping) {

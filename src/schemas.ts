@@ -15,23 +15,23 @@ function isSafeGlobPattern(value: string): boolean {
   return true;
 }
 
-export const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
+const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 
-export const ErrorSchema = z.object({
+const ErrorSchema = z.object({
   code: z.string().describe('Error code (e.g., E_NOT_FOUND)'),
   message: z.string().describe('Human-readable error message'),
   path: z.string().optional().describe('Path that caused the error'),
   suggestion: z.string().optional().describe('Suggested action to resolve'),
 });
 
-export const HeadLinesSchema = z
+const HeadLinesSchema = z
   .int({ error: 'head must be an integer' })
   .min(1, 'head must be at least 1')
   .max(100000, 'head cannot exceed 100,000 lines')
   .optional()
   .describe('Read only the first N lines');
 
-export const FileInfoSchema = z.object({
+const FileInfoSchema = z.object({
   name: z.string(),
   path: z.string(),
   type: FileTypeSchema,
@@ -45,7 +45,7 @@ export const FileInfoSchema = z.object({
   symlinkTarget: z.string().optional(),
 });
 
-export const OperationSummarySchema = z.object({
+const OperationSummarySchema = z.object({
   total: z.number(),
   succeeded: z.number(),
   failed: z.number(),

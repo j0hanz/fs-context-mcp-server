@@ -60,7 +60,7 @@ export interface SearchContentOptions extends Partial<SearchOptions> {
   signal?: AbortSignal;
 }
 
-export type ResolvedOptions = SearchOptions;
+type ResolvedOptions = SearchOptions;
 
 const INTERNAL_MAX_RESULTS = 500;
 
@@ -81,7 +81,7 @@ const DEFAULTS: SearchOptions = {
   caseSensitiveFileMatch: true,
 };
 
-export function mergeOptions(partial: SearchContentOptions): ResolvedOptions {
+function mergeOptions(partial: SearchContentOptions): ResolvedOptions {
   const rest = { ...partial };
   delete rest.signal;
   return { ...DEFAULTS, ...rest };
@@ -101,16 +101,13 @@ export interface ScanFileOptions {
   contextLines: number;
 }
 
-export interface ScanFileResult {
+interface ScanFileResult {
   readonly matches: readonly ContentMatch[];
   readonly matched: boolean;
   readonly skippedTooLarge: boolean;
   readonly skippedBinary: boolean;
 }
-export function validatePattern(
-  pattern: string,
-  options: MatcherOptions
-): void {
+function validatePattern(pattern: string, options: MatcherOptions): void {
   if (options.isLiteral && !options.wholeWord) {
     return;
   }
@@ -457,7 +454,7 @@ async function scanFileWithMatcher(
   }
 }
 
-export async function scanFileResolved(
+async function scanFileResolved(
   resolvedPath: string,
   requestedPath: string,
   matcher: Matcher,
@@ -506,12 +503,12 @@ export async function scanFileInWorker(
     skippedBinary: result.skippedBinary,
   };
 }
-export interface ResolvedFile {
+interface ResolvedFile {
   resolvedPath: string;
   requestedPath: string;
 }
 
-export interface ScanSummary {
+interface ScanSummary {
   filesScanned: number;
   filesMatched: number;
   skippedTooLarge: number;

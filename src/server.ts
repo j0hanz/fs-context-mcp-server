@@ -99,7 +99,7 @@ async function normalizeCliDirectories(
   return Promise.all(args.map(validateDirectoryPath));
 }
 
-export function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
+function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
   return dirs
     .map((dir) => dir.trim())
     .filter((dir) => dir.length > 0)

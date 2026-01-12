@@ -411,7 +411,7 @@ function isBinarySlice(slice: Buffer): boolean {
   return slice.includes(0);
 }
 
-export type ReadMode = 'head' | 'full';
+type ReadMode = 'head' | 'full';
 
 export interface ReadFileOptions {
   encoding?: BufferEncoding;
@@ -421,7 +421,7 @@ export interface ReadFileOptions {
   signal?: AbortSignal;
 }
 
-export interface NormalizedOptions {
+interface NormalizedOptions {
   encoding: BufferEncoding;
   maxSize: number;
   head?: number;
