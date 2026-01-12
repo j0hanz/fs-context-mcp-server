@@ -20,7 +20,7 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist', {recursive: true, force: true})\"",
     "validate:instructions": "node -e \"require('fs').accessSync('src/instructions.md')\"",
-    "build": "tsc -p tsconfig.build.json && npm run validate:instructions && npm run copy:assets",
+    "build": "tsc -p tsconfig.json && npm run validate:instructions && npm run copy:assets && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
     "copy:assets": "node -e \"require('fs').copyFileSync('src/instructions.md', 'dist/instructions.md')\"",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
@@ -30,7 +30,7 @@
     "test:node": "node --test --import tsx/esm node-tests/errors-is-node-error.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "type-check": "tsc -p tsconfig.typecheck.json --noEmit",
+    "type-check": "tsc -p tsconfig.json --noEmit",
     "inspector": "npx @modelcontextprotocol/inspector",
     "prepublishOnly": "npm run lint && npm run type-check && npm run build"
   },
@@ -40,7 +40,9 @@
     "filesystem",
     "scanner",
     "search",
-    "analysis"
+    "analysis",
+    "read-only",
+    "exploration"
   ],
   "author": "j0hanz",
   "license": "MIT",
@@ -65,7 +67,8 @@
     "eslint-plugin-depend": "^1.4.0",
     "eslint-plugin-sonarjs": "^3.0.5",
     "eslint-plugin-unused-imports": "^4.3.0",
-    "knip": "^5.80.1",
+    "jscpd": "^4.0.7",
+    "knip": "^5.80.2",
     "prettier": "^3.7.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
