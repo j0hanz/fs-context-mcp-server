@@ -17,6 +17,7 @@ import {
   ErrorCode,
   formatDetailedError,
   getSuggestion,
+  McpError,
 } from './lib/errors.js';
 import {
   getFileInfo,
@@ -156,7 +157,10 @@ function resolvePathOrRoot(pathValue: string | undefined): string {
   if (pathValue && pathValue.trim().length > 0) return pathValue;
   const firstRoot = getAllowedDirectories()[0];
   if (!firstRoot) {
-    throw new Error('No workspace roots configured. Use roots to check.');
+    throw new McpError(
+      ErrorCode.E_ACCESS_DENIED,
+      'No workspace roots configured. Use the roots tool to check, or configure roots via the MCP Roots protocol (or start with --allow-cwd / CLI directories).'
+    );
   }
   return firstRoot;
 }
@@ -571,7 +575,8 @@ async function handleSearchFiles(
   signal?: AbortSignal
 ): Promise<ToolResponse<z.infer<typeof SearchFilesOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
-  const result = await searchFiles(basePath, args.pattern, [], {
+  const excludePatterns = args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS;
+  const result = await searchFiles(basePath, args.pattern, excludePatterns, {
     maxResults: args.maxResults,
     ...(signal ? { signal } : {}),
   });

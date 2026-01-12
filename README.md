@@ -172,14 +172,16 @@ Structured output includes `ok`, `path`, `entries`, and `totalEntries`.
 ### `find`
 
 Search for files using glob patterns. Omit `path` to search from the first
-allowed root. `find` does not apply a built-in exclude list; scope your pattern
-to avoid dependency/build directories (e.g., `src/**/*.ts`).
+allowed root. By default, `find` excludes common dependency/build directories
+(node_modules, dist, .git, etc.); set `includeIgnored: true` to include ignored
+directories and disable built-in excludes.
 
-| Parameter    | Type   | Required | Default      | Description                                            |
-| ------------ | ------ | -------- | ------------ | ------------------------------------------------------ |
-| `path`       | string | No       | `first root` | Base directory to search from (omit to use first root) |
-| `pattern`    | string | Yes      | -            | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`)          |
-| `maxResults` | number | No       | `100`        | Maximum matches to return (1-10000)                    |
+| Parameter        | Type    | Required | Default      | Description                                            |
+| ---------------- | ------- | -------- | ------------ | ------------------------------------------------------ |
+| `path`           | string  | No       | `first root` | Base directory to search from (omit to use first root) |
+| `pattern`        | string  | Yes      | -            | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`)          |
+| `includeIgnored` | boolean | No       | `false`      | Include ignored dirs and disable built-in excludes     |
+| `maxResults`     | number  | No       | `100`        | Maximum matches to return (1-10000)                    |
 
 Returns: Matching paths (relative) with size and modified date. Structured
 output includes `ok`, `results`, `totalMatches`, and `truncated`.
@@ -256,13 +258,16 @@ Returns: Array of file info with individual success/error status, plus summary
 
 ### `grep`
 
-Search for text content within files using regular expressions. Omit `path` to
-search from the first allowed root.
+Search for text content within files. Omit `path` to search from the first
+allowed root.
+
+By default, `pattern` is treated as a literal string (`isLiteral=true`); set
+`isLiteral=false` to use regex.
 
 | Parameter                | Type     | Required | Default               | Description                                                             |
 | ------------------------ | -------- | -------- | --------------------- | ----------------------------------------------------------------------- |
 | `path`                   | string   | No       | `first root`          | Base directory to search in (omit to use first root)                    |
-| `pattern`                | string   | Yes      | -                     | Regex pattern to search for                                             |
+| `pattern`                | string   | Yes      | -                     | Text or regex pattern to search for                                     |
 | `filePattern`            | string   | No       | `**/*`                | Glob pattern to filter files                                            |
 | `excludePatterns`        | string[] | No       | built-in exclude list | Glob patterns to exclude (overrides built-in list)                      |
 | `caseSensitive`          | boolean  | No       | `false`               | Case-sensitive search                                                   |
@@ -275,7 +280,7 @@ search from the first allowed root.
 | `includeIgnored`         | boolean  | No       | `false`               | Include ignored dirs (node_modules, dist) and disable built-in excludes |
 | `contextLines`           | number   | No       | `0`                   | Lines of context before/after match (0-10)                              |
 | `wholeWord`              | boolean  | No       | `false`               | Match whole words only                                                  |
-| `isLiteral`              | boolean  | No       | `false`               | Treat pattern as literal string (escape regex chars)                    |
+| `isLiteral`              | boolean  | No       | `true`                | Treat pattern as literal string (escape regex chars)                    |
 | `baseNameMatch`          | boolean  | No       | `false`               | Match file patterns without slashes against basenames                   |
 | `caseSensitiveFileMatch` | boolean  | No       | `true`                | Case-sensitive filename matching                                        |
 

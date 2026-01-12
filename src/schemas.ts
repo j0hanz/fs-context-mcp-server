@@ -167,6 +167,14 @@ export const SearchFilesInputSchema = z.strictObject({
     .optional()
     .default(100)
     .describe('Maximum matches to return (1-10000)'),
+  includeIgnored: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Include normally ignored directories (node_modules, dist, .git, etc). ' +
+        'Set to true when debugging in dependencies.'
+    ),
 });
 
 export const SearchContentInputSchema = z.strictObject({
@@ -273,7 +281,7 @@ export const SearchContentInputSchema = z.strictObject({
   isLiteral: z
     .boolean()
     .optional()
-    .default(false)
+    .default(true)
     .describe('Treat pattern as literal string (escape regex chars)'),
   baseNameMatch: z
     .boolean()

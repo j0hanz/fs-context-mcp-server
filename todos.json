@@ -1,0 +1,38 @@
+[
+  {
+    "id": "547f5631-7954-4e08-8764-e31da5e8e354",
+    "description": "Baseline: run npm test/type-check/lint to confirm clean start",
+    "completed": true,
+    "createdAt": "2026-01-12T13:42:16.406Z",
+    "updatedAt": "2026-01-12T13:43:42.241Z",
+    "completedAt": "2026-01-12T13:43:42.241Z"
+  },
+  {
+    "id": "cec9bcdc-992c-4431-b2f5-98109bbd489b",
+    "description": "Update schemas: grep isLiteral default true; find includeIgnored flag",
+    "completed": false,
+    "createdAt": "2026-01-12T13:42:16.406Z",
+    "updatedAt": "2026-01-12T13:42:16.406Z"
+  },
+  {
+    "id": "df391c2b-a8ad-4841-95ac-eae28e953656",
+    "description": "Update tools: find passes DEFAULT_EXCLUDE_PATTERNS unless includeIgnored; resolvePathOrRoot throws McpError with E_ACCESS_DENIED",
+    "completed": false,
+    "createdAt": "2026-01-12T13:42:16.406Z",
+    "updatedAt": "2026-01-12T13:42:16.406Z"
+  },
+  {
+    "id": "714165c2-6e97-4fc8-a696-e4e743a92a4b",
+    "description": "Fix binary-read error message in fs-helpers (remove unsupported skipBinary=false advice) and update any affected tests",
+    "completed": false,
+    "createdAt": "2026-01-12T13:42:16.406Z",
+    "updatedAt": "2026-01-12T13:42:16.406Z"
+  },
+  {
+    "id": "7d315f2a-8f83-4b3e-9cc5-fb3f060616f9",
+    "description": "Add/adjust tests for schema defaults + no-roots error code; rerun gates and store decision memory",
+    "completed": false,
+    "createdAt": "2026-01-12T13:42:16.406Z",
+    "updatedAt": "2026-01-12T13:42:16.406Z"
+  }
+]

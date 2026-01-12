@@ -27,5 +27,18 @@ void describe('readFile edge cases', () => {
 
       await fs.rm(emptyFile);
     });
+
+    void it('readFile rejects binary files without suggesting unsupported tool options', async () => {
+      const binaryFile = path.join(getTestDir(), 'image.png');
+      await assert.rejects(
+        readFile(binaryFile, { skipBinary: true }),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.ok(error.message.includes('Binary file detected'));
+          assert.ok(!error.message.includes('skipBinary'));
+          return true;
+        }
+      );
+    });
   });
 });
