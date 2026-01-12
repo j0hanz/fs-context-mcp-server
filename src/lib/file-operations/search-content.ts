@@ -1,5 +1,6 @@
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import type { ReadStream } from 'node:fs';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
@@ -242,13 +243,18 @@ interface ScanLoopOptions {
 function buildReadline(
   handle: fsp.FileHandle,
   signal?: AbortSignal
-): readline.Interface {
+): { rl: readline.Interface; input: ReadStream } {
+  const input = handle.createReadStream({
+    encoding: 'utf-8',
+    autoClose: false,
+  });
   const baseOptions = {
-    input: handle.createReadStream({ encoding: 'utf-8', autoClose: false }),
+    input,
     crlfDelay: Infinity,
   };
   const options = signal ? { ...baseOptions, signal } : baseOptions;
-  return readline.createInterface(options);
+  const rl = readline.createInterface(options);
+  return { rl, input };
 }
 
 function updateContext(
@@ -386,7 +392,7 @@ async function readMatches(
   isCancelled: () => boolean,
   signal?: AbortSignal
 ): Promise<ContentMatch[]> {
-  const rl = buildReadline(handle, signal);
+  const { rl, input } = buildReadline(handle, signal);
   const ctx = makeContext();
   const matches: ContentMatch[] = [];
   try {
@@ -403,6 +409,7 @@ async function readMatches(
     return matches;
   } finally {
     rl.close();
+    input.destroy();
   }
 }
 
@@ -802,6 +809,7 @@ interface WorkerScanResult {
 interface ScanTask {
   id: number;
   promise: Promise<WorkerScanResult>;
+  outcome: Promise<WorkerOutcome>;
   cancel: () => void;
 }
 
@@ -1060,7 +1068,22 @@ class SearchWorkerPool {
     const scanRequest = this.buildScanRequest(id, request);
     const promise = this.createScanPromise(slot, worker, scanRequest);
     const cancel = this.createCancel(slot, worker, id);
-    return { id, promise, cancel };
+    const task = {
+      id,
+      promise,
+      cancel,
+      outcome: Promise.resolve(undefined as unknown as WorkerOutcome),
+    } satisfies Omit<ScanTask, 'outcome'> & { outcome: ScanTask['outcome'] };
+
+    task.outcome = promise.then(
+      (result) => ({ task, result }),
+      (error: unknown) => ({
+        task,
+        error: error instanceof Error ? error : new Error(String(error)),
+      })
+    );
+
+    return task;
   }
 
   async close(): Promise<void> {
@@ -1211,16 +1234,13 @@ function stopIfSignaledOrLimited(
 async function awaitNextOutcome(
   inFlight: Set<ScanTask>
 ): Promise<WorkerOutcome> {
-  const races = [...inFlight].map((task) =>
-    task.promise.then(
-      (result) => ({ task, result }),
-      (error: unknown) => ({
-        task,
-        error: error instanceof Error ? error : new Error(String(error)),
-      })
-    )
-  );
-  return await Promise.race(races);
+  function* outcomes(): Iterable<Promise<WorkerOutcome>> {
+    for (const task of inFlight) {
+      yield task.outcome;
+    }
+  }
+
+  return await Promise.race(outcomes());
 }
 
 function handleWorkerOutcome(
