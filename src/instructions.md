@@ -15,7 +15,7 @@ explicitly allowed directories and never write to disk.
 | Check access        | `roots`     | -                              |
 | List contents       | `ls`        | `path`                         |
 | Find files          | `find`      | `pattern` (glob), `maxResults` |
-| Search in files     | `grep`      | `pattern`, `contextLines`      |
+| Search in files     | `grep`      | `pattern`                      |
 | Read file           | `read`      | `head`                         |
 | Read multiple files | `read_many` | `paths[]` - preferred for 2+   |
 | File metadata       | `stat`      | `path`                         |
@@ -30,8 +30,7 @@ explicitly allowed directories and never write to disk.
   provides no roots, the server starts with no accessible directories and logs
   a warning until roots are provided.
 - **Globs vs patterns:** `find` uses glob patterns. `grep` treats `pattern` as a
-  literal string by default (`isLiteral=true`); set `isLiteral=false` to use
-  regex.
+  literal string.
 - **Symlinks:** Symlinks are never followed for security.
 
 ---
@@ -56,7 +55,7 @@ read_many([...results])
 ### Search patterns in code
 
 ```text
-grep(pattern="TODO|FIXME", filePattern="**/*.ts", isLiteral=false, contextLines=2)
+grep(pattern="TODO")
 ```
 
 ---
@@ -106,9 +105,10 @@ List the immediate contents of a directory (non-recursive). Returns entry name,
 relative path, type, size, and modified date. Omit `path` to use the first
 allowed root. Symlinks are not followed.
 
-| Parameter | Default | Description    |
-| --------- | ------- | -------------- |
-| `path`    | -       | Directory path |
+| Parameter       | Default | Description                          |
+| --------------- | ------- | ------------------------------------ |
+| `path`          | -       | Directory path                       |
+| `includeHidden` | false   | Include hidden files and directories |
 
 For recursive or filtered file searches, use `find` instead.
 
@@ -131,20 +131,14 @@ allowed root.
 
 ### `grep`
 
-Grep-like search across file contents. By default, `pattern` is treated as a
-literal string (`isLiteral=true`); set `isLiteral=false` to use regex. Omit
-`path` to use the first allowed root.
+Grep-like search across file contents. `pattern` is treated as a literal string.
+Omit `path` to use the first allowed root.
 
-| Parameter        | Default | Description                          |
-| ---------------- | ------- | ------------------------------------ |
-| `path`           | -       | Base directory                       |
-| `pattern`        | -       | Text or regex pattern                |
-| `filePattern`    | `**/*`  | Glob filter for files                |
-| `caseSensitive`  | false   | Case-sensitive matching              |
-| `isLiteral`      | true    | Treat pattern as literal string      |
-| `maxResults`     | 100     | Maximum matches to return            |
-| `contextLines`   | 0       | Lines of context before/after (0-10) |
-| `includeIgnored` | false   | Include ignored dirs (node_modules)  |
+| Parameter       | Default | Description                          |
+| --------------- | ------- | ------------------------------------ |
+| `path`          | -       | Base directory                       |
+| `pattern`       | -       | Text pattern                         |
+| `includeHidden` | false   | Include hidden files and directories |
 
 ---
 

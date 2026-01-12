@@ -9,7 +9,6 @@ import type { FileInfo } from './config.js';
 import {
   DEFAULT_EXCLUDE_PATTERNS,
   DEFAULT_SEARCH_TIMEOUT_MS,
-  MAX_SEARCHABLE_FILE_SIZE,
   MAX_TEXT_FILE_SIZE,
 } from './lib/constants.js';
 import {
@@ -516,13 +515,6 @@ async function handleListDirectory(
   const dirPath = resolvePathOrRoot(args.path);
   const options: Parameters<typeof listDirectory>[1] = {
     includeHidden: args.includeHidden,
-    excludePatterns: args.excludePatterns,
-    maxDepth: args.maxDepth,
-    maxEntries: args.maxEntries,
-    timeoutMs: args.timeoutMs,
-    sortBy: args.sortBy,
-    includeSymlinkTargets: args.includeSymlinkTargets,
-    ...(args.pattern !== undefined ? { pattern: args.pattern } : {}),
     ...(signal ? { signal } : {}),
   };
   const result = await listDirectory(dirPath, options);
@@ -538,17 +530,7 @@ export function registerListDirectoryTool(server: McpServer): void {
       'ls',
       () =>
         withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              args.timeoutMs
-            );
-            try {
-              return await handleListDirectory(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
+          () => handleListDirectory(args, extra.signal),
           (error) =>
             buildToolErrorResponse(
               error,
@@ -849,47 +831,6 @@ function registerGetMultipleFileInfoTool(server: McpServer): void {
   );
 }
 
-function resolveExcludePatterns(
-  args: z.infer<typeof SearchContentInputSchema>
-): readonly string[] {
-  if (args.excludePatterns) return args.excludePatterns;
-  return args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS;
-}
-
-function resolveMaxFileSize(
-  args: z.infer<typeof SearchContentInputSchema>
-): number {
-  if (typeof args.maxFileSize !== 'number') {
-    return MAX_SEARCHABLE_FILE_SIZE;
-  }
-  return Math.min(args.maxFileSize, MAX_SEARCHABLE_FILE_SIZE);
-}
-
-function buildSearchOptions(
-  args: z.infer<typeof SearchContentInputSchema>,
-  signal?: AbortSignal
-): Parameters<typeof searchContent>[2] {
-  const includeHidden = args.includeHidden || args.includeIgnored;
-  const options = {
-    filePattern: args.filePattern,
-    excludePatterns: resolveExcludePatterns(args),
-    caseSensitive: args.caseSensitive,
-    isLiteral: args.isLiteral,
-    contextLines: args.contextLines,
-    maxResults: args.maxResults,
-    maxFileSize: resolveMaxFileSize(args),
-    maxFilesScanned: args.maxFilesScanned,
-    timeoutMs: args.timeoutMs,
-    skipBinary: args.skipBinary,
-    includeHidden,
-    wholeWord: args.wholeWord,
-    baseNameMatch: args.baseNameMatch,
-    caseSensitiveFileMatch: args.caseSensitiveFileMatch,
-  };
-  if (signal) return { ...options, signal };
-  return options;
-}
-
 async function handleSearchContent(
   args: z.infer<typeof SearchContentInputSchema>,
   signal?: AbortSignal
@@ -898,7 +839,9 @@ async function handleSearchContent(
   const result = await searchContent(
     basePath,
     args.pattern,
-    buildSearchOptions(args, signal)
+    signal
+      ? { includeHidden: args.includeHidden, signal }
+      : { includeHidden: args.includeHidden }
   );
   return buildToolResponse(
     buildSearchTextResult(result),
@@ -912,17 +855,7 @@ function registerSearchContentTool(server: McpServer): void {
       'grep',
       () =>
         withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              args.timeoutMs
-            );
-            try {
-              return await handleSearchContent(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
+          async () => handleSearchContent(args, extra.signal),
           (error) =>
             buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
         ),

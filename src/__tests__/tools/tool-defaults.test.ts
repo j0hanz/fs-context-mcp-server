@@ -9,6 +9,7 @@ import {
   setAllowedDirectoriesResolved,
 } from '../../lib/path-validation.js';
 import {
+  ListDirectoryInputSchema,
   SearchContentInputSchema,
   SearchFilesInputSchema,
 } from '../../schemas.js';
@@ -36,14 +37,33 @@ function createFakeServerCapture(): {
   };
 }
 
-void it('grep defaults to literal search (isLiteral=true)', () => {
+void it('grep includes includeHidden=false by default', () => {
   const parsed = SearchContentInputSchema.parse({ pattern: 'console.log' });
-  assert.strictEqual(parsed.isLiteral, true);
+  assert.strictEqual(parsed.includeHidden, false);
+});
+
+void it('grep rejects unknown parameters', () => {
+  assert.throws(
+    () => SearchContentInputSchema.parse({ pattern: 'x', isLiteral: false }),
+    /Unrecognized key/i
+  );
 });
 
 void it('find includes includeIgnored=false by default', () => {
   const parsed = SearchFilesInputSchema.parse({ pattern: '**/*.ts' });
   assert.strictEqual(parsed.includeIgnored, false);
+});
+
+void it('ls includes includeHidden=false by default', () => {
+  const parsed = ListDirectoryInputSchema.parse({});
+  assert.strictEqual(parsed.includeHidden, false);
+});
+
+void it('ls rejects unknown parameters', () => {
+  assert.throws(
+    () => ListDirectoryInputSchema.parse({ pattern: '**/*' }),
+    /Unrecognized key/i
+  );
 });
 
 await it('ls returns E_ACCESS_DENIED when no roots configured', async () => {

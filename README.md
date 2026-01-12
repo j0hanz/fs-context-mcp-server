@@ -149,20 +149,12 @@ Returns: Allowed directory paths. Structured output includes `ok` and
 ### `ls`
 
 List the immediate contents of a directory (non-recursive). Omit `path` to use
-the first allowed root. If `pattern` is provided, listing is recursive up to
-`maxDepth`.
+the first allowed root.
 
-| Parameter               | Type     | Required | Default      | Description                                              |
-| ----------------------- | -------- | -------- | ------------ | -------------------------------------------------------- |
-| `path`                  | string   | No       | `first root` | Directory path to list (omit to use first root)          |
-| `includeHidden`         | boolean  | No       | `false`      | Include hidden files and directories                     |
-| `excludePatterns`       | string[] | No       | `[]`         | Glob patterns to exclude                                 |
-| `pattern`               | string   | No       | -            | Glob pattern to include (relative, no `..`)              |
-| `maxDepth`              | number   | No       | `10`         | Maximum depth when using pattern (0-100)                 |
-| `maxEntries`            | number   | No       | `10000`      | Maximum entries to return (1-100000)                     |
-| `timeoutMs`             | number   | No       | `30000`      | Timeout in milliseconds                                  |
-| `sortBy`                | string   | No       | `name`       | Sort by: `name`, `size`, `modified`, `type`              |
-| `includeSymlinkTargets` | boolean  | No       | `false`      | Include symlink target paths (symlinks are not followed) |
+| Parameter       | Type    | Required | Default      | Description                                     |
+| --------------- | ------- | -------- | ------------ | ----------------------------------------------- |
+| `path`          | string  | No       | `first root` | Directory path to list (omit to use first root) |
+| `includeHidden` | boolean | No       | `false`      | Include hidden files and directories            |
 
 Returns: Entries with name, relativePath, type, size, and modified time.
 Structured output includes `ok`, `path`, `entries`, and `totalEntries`.
@@ -261,28 +253,13 @@ Returns: Array of file info with individual success/error status, plus summary
 Search for text content within files. Omit `path` to search from the first
 allowed root.
 
-By default, `pattern` is treated as a literal string (`isLiteral=true`); set
-`isLiteral=false` to use regex.
+`pattern` is treated as a literal string.
 
-| Parameter                | Type     | Required | Default               | Description                                                             |
-| ------------------------ | -------- | -------- | --------------------- | ----------------------------------------------------------------------- |
-| `path`                   | string   | No       | `first root`          | Base directory to search in (omit to use first root)                    |
-| `pattern`                | string   | Yes      | -                     | Text or regex pattern to search for                                     |
-| `filePattern`            | string   | No       | `**/*`                | Glob pattern to filter files                                            |
-| `excludePatterns`        | string[] | No       | built-in exclude list | Glob patterns to exclude (overrides built-in list)                      |
-| `caseSensitive`          | boolean  | No       | `false`               | Case-sensitive search                                                   |
-| `maxResults`             | number   | No       | `100`                 | Maximum number of results                                               |
-| `maxFileSize`            | number   | No       | 1MB                   | Maximum file size to scan (default from `MAX_SEARCH_SIZE`)              |
-| `maxFilesScanned`        | number   | No       | `20000`               | Maximum files to scan before stopping                                   |
-| `timeoutMs`              | number   | No       | `30000`               | Timeout in milliseconds                                                 |
-| `skipBinary`             | boolean  | No       | `true`                | Skip likely-binary files                                                |
-| `includeHidden`          | boolean  | No       | `false`               | Include hidden files and directories                                    |
-| `includeIgnored`         | boolean  | No       | `false`               | Include ignored dirs (node_modules, dist) and disable built-in excludes |
-| `contextLines`           | number   | No       | `0`                   | Lines of context before/after match (0-10)                              |
-| `wholeWord`              | boolean  | No       | `false`               | Match whole words only                                                  |
-| `isLiteral`              | boolean  | No       | `true`                | Treat pattern as literal string (escape regex chars)                    |
-| `baseNameMatch`          | boolean  | No       | `false`               | Match file patterns without slashes against basenames                   |
-| `caseSensitiveFileMatch` | boolean  | No       | `true`                | Case-sensitive filename matching                                        |
+| Parameter       | Type    | Required | Default      | Description                                          |
+| --------------- | ------- | -------- | ------------ | ---------------------------------------------------- |
+| `path`          | string  | No       | `first root` | Base directory to search in (omit to use first root) |
+| `pattern`       | string  | Yes      | -            | Text pattern to search for                           |
+| `includeHidden` | boolean | No       | `false`      | Include hidden files and directories                 |
 
 Returns: Matching lines with file path, line number, content, and optional
 context. Structured output includes `ok`, `matches`, `totalMatches`, and
@@ -291,13 +268,11 @@ Matched line content is trimmed to 200 characters.
 
 ---
 
-Built-in exclude list (used by `grep` when `excludePatterns` is not provided and
-`includeIgnored` is false) includes common dependency/build/output directories
+Built-in exclude list: `grep` skips common dependency/build/output directories
 and files: `node_modules`, `dist`, `build`, `coverage`, `.git`, `.vscode`,
 `.idea`, `.DS_Store`, `.next`, `.nuxt`, `.output`, `.svelte-kit`, `.cache`,
 `.yarn`, `jspm_packages`, `bower_components`, `out`, `tmp`, `.temp`,
-`npm-debug.log`, `yarn-debug.log`, `yarn-error.log`, `Thumbs.db`. Pass
-`excludePatterns: []` or `includeIgnored: true` to disable it.
+`npm-debug.log`, `yarn-debug.log`, `yarn-error.log`, `Thumbs.db`.
 
 ## Error Codes
 
@@ -471,7 +446,7 @@ dist/                      # Build output (generated)
 | "Binary file" warning    | `read` only supports UTF-8 text and rejects binary files.                    |
 | No directories available | Pass explicit paths, use `--allow-cwd`, or ensure the client provides Roots. |
 | Symlink blocked          | Symlinks that resolve outside allowed directories are blocked.               |
-| Invalid regex/pattern    | Simplify the regex or use literal mode (`isLiteral=true`, default).          |
+| Invalid pattern          | Simplify the pattern (note: `grep` treats `pattern` as literal text).        |
 
 ## Contributing
 

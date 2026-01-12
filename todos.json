@@ -1,0 +1,52 @@
+[
+  {
+    "id": "67632c3a-9337-448f-9294-1fffa8d8407e",
+    "description": "Audit grep/searchContent defaults; choose internal safe defaults for minimal grep tool",
+    "completed": true,
+    "createdAt": "2026-01-12T15:28:30.014Z",
+    "updatedAt": "2026-01-12T15:28:33.270Z",
+    "completedAt": "2026-01-12T15:28:33.270Z"
+  },
+  {
+    "id": "fffaddf1-afb4-4386-b469-64b4092dceef",
+    "description": "Update SearchContentInputSchema to only {path?, pattern, includeHidden?}",
+    "completed": false,
+    "createdAt": "2026-01-12T15:28:30.014Z",
+    "updatedAt": "2026-01-12T15:28:30.014Z"
+  },
+  {
+    "id": "36be2ea2-e719-4cc0-9d2b-53c8cb838fa4",
+    "description": "Update grep handler in src/tools.ts to stop accepting advanced args; use internal defaults",
+    "completed": false,
+    "createdAt": "2026-01-12T15:28:30.014Z",
+    "updatedAt": "2026-01-12T15:28:30.014Z"
+  },
+  {
+    "id": "47d071d3-fe2a-480b-ad42-dfd2eb158778",
+    "description": "Update README.md + src/instructions.md grep docs to match minimal schema",
+    "completed": false,
+    "createdAt": "2026-01-12T15:28:30.014Z",
+    "updatedAt": "2026-01-12T15:28:30.014Z"
+  },
+  {
+    "id": "687b24d6-cfec-459e-9d71-309cb05c9a75",
+    "description": "Update tests referencing SearchContentInputSchema fields (isLiteral, filePattern, etc)",
+    "completed": false,
+    "createdAt": "2026-01-12T15:28:30.014Z",
+    "updatedAt": "2026-01-12T15:28:30.014Z"
+  },
+  {
+    "id": "f59d6268-7103-4bf9-9342-19f70a038f00",
+    "description": "Run npm test + type-check + lint",
+    "completed": false,
+    "createdAt": "2026-01-12T15:28:30.014Z",
+    "updatedAt": "2026-01-12T15:28:30.014Z"
+  },
+  {
+    "id": "9c14c371-e77f-4128-a582-2be3d224aa43",
+    "description": "Store decision/outcome memory for grep-minimal",
+    "completed": false,
+    "createdAt": "2026-01-12T15:28:30.014Z",
+    "updatedAt": "2026-01-12T15:28:30.014Z"
+  }
+]

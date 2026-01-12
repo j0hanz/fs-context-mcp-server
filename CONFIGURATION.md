@@ -75,11 +75,11 @@ All optional. Sizes in bytes, timeouts in milliseconds.
 
 ## Troubleshooting
 
-| Issue                            | Solution                                                       |
-| -------------------------------- | -------------------------------------------------------------- |
-| Invalid regex or pattern         | Simplify regex or use literal mode (`isLiteral=true`, default) |
-| Environment variable not applied | Restart client, verify JSON syntax                             |
-| Invalid value warning            | Check range limits in the table above                          |
+| Issue                            | Solution                              |
+| -------------------------------- | ------------------------------------- |
+| Invalid pattern                  | Simplify the pattern                  |
+| Environment variable not applied | Restart client, verify JSON syntax    |
+| Invalid value warning            | Check range limits in the table above |
 
 ## Command Line Arguments
 
