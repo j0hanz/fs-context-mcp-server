@@ -175,13 +175,6 @@ async function recomputeAllowedDirectories(): Promise<void> {
         : rootDirectories;
 
     const combined = [...baseline, ...rootsToInclude];
-    if (combined.length === 0 && rootDirectories.length === 0) {
-      console.error(
-        'No directories configured. Defaulting to current working directory.'
-      );
-      combined.push(normalizePath(process.cwd()));
-    }
-
     await setAllowedDirectoriesResolved(combined, signal);
   } finally {
     cleanup();

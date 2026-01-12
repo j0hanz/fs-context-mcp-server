@@ -16,6 +16,11 @@ interface DirentLike {
   isSymbolicLink(): boolean;
 }
 
+interface GlobDirentLike extends DirentLike {
+  name: string;
+  parentPath?: string;
+}
+
 export interface GlobEntry {
   path: string;
   dirent: DirentLike;
@@ -134,6 +139,30 @@ function toAbsolutePath(cwd: string, match: string): string {
   return path.isAbsolute(match) ? match : path.resolve(cwd, match);
 }
 
+function toAbsolutePathFromDirent(cwd: string, dirent: GlobDirentLike): string {
+  const base =
+    dirent.parentPath && dirent.parentPath.length > 0 ? dirent.parentPath : cwd;
+  return path.resolve(base, dirent.name);
+}
+
+function isGlobDirentLike(value: unknown): value is GlobDirentLike {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'name' in value &&
+    typeof (value as { name: unknown }).name === 'string'
+  );
+}
+
+function resolveAbsolutePathFromGlobMatch(
+  cwd: string,
+  match: string | GlobDirentLike
+): string {
+  return typeof match === 'string'
+    ? toAbsolutePath(cwd, match)
+    : toAbsolutePathFromDirent(cwd, match);
+}
+
 function isWithinDepthLimit(
   options: GlobEntriesOptions,
   entryPath: string
@@ -146,17 +175,52 @@ function createGlobIterator(
   pattern: string,
   cwd: string,
   exclude: readonly string[],
+  withFileTypes: boolean,
   suppressErrors: boolean
-): NodeJS.AsyncIterator<string> | null {
+): NodeJS.AsyncIterator<string | GlobDirentLike> | null {
   try {
     return fsGlob(pattern, {
       cwd,
       exclude,
+      withFileTypes,
     });
   } catch (error) {
     if (suppressErrors) return null;
     throw error;
   }
+}
+
+function shouldUseGlobDirents(options: GlobEntriesOptions): boolean {
+  return !options.stats && !options.followSymbolicLinks;
+}
+
+function buildEntryFromGlobDirent(
+  absolutePath: string,
+  dirent: GlobDirentLike,
+  options: GlobEntriesOptions
+): GlobEntry | null {
+  if (options.onlyFiles && !dirent.isFile()) return null;
+  return { path: absolutePath, dirent };
+}
+
+async function processGlobMatch(
+  match: string | GlobDirentLike,
+  options: GlobEntriesOptions,
+  seen: Set<string>,
+  useDirents: boolean
+): Promise<GlobEntry | null> {
+  const absolutePath = resolveAbsolutePathFromGlobMatch(options.cwd, match);
+  if (seen.has(absolutePath)) return null;
+  seen.add(absolutePath);
+  if (!isWithinDepthLimit(options, absolutePath)) return null;
+
+  const entry =
+    useDirents && isGlobDirentLike(match)
+      ? buildEntryFromGlobDirent(absolutePath, match, options)
+      : await buildEntry(absolutePath, options);
+  if (!entry) return null;
+  if (options.onlyFiles && !entry.dirent.isFile()) return null;
+  return entry;
 }
 
 async function* scanPattern(
@@ -165,25 +229,20 @@ async function* scanPattern(
   exclude: readonly string[],
   seen: Set<string>
 ): AsyncGenerator<GlobEntry> {
+  const useDirents = shouldUseGlobDirents(options);
   const iterator = createGlobIterator(
     pattern,
     options.cwd,
     exclude,
+    useDirents,
     options.suppressErrors ?? false
   );
   if (!iterator) return;
 
   try {
     for await (const match of iterator) {
-      const absolutePath = toAbsolutePath(options.cwd, match);
-      if (seen.has(absolutePath)) continue;
-      seen.add(absolutePath);
-      if (!isWithinDepthLimit(options, absolutePath)) continue;
-
-      const entry = await buildEntry(absolutePath, options);
-      if (!entry) continue;
-      if (options.onlyFiles && !entry.dirent.isFile()) continue;
-      yield entry;
+      const entry = await processGlobMatch(match, options, seen, useDirents);
+      if (entry) yield entry;
     }
   } catch (error) {
     if (options.suppressErrors) return;

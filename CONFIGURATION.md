@@ -8,7 +8,7 @@ All configuration is optional. Defaults work for most use cases.
 - Use `--allow-cwd` to add the current working directory as an allowed root.
 - If the MCP client supports Roots, its roots are used when no CLI paths are provided.
 - If CLI paths and/or `--allow-cwd` are provided, client roots are only accepted if they are within those baseline directories.
-- If nothing is configured and the client provides no roots, the server defaults to the current working directory and logs a warning.
+- If nothing is configured and the client provides no roots, the server starts with no accessible directories and logs a warning until roots are provided.
 - Windows drive-relative paths like `C:path` are rejected. Use `C:\path` or `C:/path`.
 - Reserved Windows device names (e.g., `CON`, `NUL`) are blocked.
 

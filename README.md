@@ -54,7 +54,7 @@ Or pass explicit directories:
 npx -y @j0hanz/fs-context-mcp@latest /path/to/project /path/to/docs
 ```
 
-If your MCP client supports the Roots protocol, you can omit directory arguments and let the client provide allowed directories. Otherwise, pass explicit directories or use `--allow-cwd` (if neither is provided, the server defaults to the current working directory).
+If your MCP client supports the Roots protocol, you can omit directory arguments and let the client provide allowed directories. Otherwise, pass explicit directories or use `--allow-cwd` (if neither is provided, the server starts with no accessible directories until roots are provided).
 
 ### VS Code (workspace folder)
 
@@ -105,7 +105,7 @@ Access is always restricted to explicitly allowed directories.
 3. MCP Roots from the client are used next:
    - If CLI and/or `--allow-cwd` are provided, only roots inside those baseline directories are accepted.
    - If no baseline is provided, roots become the allowed directories.
-4. If nothing is configured and the client provides no roots, the server defaults to the current working directory and logs a warning.
+4. If nothing is configured and the client provides no roots, the server starts with no accessible directories and logs a warning until roots are provided.
 
 Notes:
 

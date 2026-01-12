@@ -27,8 +27,8 @@ explicitly allowed directories and never write to disk.
 
 - **Allowed directories:** All tools only operate inside the allowed roots.
   Run `roots` first to confirm scope. If nothing is configured and the client
-  provides no roots, the server defaults to the current working directory and
-  logs a warning.
+  provides no roots, the server starts with no accessible directories and logs
+  a warning until roots are provided.
 - **Globs vs regex:** `find` uses glob patterns, `grep` uses
   regex (set `isLiteral=true` to search for exact text).
 - **Symlinks:** Symlinks are never followed for security.
