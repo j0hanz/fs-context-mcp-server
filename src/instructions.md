@@ -136,9 +136,11 @@ Omit `path` to use the first allowed root.
 
 | Parameter       | Default | Description                          |
 | --------------- | ------- | ------------------------------------ |
-| `path`          | -       | Base directory                       |
+| `path`          | -       | Base directory or file path          |
 | `pattern`       | -       | Text pattern                         |
 | `includeHidden` | false   | Include hidden files and directories |
+
+Tip: pass a file path to search only that file.
 
 ---
 

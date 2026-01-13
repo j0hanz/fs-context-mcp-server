@@ -16,6 +16,7 @@ import {
   MAX_SEARCHABLE_FILE_SIZE,
   SEARCH_WORKERS,
 } from '../constants.js';
+import { ErrorCode, McpError } from '../errors.js';
 import {
   assertNotAborted,
   createTimedAbortSignal,
@@ -516,6 +517,57 @@ interface ScanSummary {
   skippedInaccessible: number;
   truncated: boolean;
   stoppedReason: SearchContentResult['summary']['stoppedReason'];
+}
+
+async function executeSearchSingleFile(
+  file: ResolvedFile,
+  baseDir: string,
+  pattern: string,
+  opts: ResolvedOptions,
+  signal: AbortSignal
+): Promise<SearchContentResult> {
+  const matcherOptions = buildMatcherOptions(opts);
+  const scanOptions = buildScanOptions(opts);
+  const traceContext = buildTraceContext(opts);
+
+  return await withOpsTrace(traceContext, async () => {
+    validatePattern(pattern, matcherOptions);
+
+    const summary = createScanSummary();
+    const matches: ContentMatch[] = [];
+
+    summary.filesScanned = 1;
+
+    try {
+      const remaining = Math.max(0, opts.maxResults - matches.length);
+      const matcher = buildMatcher(pattern, matcherOptions);
+      const result = await scanFileResolved(
+        file.resolvedPath,
+        file.requestedPath,
+        matcher,
+        scanOptions,
+        signal,
+        remaining
+      );
+      applyScanResult(result, matches, summary, remaining);
+    } catch {
+      summary.skippedInaccessible = 1;
+    }
+
+    if (signal.aborted) {
+      markTruncated(summary, 'timeout');
+    } else if (matches.length >= opts.maxResults) {
+      markTruncated(summary, 'maxResults');
+    }
+
+    return buildSearchResult(
+      baseDir,
+      pattern,
+      path.basename(file.requestedPath),
+      matches,
+      summary
+    );
+  });
 }
 
 function resolveNonSymlinkPath(
@@ -1514,7 +1566,6 @@ export async function searchContent(
   options: SearchContentOptions = {}
 ): Promise<SearchContentResult> {
   const opts = mergeOptions(options);
-  const root = await validateExistingDirectory(basePath, options.signal);
   const { signal, cleanup } = createTimedAbortSignal(
     options.signal,
     opts.timeoutMs
@@ -1522,7 +1573,36 @@ export async function searchContent(
   const allowedDirs = getAllowedDirectories();
 
   try {
-    return await executeSearch(root, pattern, opts, allowedDirs, signal);
+    const details = await validateExistingPathDetailed(basePath, signal);
+    const stats = await withAbort(fsp.stat(details.resolvedPath), signal);
+
+    if (stats.isDirectory()) {
+      const root = await validateExistingDirectory(
+        details.resolvedPath,
+        signal
+      );
+      return await executeSearch(root, pattern, opts, allowedDirs, signal);
+    }
+
+    if (stats.isFile()) {
+      const baseDir = path.dirname(details.resolvedPath);
+      return await executeSearchSingleFile(
+        {
+          resolvedPath: details.resolvedPath,
+          requestedPath: details.requestedPath,
+        },
+        baseDir,
+        pattern,
+        opts,
+        signal
+      );
+    }
+
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Path must be a file or directory: ${basePath}`,
+      basePath
+    );
   } finally {
     cleanup();
   }

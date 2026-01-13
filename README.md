@@ -20,7 +20,7 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 
 - Directory listing (immediate contents)
 - File search with glob patterns
-- Content search with regex and context lines
+- Content search (grep-like literal text search)
 - File reading with head previews (first N lines)
 - Batch reads and metadata lookups in parallel
 - Security: path validation, symlink escape protection, read-only operations
@@ -250,20 +250,32 @@ Returns: Array of file info with individual success/error status, plus summary
 
 ### `grep`
 
-Search for text content within files. Omit `path` to search from the first
-allowed root.
+Search for text content within files.
+
+- Omit `path` to search from the first allowed root.
+- Pass a file path in `path` to search only that file.
 
 `pattern` is treated as a literal string.
 
-| Parameter       | Type    | Required | Default      | Description                                          |
-| --------------- | ------- | -------- | ------------ | ---------------------------------------------------- |
-| `path`          | string  | No       | `first root` | Base directory to search in (omit to use first root) |
-| `pattern`       | string  | Yes      | -            | Text pattern to search for                           |
-| `includeHidden` | boolean | No       | `false`      | Include hidden files and directories                 |
+| Parameter       | Type    | Required | Default      | Description                              |
+| --------------- | ------- | -------- | ------------ | ---------------------------------------- |
+| `path`          | string  | No       | `first root` | Base directory or file path to search in |
+| `pattern`       | string  | Yes      | -            | Text pattern to search for               |
+| `includeHidden` | boolean | No       | `false`      | Include hidden files and directories     |
+
+Example (search a single file):
+
+```json
+{ "path": "src/transform.ts", "pattern": "TODO" }
+```
 
 Returns: Matching lines with file path, line number, content, and optional
-context. Structured output includes `ok`, `matches`, `totalMatches`, and
-`truncated`.
+context.
+
+Note: the `grep` tool currently exposes only `path`, `pattern`, and
+`includeHidden`. Context fields are omitted unless enabled internally.
+
+Structured output includes `ok`, `matches`, `totalMatches`, and `truncated`.
 Matched line content is trimmed to 200 characters.
 
 ---

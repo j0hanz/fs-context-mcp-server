@@ -124,8 +124,8 @@ export const SearchContentInputSchema = z.strictObject({
     .string()
     .optional()
     .describe(
-      'Base directory to search within (leave empty for workspace root). ' +
-        'Examples: "src", "lib", "tests"'
+      'Base directory or file path to search within (leave empty for workspace root). ' +
+        'Examples: "src", "lib", "tests", "src/index.ts"'
     ),
   pattern: z
     .string()

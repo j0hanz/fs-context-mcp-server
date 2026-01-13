@@ -18,9 +18,16 @@ function registerSearchContentBasics(getTestDir: () => string): void {
     assert.strictEqual(result.matches[0]?.contextAfter, undefined);
   });
 
-  void it('searchContent rejects file base path', async () => {
-    const filePath = path.join(getTestDir(), 'README.md');
-    await assert.rejects(searchContent(filePath, 'hello'), /not a directory/i);
+  void it('searchContent supports file base path (scans only that file)', async () => {
+    const filePath = path.join(getTestDir(), 'src', 'index.ts');
+    const result = await searchContent(filePath, 'hello');
+    assert.ok(result.matches.length > 0);
+    assert.strictEqual(result.summary.filesScanned, 1);
+    assert.strictEqual(path.basename(result.basePath), 'src');
+    assert.strictEqual(
+      result.matches.every((m) => m.file.endsWith('index.ts')),
+      true
+    );
   });
 }
 

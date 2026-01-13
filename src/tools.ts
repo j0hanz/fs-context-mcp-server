@@ -438,7 +438,8 @@ const SEARCH_CONTENT_TOOL = {
   description:
     'Search for text within file contents (grep-like). ' +
     'Returns matching lines. ' +
-    'Use includeIgnored=true to search in node_modules/dist for debugging.',
+    'Path may be a directory or a single file. ' +
+    'Use includeHidden=true to include hidden files and directories.',
   inputSchema: SearchContentInputSchema,
   outputSchema: SearchContentOutputSchema,
   annotations: {
