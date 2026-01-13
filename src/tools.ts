@@ -554,19 +554,20 @@ async function handleSearchFiles(
     maxResults: args.maxResults,
     ...(signal ? { signal } : {}),
   });
+  const relativeResults = result.results.map((entry) => ({
+    path: path.relative(result.basePath, entry.path),
+    size: entry.size,
+    modified: entry.modified?.toISOString(),
+  }));
   const structured: z.infer<typeof SearchFilesOutputSchema> = {
     ok: true,
-    results: result.results.map((entry) => ({
-      path: path.relative(result.basePath, entry.path),
-      size: entry.size,
-      modified: entry.modified?.toISOString(),
-    })),
+    results: relativeResults,
     totalMatches: result.summary.matched,
     truncated: result.summary.truncated,
   };
   const text = joinLines([
-    `Found ${result.results.length}:`,
-    ...result.results.map((entry) => `  ${entry.path}`),
+    `Found ${relativeResults.length}:`,
+    ...relativeResults.map((entry) => `  ${entry.path}`),
   ]);
   return buildToolResponse(text, structured);
 }

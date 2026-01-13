@@ -210,7 +210,6 @@ async function updateRootsFromClient(server: McpServer): Promise<void> {
     const roots = extractRoots(rootsResult);
     rootDirectories = await resolveRootDirectories(roots);
   } catch (error) {
-    rootDirectories = [];
     console.error(
       '[DEBUG] MCP Roots protocol unavailable or failed:',
       error instanceof Error ? error.message : String(error)

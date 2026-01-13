@@ -10,6 +10,7 @@ import safeRegex from 'safe-regex2';
 
 import type { ContentMatch, SearchContentResult } from '../../config.js';
 import {
+  DEFAULT_EXCLUDE_PATTERNS,
   DEFAULT_SEARCH_MAX_FILES,
   DEFAULT_SEARCH_TIMEOUT_MS,
   MAX_LINE_CONTENT_LENGTH,
@@ -67,7 +68,7 @@ const INTERNAL_MAX_RESULTS = 500;
 
 const DEFAULTS: SearchOptions = {
   filePattern: '**/*',
-  excludePatterns: [],
+  excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
   caseSensitive: false,
   maxResults: INTERNAL_MAX_RESULTS,
   maxFileSize: MAX_SEARCHABLE_FILE_SIZE,
@@ -274,10 +275,11 @@ function appendMatch(
   lineNo: number,
   count: number,
   contextLines: number,
-  ctx: ContextState
+  ctx: ContextState,
+  contextBeforeOverride?: readonly string[]
 ): void {
   const contextBefore =
-    contextLines > 0 ? ([...ctx.before] as readonly string[]) : undefined;
+    contextLines > 0 ? (contextBeforeOverride ?? [...ctx.before]) : undefined;
   const contextAfterBuffer = contextLines > 0 ? [] : undefined;
   const match: ContentMatch = {
     file: requestedPath,
@@ -305,6 +307,7 @@ function recordLineMatch(
   matches: ContentMatch[],
   ctx: ContextState
 ): void {
+  const contextBefore = options.contextLines > 0 ? [...ctx.before] : undefined;
   const trimmedLine = updateContext(line, options.contextLines, ctx);
   const count = matcher(line);
   if (count > 0) {
@@ -316,7 +319,8 @@ function recordLineMatch(
       lineNo,
       count,
       options.contextLines,
-      ctx
+      ctx,
+      contextBefore
     );
   }
 }
@@ -1585,7 +1589,7 @@ export async function searchContent(
     }
 
     if (stats.isFile()) {
-      const baseDir = path.dirname(details.resolvedPath);
+      const baseDir = path.dirname(details.requestedPath);
       return await executeSearchSingleFile(
         {
           resolvedPath: details.resolvedPath,

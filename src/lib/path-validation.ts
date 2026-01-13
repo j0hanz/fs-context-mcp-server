@@ -232,12 +232,24 @@ function ensureNoWindowsDriveRelativePath(requestedPath: string): void {
   );
 }
 
+function resolveRequestedPath(requestedPath: string): string {
+  const expanded = expandHome(requestedPath);
+  if (!path.isAbsolute(expanded)) {
+    const allowedDirs = getAllowedDirectories();
+    const baseDir = allowedDirs[0];
+    if (baseDir) {
+      return normalizePath(path.resolve(baseDir, expanded));
+    }
+  }
+  return normalizePath(expanded);
+}
+
 function validateRequestedPath(requestedPath: string): string {
   ensureNonEmptyPath(requestedPath);
   ensureNoNullBytes(requestedPath);
   ensureNoReservedWindowsNames(requestedPath);
   ensureNoWindowsDriveRelativePath(requestedPath);
-  return normalizePath(requestedPath);
+  return resolveRequestedPath(requestedPath);
 }
 
 const NODE_ERROR_MAP: Readonly<
