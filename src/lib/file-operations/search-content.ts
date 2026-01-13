@@ -791,7 +791,7 @@ async function scanFilesSequential(
     summary
   );
 }
-interface ScanRequest {
+export interface ScanRequest {
   type: 'scan';
   id: number;
   resolvedPath: string;
@@ -802,7 +802,7 @@ interface ScanRequest {
   maxMatches: number;
 }
 
-interface ScanResult {
+export interface ScanResult {
   type: 'result';
   id: number;
   result: {
@@ -813,13 +813,13 @@ interface ScanResult {
   };
 }
 
-interface ScanError {
+export interface ScanError {
   type: 'error';
   id: number;
   error: string;
 }
 
-type WorkerResponse = ScanResult | ScanError;
+export type WorkerResponse = ScanResult | ScanError;
 
 interface PendingTask {
   resolve: (result: ScanResult['result']) => void;

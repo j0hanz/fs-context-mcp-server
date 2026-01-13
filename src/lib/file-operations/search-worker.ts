@@ -1,34 +1,15 @@
-/**
- * Worker thread script for parallel file content searching.
- *
- * Protocol:
- * - Receive: { type: 'scan', id, resolvedPath, requestedPath, pattern, matcherOptions, scanOptions }
- * - Send: { type: 'result', id, result } | { type: 'error', id, error }
- * - Receive: { type: 'cancel', id } - Cancel a pending scan
- * - Receive: { type: 'shutdown' } - Graceful shutdown
- */
 import { parentPort, workerData } from 'node:worker_threads';
 
-import type { ContentMatch } from '../../config.js';
 import { isProbablyBinary } from '../fs-helpers.js';
-import {
-  buildMatcher,
-  type Matcher,
-  type MatcherOptions,
-  scanFileInWorker,
-  type ScanFileOptions,
+import { buildMatcher, scanFileInWorker } from './search-content.js';
+import type {
+  Matcher,
+  MatcherOptions,
+  ScanError,
+  ScanRequest,
+  ScanResult,
+  WorkerResponse,
 } from './search-content.js';
-
-interface ScanRequest {
-  type: 'scan';
-  id: number;
-  resolvedPath: string;
-  requestedPath: string;
-  pattern: string;
-  matcherOptions: MatcherOptions;
-  scanOptions: ScanFileOptions;
-  maxMatches: number;
-}
 
 interface CancelRequest {
   type: 'cancel';
@@ -40,25 +21,6 @@ interface ShutdownRequest {
 }
 
 type WorkerRequest = ScanRequest | CancelRequest | ShutdownRequest;
-
-interface ScanResult {
-  type: 'result';
-  id: number;
-  result: {
-    matches: readonly ContentMatch[];
-    matched: boolean;
-    skippedTooLarge: boolean;
-    skippedBinary: boolean;
-  };
-}
-
-interface ScanError {
-  type: 'error';
-  id: number;
-  error: string;
-}
-
-type WorkerResponse = ScanResult | ScanError;
 
 const matcherCache = new Map<string, Matcher>();
 
