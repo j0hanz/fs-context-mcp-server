@@ -1,212 +1,112 @@
 # FS Context MCP Server
 
-> Read-only tools for exploring directories, searching files, and reading
-> content via the Model Context Protocol (MCP).
+Read-only tools for safe filesystem inspection via the Model Context Protocol (MCP).
+This server can only access explicitly allowed “workspace roots” and never writes to disk.
 
-This server lets assistants inspect files safely. All operations are limited to
-explicitly allowed directories and never write to disk.
+---
+
+## TL;DR (Agent Workflow)
+
+1. `roots` → learn what you can access
+2. `ls` → orient yourself in a directory
+3. `find` → locate candidate files by glob
+4. `grep` → find references/content (text search)
+5. `read` / `read_many` → open the exact files you need
+6. `stat` / `stat_many` → confirm type/size/mime before reading
+
+---
+
+## Key Rules (Avoid Surprises)
+
+- **Access is root-scoped:** if `roots` returns an empty list, other tools will fail until the client/CLI config provides roots.
+- **Paths must stay within roots:** attempts to escape (e.g., via `..` or symlinks that resolve outside roots) are denied.
+- **`find` is glob search; `grep` is content search:** use `find` to locate files, `grep` to locate text inside files.
+- **Symlink policy:** directory scans do not traverse symlinked directories; direct symlink targets are allowed only if they resolve within roots.
 
 ---
 
 ## Quick Reference
 
-| Goal                | Tool        | Key Parameters                 |
-| ------------------- | ----------- | ------------------------------ |
-| Check access        | `roots`     | -                              |
-| List contents       | `ls`        | `path`                         |
-| Find files          | `find`      | `pattern` (glob), `maxResults` |
-| Search in files     | `grep`      | `pattern`                      |
-| Read file           | `read`      | `head`                         |
-| Read multiple files | `read_many` | `paths[]` - preferred for 2+   |
-| File metadata       | `stat`      | `path`                         |
-| Batch file metadata | `stat_many` | `paths[]` - preferred for 2+   |
+| Goal             | Tool        | Notes                                                                          |
+| ---------------- | ----------- | ------------------------------------------------------------------------------ |
+| Check access     | `roots`     | Always call first                                                              |
+| List a directory | `ls`        | Non-recursive; `includeHidden` optional                                        |
+| Find files       | `find`      | Glob patterns; default excludes common build/deps unless `includeIgnored=true` |
+| Search text      | `grep`      | Literal, case-insensitive text search; can scan a dir or a single file         |
+| Read one file    | `read`      | UTF-8 text; rejects binary; use `head` to preview                              |
+| Read many files  | `read_many` | Up to 100 paths; may skip files if combined reads exceed budget                |
+| File metadata    | `stat`      | Type, size, modified, permissions, mimeType (extension-based)                  |
+| Metadata batch   | `stat_many` | Prefer for 2+ paths                                                            |
 
 ---
 
-## Core Concepts
-
-- **Allowed directories:** All tools only operate inside the allowed roots.
-  Run `roots` first to confirm scope. If nothing is configured and the client
-  provides no roots, the server starts with no accessible directories and logs
-  a warning until roots are provided.
-- **Globs vs patterns:** `find` uses glob patterns. `grep` treats `pattern` as a
-  literal string.
-- **Symlinks:** Symlinks are never followed for security.
-
----
-
-## Workflows
+## Practical Recipes
 
 ### Project discovery
 
 ```text
 roots
 ls(path=".")
-read_many(["package.json", "README.md"])
+read_many(paths=["package.json", "README.md"], head=200)
 ```
 
-### Find and read code
+### Locate & open implementation
 
 ```text
-find(pattern="**/*.ts")
-read_many([...results])
+find(pattern="src/**/*.ts", maxResults=2000)
+grep(path="src", pattern="registerTool")
+read(path="src/tools.ts", head=200)
 ```
 
-### Search patterns in code
+### Check before reading (avoid binary/huge files)
 
 ```text
-grep(pattern="TODO")
+stat(path="docs/logo.png")
+stat_many(paths=["README.md", "dist/index.js"])
 ```
 
 ---
 
-## Common Glob Patterns
+## Tool Notes (Behavior That Matters)
 
-| Pattern               | Matches                                   |
-| --------------------- | ----------------------------------------- |
-| `**/*.ts`             | All TypeScript files                      |
-| `src/**/*.{js,jsx}`   | JS/JSX files under `src/`                 |
-| `**/test/**`          | All files in any `test/` directory        |
-| `**/*.test.ts`        | Test files by naming convention           |
-| `!**/node_modules/**` | Exclude `node_modules/` (use in excludes) |
+### `find` (glob)
 
----
+- Uses glob patterns like `**/*.ts` or `src/**/index.*`.
+- Default behavior excludes common directories like `node_modules`, `dist`, `.git`, etc.
+  Use `includeIgnored=true` when you explicitly want to search those.
+- Prefer scoping with `path` and limiting with `maxResults` for large repos.
 
-## Best Practices
+Common patterns:
 
-**Do:**
+- `**/*.ts`
+- `src/**/*.{ts,tsx}`
+- `**/*.test.ts`
 
-- Use `read_many` for 2+ files (parallel, resilient).
-- Set `maxResults` limits on searches for large codebases.
-- Preview large files with `head=50` before full reads.
+### `grep` (text search)
 
-**Don't:**
+- Searches for **literal text** (not a user-supplied regex).
+- Matching is **case-insensitive**.
+- By design, it **skips binary files** and **skips very large files** (size limits are configurable by the server environment).
+  “No matches” is not proof that a string doesn’t exist in a binary/large file.
 
-- Loop `read` for multiple files.
-- Search without `maxResults` on large codebases.
+### `read` vs `read_many`
 
----
-
-## Tool Details
-
-### `roots`
-
-List all directories this server can access.
-
-| Parameter | Default | Description |
-| --------- | ------- | ----------- |
-| (none)    | -       | -           |
+- `read` is safest for text: it enforces size limits and refuses binary.
+- `read_many` is best for efficiency (2+ files), but it does **not** do binary detection.
+  If you’re unsure, do `stat_many` first and only read obvious text files.
 
 ---
 
-### `ls`
+## Output & Errors
 
-List the immediate contents of a directory (non-recursive). Returns entry name,
-relative path, type, size, and modified date. Omit `path` to use the first
-allowed root. Symlinks are not followed.
+- Each tool returns structured data with `ok: true|false`.
+- On failure you’ll get `ok: false` with an `error` object containing at least `code` and `message` (often `path` and a `suggestion`).
 
-| Parameter       | Default | Description                          |
-| --------------- | ------- | ------------------------------------ |
-| `path`          | -       | Directory path                       |
-| `includeHidden` | false   | Include hidden files and directories |
+Common error codes:
 
-For recursive or filtered file searches, use `find` instead.
-
----
-
-### `find`
-
-Find files using glob patterns. Automatically excludes common dependency/build
-directories (node_modules, dist, .git, etc.). Omit `path` to use the first
-allowed root.
-
-| Parameter        | Default | Description               |
-| ---------------- | ------- | ------------------------- |
-| `path`           | -       | Base directory            |
-| `pattern`        | -       | Glob: `**/*.ts`, `src/**` |
-| `includeIgnored` | false   | Include ignored dirs      |
-| `maxResults`     | 100     | Limit (up to 10,000)      |
-
----
-
-### `grep`
-
-Grep-like search across file contents. `pattern` is treated as a literal string.
-Omit `path` to use the first allowed root.
-
-| Parameter       | Default | Description                          |
-| --------------- | ------- | ------------------------------------ |
-| `path`          | -       | Base directory or file path          |
-| `pattern`       | -       | Text pattern                         |
-| `includeHidden` | false   | Include hidden files and directories |
-
-Tip: pass a file path to search only that file.
-
----
-
-### `read`
-
-Read a single text file (UTF-8). Binary files are rejected.
-
-| Parameter | Default | Description   |
-| --------- | ------- | ------------- |
-| `path`    | -       | File path     |
-| `head`    | -       | First N lines |
-
----
-
-### `read_many`
-
-Read multiple files in parallel. Each file reports success or error. Binary
-files are not filtered.
-
-| Parameter | Default | Description     |
-| --------- | ------- | --------------- |
-| `paths`   | -       | Array (max 100) |
-| `head`    | -       | First N lines   |
-
----
-
-### `stat`
-
-Get metadata about a file or directory without reading contents.
-
-| Parameter | Default | Description               |
-| --------- | ------- | ------------------------- |
-| `path`    | -       | Path to file or directory |
-
-Returns: name, path, type, size, modified, mimeType, symlinkTarget.
-
----
-
-### `stat_many`
-
-Get metadata for multiple files/directories in parallel.
-
-| Parameter | Default | Description              |
-| --------- | ------- | ------------------------ |
-| `paths`   | -       | Array of paths (max 100) |
-
----
-
-## Error Codes
-
-| Code                  | Cause                        | Solution               |
-| --------------------- | ---------------------------- | ---------------------- |
-| `E_ACCESS_DENIED`     | Path outside allowed dirs    | Check `roots`          |
-| `E_NOT_FOUND`         | Path does not exist          | Verify path with `ls`  |
-| `E_NOT_FILE`          | Expected file, got directory | Use `ls` instead       |
-| `E_NOT_DIRECTORY`     | Expected directory, got file | Use `read` instead     |
-| `E_TOO_LARGE`         | File exceeds size limit      | Use `head` for partial |
-| `E_TIMEOUT`           | Operation took too long      | Use `maxResults`       |
-| `E_INVALID_PATTERN`   | Malformed glob/regex         | Check pattern syntax   |
-| `E_PERMISSION_DENIED` | OS-level access denied       | Check file permissions |
-
----
-
-## Security
-
-- Read-only: no writes, deletes, or modifications.
-- Path validation: symlinks cannot escape allowed directories.
-- Binary detection: prevents accidental binary reads.
-- Input sanitization: patterns validated for ReDoS protection.
+- `E_ACCESS_DENIED` (outside allowed roots)
+- `E_NOT_FOUND`, `E_NOT_FILE`, `E_NOT_DIRECTORY`
+- `E_TOO_LARGE` (use `head`)
+- `E_INVALID_PATTERN` (glob pattern issues in `find`)
+- `E_TIMEOUT` (narrow scope, reduce results)
+- `E_PERMISSION_DENIED`

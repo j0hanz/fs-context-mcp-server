@@ -255,7 +255,7 @@ Search for text content within files.
 - Omit `path` to search from the first allowed root.
 - Pass a file path in `path` to search only that file.
 
-`pattern` is treated as a literal string.
+`pattern` is treated as a literal string and matched case-insensitively.
 
 | Parameter       | Type    | Required | Default      | Description                              |
 | --------------- | ------- | -------- | ------------ | ---------------------------------------- |
@@ -271,6 +271,12 @@ Example (search a single file):
 
 Returns: Matching lines with file path, line number, content, and optional
 context.
+
+Notes:
+
+- `grep` skips binary files by default.
+- Very large files are skipped based on `MAX_SEARCH_SIZE` (default 1MB).
+  “No matches” is not proof the text is absent from skipped files.
 
 Note: the `grep` tool currently exposes only `path`, `pattern`, and
 `includeHidden`. Context fields are omitted unless enabled internally.

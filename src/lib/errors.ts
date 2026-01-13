@@ -74,17 +74,17 @@ export class McpError extends Error {
 
 const ERROR_SUGGESTIONS: Readonly<Record<ErrorCode, string>> = {
   [ErrorCode.E_ACCESS_DENIED]:
-    'Check that the path is within an allowed directory. Use list_allowed_directories to see available paths.',
+    'Check that the path is within an allowed directory. Use roots to see available workspace roots.',
   [ErrorCode.E_NOT_FOUND]:
-    'Verify the path exists. Use list_directory to explore available files and directories.',
+    'Verify the path exists. Use ls to explore available files and directories.',
   [ErrorCode.E_NOT_FILE]:
-    'The path points to a directory or other non-file. Use list_directory to explore its contents.',
+    'The path points to a directory or other non-file. Use ls to explore its contents.',
   [ErrorCode.E_NOT_DIRECTORY]:
-    'The path points to a file, not a directory. Use read_file to read file contents.',
+    'The path points to a file, not a directory. Use read to read file contents.',
   [ErrorCode.E_TOO_LARGE]:
-    'The file exceeds the size limit. Use head or tail parameters to read partial content, or increase maxSize.',
+    'The file exceeds the size limit. Use head to read a partial preview, or narrow the scope of what you read.',
   [ErrorCode.E_TIMEOUT]:
-    'The operation timed out. Try with a smaller scope, fewer files, or increase timeoutMs.',
+    'The operation timed out. Try a smaller scope (narrower path), fewer results (maxResults), or search fewer files.',
   [ErrorCode.E_INVALID_PATTERN]:
     'The glob or regex pattern is invalid. Check syntax and escape special characters.',
   [ErrorCode.E_INVALID_INPUT]:
