@@ -24,17 +24,21 @@ async function main() {
 
   try {
     const result = await searchContent(testDir, pattern);
-    console.log(JSON.stringify({
-      success: true,
-      matches: result.matches.length,
-      filesScanned: result.summary.filesScanned,
-      filesMatched: result.summary.filesMatched,
-    }));
+    process.stdout.write(
+      JSON.stringify({
+        success: true,
+        matches: result.matches.length,
+        filesScanned: result.summary.filesScanned,
+        filesMatched: result.summary.filesMatched,
+      }) + '\\n'
+    );
   } catch (error) {
-    console.log(JSON.stringify({
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    }));
+    process.stdout.write(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }) + '\\n'
+    );
     process.exit(1);
   }
 }

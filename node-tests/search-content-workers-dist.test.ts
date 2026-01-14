@@ -25,7 +25,9 @@ const testScript = `
 (async () => {
   const testDir = process.env.FS_CONTEXT_TEST_DIR;
   if (!testDir) {
-    console.log(JSON.stringify({ ok: false, error: 'Missing testDir argument' }));
+    process.stdout.write(
+      JSON.stringify({ ok: false, error: 'Missing testDir argument' }) + '\\n'
+    );
     process.exit(2);
     return;
   }
@@ -44,14 +46,16 @@ const testScript = `
       timeoutMs: 10000,
       maxResults: 50,
     });
-    console.log(JSON.stringify({ ok: true, matches: result.matches.length }));
+    process.stdout.write(
+      JSON.stringify({ ok: true, matches: result.matches.length }) + '\\n'
+    );
     process.exit(0);
   } catch (error) {
-    console.log(
+    process.stdout.write(
       JSON.stringify({
         ok: false,
         error: error instanceof Error ? error.message : String(error),
-      })
+      }) + '\\n'
     );
     process.exit(1);
   }

@@ -316,6 +316,9 @@ try {
 }
 
 function resolveToolErrorCode(message: string): ErrorCode {
+  const explicit = extractExplicitErrorCode(message);
+  if (explicit) return explicit;
+
   const lower = message.toLowerCase();
   if (lower.includes('timeout') || lower.includes('timed out')) {
     return ErrorCode.E_TIMEOUT;
@@ -334,6 +337,17 @@ function resolveToolErrorCode(message: string): ErrorCode {
     return ErrorCode.E_INVALID_INPUT;
   }
   return ErrorCode.E_UNKNOWN;
+}
+
+function extractExplicitErrorCode(message: string): ErrorCode | undefined {
+  const match = /\bE_[A-Z_]+\b/.exec(message);
+  if (!match) return undefined;
+
+  const candidate = match[0];
+  if (!candidate) return undefined;
+
+  const codes = Object.values(ErrorCode) as string[];
+  return codes.includes(candidate) ? (candidate as ErrorCode) : undefined;
 }
 
 type ToolErrorBuilder = (errorMessage: string) => {
