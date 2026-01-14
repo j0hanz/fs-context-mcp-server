@@ -317,8 +317,6 @@ try {
 
 function resolveToolErrorCode(message: string): ErrorCode {
   const lower = message.toLowerCase();
-  // Be conservative: this path only receives an error message string from the SDK.
-  // Prefer avoiding broad substring classifications that can mislabel tool/protocol errors.
   if (lower.includes('timeout') || lower.includes('timed out')) {
     return ErrorCode.E_TIMEOUT;
   }
