@@ -1,59 +1,58 @@
 # AGENTS.md
 
-## Project Overview
+> **Purpose:** Context and strict guidelines for AI agents working in this repository.
 
-- **Goal**: Secure, read-only Model Context Protocol (MCP) server for filesystem operations.
-- **Stack**: Node.js (>=22.17.0), TypeScript 5.9.x, MCP SDK.
-- **Key Libraries**: `zod`, `re2`, `safe-regex2`.
+## 1. Project Context
 
-## Repo Map / Structure
+- **Domain:** Read-only MCP server for secure filesystem exploration, searching, and analysis.
+- **Tech Stack:**
+  - **Language:** TypeScript 5.9.3 (Node.js >= 22.17.0)
+  - **Framework:** Model Context Protocol SDK 1.25.x (`@modelcontextprotocol/sdk`)
+  - **Key Libraries:** `zod`, `ignore`, `re2`
+- **Architecture:** Layered server + tool registry + lib/file-operations.
 
-- `src/`: Source code (`index.ts`, `server.ts`, `tools.ts`, `lib/`).
-- `dist/`: Compiled JavaScript output.
-- `docs/`: Documentation assets.
-- `metrics/`: JSON reports for code quality and churn.
-- `node-tests/`: Isolated Node.js runtime tests.
-- `scripts/`: PowerShell automation (`Quality-Gates.ps1`).
-- `eslint.config.mjs`: Flat config for ESLint.
+## 2. Repository Map (High-Level Only)
 
-## Setup & Environment
+- `src/`: Server entrypoint, tool registration, schemas, and core logic.
+- `src/lib/`: File operations, path validation, errors, observability.
+- `src/__tests__/`: Node test runner unit/integration tests with fixtures.
+- `node-tests/`: Dist/Node runtime tests.
+- `docs/`: Project assets and documentation.
+  > _Note: Ignore `dist`, `node_modules`, `.venv`, and `__pycache__`._
 
-- **Package Manager**: `npm` (manifest: `package-lock.json`).
-- **Install**: `npm install`
-- **Requirement**: Node.js >= 22.17.0 (engine).
+## 3. Operational Commands
 
-## Development Workflow
+- **Environment:** Node.js >= 22.17.0
+- **Install:** `npm install`
+- **Dev Server:** `npm run dev`
+- **Test:** `npm run test` (prefer targeted tests)
+- **Build:** `npm run build`
 
-- **Dev Server**: `npm run dev` (runs `src/index.ts` with `tsx watch`).
-- **Build**: `npm run build` (cleans, validates, copies assets, compiles).
-- **Start Production**: `npm run start` (runs `dist/index.js`).
-- **MCP Inspector**: `npm run inspector` (debugs with `@modelcontextprotocol/inspector`).
+## 4. Coding Standards (Style & Patterns)
 
-## Testing
+- **Naming:** `camelCase` for variables/functions, `PascalCase` for types/classes.
+- **Structure:** Keep tool registration in `src/tools.ts`; keep filesystem logic under `src/lib/file-operations/`.
+- **Typing:** Strict TypeScript; use `import type` for type-only imports.
+- **Preferred Patterns:**
+  - Tool handlers return both human-readable `content` and `structuredContent` JSON.
+  - Use Zod schemas for tool input/output validation.
+  - Use `.js` extensions in local imports (NodeNext).
 
-- **Unit Tests**: `npm test` (uses native `node --test` runner).
-- **Watch Mode**: `npm run test:watch`
-- **Coverage**: `npm run test:coverage`
-- **Isolated Node Tests**: `npm run test:node`
-- **Locations**: `src/__tests__/**/*.test.ts`, `node-tests/*.test.ts`.
+## 5. Agent Behavioral Rules (The "Do Nots")
 
-## Code Style & Conventions
+- **Prohibited:** Do not add default exports; use named exports only.
+- **Prohibited:** Do not omit `.js` extensions in local imports.
+- **Prohibited:** Do not edit lockfiles manually.
+- **Handling Secrets:** Never output `.env` values or hardcode secrets.
+- **File Creation:** Always verify folder existence before creating files.
 
-- **Lint**: `npm run lint` (ESLint with strict type-checking).
-- **Format**: `npm run format` (Prettier).
-- **Type Check**: `npm run type-check` (TSC no-emit).
-- **Strictness**: `noImplicitOverride`, `noUncheckedIndexedAccess`, `strict` enabled in `tsconfig.json`.
+## 6. Testing Strategy
 
-## Build / Release
+- **Framework:** Node.js test runner (`node --test` via npm scripts).
+- **Approach:** Unit/integration tests in `src/__tests__` with fixtures; runtime verification tests in `node-tests`.
 
-- **Output Directory**: `dist/`
-- **Pre-publish**: `npm run prepublishOnly` (runs lint, type-check, and build).
-- **Clean**: `npm run clean`.
-- **Assets**: `npm run copy:assets` (syncs `src/instructions.md` to `dist/`).
+## 7. Evolution & Maintenance
 
-## Security & Safety
-
-- **Read-Only**: Server is designed to be read-only; no write operations in `src/`.
-- **Regex Safety**: Uses `re2` and `safe-regex2` to prevent ReDoS.
-- **Path Validation**: `src/lib/path-validation.ts` enforces root containment and blocks symlink escapes.
-- **Audit**: `scripts/Quality-Gates.ps1` includes `npm audit` checks (`Get-SecurityMetrics`).
+- **Update Rule:** If a convention changes or a new pattern is established, the agent MUST suggest an update to this file in the PR.
+- **Feedback Loop:** If a build command fails twice, the correct fix MUST be recorded in the "Common Pitfalls" section.
+- **Common Pitfalls:** None recorded yet.
