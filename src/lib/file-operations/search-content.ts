@@ -530,39 +530,24 @@ async function executeSearchSingleFile(
   opts: ResolvedOptions,
   signal: AbortSignal
 ): Promise<SearchContentResult> {
-  const matcherOptions = buildMatcherOptions(opts);
-  const scanOptions = buildScanOptions(opts);
-  const traceContext = buildTraceContext(opts);
-
-  return await withOpsTrace(traceContext, async () => {
-    validatePattern(pattern, matcherOptions);
-
+  return await withSearchExecution(pattern, opts, async (context) => {
     const summary = createScanSummary();
     const matches: ContentMatch[] = [];
 
     summary.filesScanned = 1;
 
-    try {
-      const remaining = Math.max(0, opts.maxResults - matches.length);
-      const matcher = buildMatcher(pattern, matcherOptions);
-      const result = await scanFileResolved(
-        file.resolvedPath,
-        file.requestedPath,
-        matcher,
-        scanOptions,
-        signal,
-        remaining
-      );
-      applyScanResult(result, matches, summary, remaining);
-    } catch {
-      summary.skippedInaccessible = 1;
-    }
+    const matcher = buildMatcher(pattern, context.matcherOptions);
+    await scanSequentialFile(
+      file,
+      matcher,
+      context.scanOptions,
+      signal,
+      opts.maxResults,
+      matches,
+      summary
+    );
 
-    if (signal.aborted) {
-      markTruncated(summary, 'timeout');
-    } else if (matches.length >= opts.maxResults) {
-      markTruncated(summary, 'maxResults');
-    }
+    shouldStopOnSignalOrLimit(signal, matches.length, opts.maxResults, summary);
 
     return buildSearchResult(
       baseDir,
@@ -603,13 +588,11 @@ function shouldStopCollecting(
   signal: AbortSignal
 ): boolean {
   if (signal.aborted) {
-    summary.truncated = true;
-    summary.stoppedReason = 'timeout';
+    markTruncated(summary, 'timeout');
     return true;
   }
   if (summary.filesScanned >= maxFilesScanned) {
-    summary.truncated = true;
-    summary.stoppedReason = 'maxFiles';
+    markTruncated(summary, 'maxFiles');
     return true;
   }
   return false;
@@ -697,13 +680,11 @@ function shouldStopOnSignalOrLimit(
   summary: ScanSummary
 ): boolean {
   if (signal.aborted) {
-    summary.truncated = true;
-    summary.stoppedReason = 'timeout';
+    markTruncated(summary, 'timeout');
     return true;
   }
   if (matchesCount >= maxResults) {
-    summary.truncated = true;
-    summary.stoppedReason = 'maxResults';
+    markTruncated(summary, 'maxResults');
     return true;
   }
   return false;
@@ -879,6 +860,18 @@ const MAX_RESPAWNS = 3;
 
 type LogFn = (message: string) => void;
 
+function rejectPendingTasks(slot: WorkerSlot, error: Error): void {
+  for (const [, pending] of slot.pending) {
+    pending.reject(error);
+  }
+  slot.pending.clear();
+}
+
+function terminateWorker(slot: WorkerSlot): void {
+  slot.worker?.terminate().catch(() => {});
+  slot.worker = null;
+}
+
 function handleWorkerMessage(
   slot: WorkerSlot,
   message: WorkerResponse,
@@ -902,13 +895,8 @@ function handleWorkerMessage(
 function handleWorkerError(slot: WorkerSlot, error: Error, log: LogFn): void {
   log(`Worker ${String(slot.index)} error: ${error.message}`);
 
-  for (const [, pending] of slot.pending) {
-    pending.reject(new Error(`Worker error: ${error.message}`));
-  }
-  slot.pending.clear();
-
-  slot.worker?.terminate().catch(() => {});
-  slot.worker = null;
+  rejectPendingTasks(slot, new Error(`Worker error: ${error.message}`));
+  terminateWorker(slot);
 }
 
 function handleWorkerExit(
@@ -928,10 +916,7 @@ function handleWorkerExit(
     const error = new Error(
       `Worker exited unexpectedly with code ${String(code)}`
     );
-    for (const [, pending] of slot.pending) {
-      pending.reject(error);
-    }
-    slot.pending.clear();
+    rejectPendingTasks(slot, error);
   }
 
   slot.worker = null;
@@ -1156,23 +1141,19 @@ class SearchWorkerPool {
     this.log('Closing worker pool');
 
     for (const slot of this.slots) {
-      for (const [, pending] of slot.pending) {
-        pending.reject(new Error('Worker pool closed'));
-      }
-      slot.pending.clear();
+      rejectPendingTasks(slot, new Error('Worker pool closed'));
     }
 
     const terminatePromises: Promise<number>[] = [];
     for (const slot of this.slots) {
-      if (slot.worker) {
-        try {
-          slot.worker.postMessage({ type: 'shutdown' });
-        } catch {
-          // Ignore: worker may already be terminating.
-        }
-        terminatePromises.push(slot.worker.terminate());
-        slot.worker = null;
+      if (!slot.worker) continue;
+      try {
+        slot.worker.postMessage({ type: 'shutdown' });
+      } catch {
+        // Ignore: worker may already be terminating.
       }
+      terminatePromises.push(slot.worker.terminate());
+      slot.worker = null;
     }
 
     await Promise.allSettled(terminatePromises);
@@ -1476,6 +1457,32 @@ async function withOpsTrace<T>(
   }
 }
 
+interface SearchExecutionContext {
+  matcherOptions: MatcherOptions;
+  scanOptions: ScanFileOptions;
+  traceContext: OpsTraceContext | undefined;
+}
+
+function buildSearchExecution(opts: ResolvedOptions): SearchExecutionContext {
+  return {
+    matcherOptions: buildMatcherOptions(opts),
+    scanOptions: buildScanOptions(opts),
+    traceContext: buildTraceContext(opts),
+  };
+}
+
+async function withSearchExecution<T>(
+  pattern: string,
+  opts: ResolvedOptions,
+  run: (context: SearchExecutionContext) => Promise<T>
+): Promise<T> {
+  const context = buildSearchExecution(opts);
+  return await withOpsTrace(context.traceContext, async () => {
+    validatePattern(pattern, context.matcherOptions);
+    return await run(context);
+  });
+}
+
 async function scanMatches(
   files: AsyncIterable<ResolvedFile>,
   pattern: string,
@@ -1552,12 +1559,7 @@ async function executeSearch(
   allowedDirs: readonly string[],
   signal: AbortSignal
 ): Promise<SearchContentResult> {
-  const matcherOptions = buildMatcherOptions(opts);
-  const scanOptions = buildScanOptions(opts);
-  const traceContext = buildTraceContext(opts);
-
-  return await withOpsTrace(traceContext, async () => {
-    validatePattern(pattern, matcherOptions);
+  return await withSearchExecution(pattern, opts, async (context) => {
     const { stream, summary } = collectFilesStream(
       root,
       opts,
@@ -1567,8 +1569,8 @@ async function executeSearch(
     const matches = await scanMatches(
       stream,
       pattern,
-      matcherOptions,
-      scanOptions,
+      context.matcherOptions,
+      context.scanOptions,
       opts.maxResults,
       signal,
       summary

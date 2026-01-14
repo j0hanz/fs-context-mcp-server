@@ -54,6 +54,49 @@ const LineNumberSchema = z
   .int({ error: 'line numbers must be integers' })
   .min(1, 'line numbers must be at least 1');
 
+interface ReadRangeValue {
+  head?: number | undefined;
+  startLine?: number | undefined;
+  endLine?: number | undefined;
+}
+
+const validateReadRange = (
+  value: ReadRangeValue,
+  ctx: z.RefinementCtx
+): void => {
+  const hasHead = value.head !== undefined;
+  const hasStart = value.startLine !== undefined;
+  const hasEnd = value.endLine !== undefined;
+
+  if (hasHead && (hasStart || hasEnd)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['head'],
+      message: 'head cannot be used together with startLine/endLine',
+    });
+  }
+
+  if (hasEnd && !hasStart) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['endLine'],
+      message: 'endLine requires startLine',
+    });
+  }
+
+  if (
+    value.startLine !== undefined &&
+    value.endLine !== undefined &&
+    value.endLine < value.startLine
+  ) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['endLine'],
+      message: 'endLine must be greater than or equal to startLine',
+    });
+  }
+};
+
 const FileInfoSchema = z.object({
   name: z.string(),
   path: z.string(),
@@ -76,6 +119,12 @@ const OperationSummarySchema = z.object({
   total: z.number(),
   succeeded: z.number(),
   failed: z.number(),
+});
+
+const ReadRangeInputSchema = z.strictObject({
+  head: HeadLinesSchema,
+  startLine: LineNumberSchema.optional(),
+  endLine: LineNumberSchema.optional(),
 });
 
 export const ListDirectoryInputSchema = z.strictObject({
@@ -206,110 +255,42 @@ export const SearchContentInputSchema = z.strictObject({
     .describe('Include hidden files and directories'),
 });
 
-export const ReadFileInputSchema = z
-  .strictObject({
-    path: z
-      .string()
-      .min(1, 'Path cannot be empty')
-      .describe(
-        'Path to the file to read. ' +
-          'Examples: "README.md", "src/index.ts", "package.json"'
-      ),
-    head: HeadLinesSchema.describe(
-      'Read only the first N lines of the file (useful for previewing large files)'
+export const ReadFileInputSchema = ReadRangeInputSchema.extend({
+  path: z
+    .string()
+    .min(1, 'Path cannot be empty')
+    .describe(
+      'Path to the file to read. ' +
+        'Examples: "README.md", "src/index.ts", "package.json"'
     ),
-    startLine: LineNumberSchema.optional().describe(
-      '1-based line number to start reading from (inclusive). Useful for reading context around a match.'
+  head: HeadLinesSchema.describe(
+    'Read only the first N lines of the file (useful for previewing large files)'
+  ),
+  startLine: LineNumberSchema.optional().describe(
+    '1-based line number to start reading from (inclusive). Useful for reading context around a match.'
+  ),
+  endLine: LineNumberSchema.optional().describe(
+    '1-based line number to stop reading at (inclusive). Requires startLine.'
+  ),
+}).superRefine(validateReadRange);
+
+export const ReadMultipleFilesInputSchema = ReadRangeInputSchema.extend({
+  paths: z
+    .array(z.string().min(1, 'Path cannot be empty'))
+    .min(1, 'At least one path is required')
+    .max(100, 'Cannot read more than 100 files at once')
+    .describe(
+      'Array of file paths to read. ' +
+        'Examples: ["README.md", "package.json"], ["src/index.ts", "src/server.ts"]'
     ),
-    endLine: LineNumberSchema.optional().describe(
-      '1-based line number to stop reading at (inclusive). Requires startLine.'
-    ),
-  })
-  .superRefine((value, ctx) => {
-    const hasHead = value.head !== undefined;
-    const hasStart = value.startLine !== undefined;
-    const hasEnd = value.endLine !== undefined;
-
-    if (hasHead && (hasStart || hasEnd)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['head'],
-        message: 'head cannot be used together with startLine/endLine',
-      });
-    }
-
-    if (hasEnd && !hasStart) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['endLine'],
-        message: 'endLine requires startLine',
-      });
-    }
-
-    if (
-      value.startLine !== undefined &&
-      value.endLine !== undefined &&
-      value.endLine < value.startLine
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['endLine'],
-        message: 'endLine must be greater than or equal to startLine',
-      });
-    }
-  });
-
-export const ReadMultipleFilesInputSchema = z
-  .strictObject({
-    paths: z
-      .array(z.string().min(1, 'Path cannot be empty'))
-      .min(1, 'At least one path is required')
-      .max(100, 'Cannot read more than 100 files at once')
-      .describe(
-        'Array of file paths to read. ' +
-          'Examples: ["README.md", "package.json"], ["src/index.ts", "src/server.ts"]'
-      ),
-    head: HeadLinesSchema.describe('Read only the first N lines of each file'),
-    startLine: LineNumberSchema.optional().describe(
-      '1-based line number to start reading from (inclusive), applied to each file.'
-    ),
-    endLine: LineNumberSchema.optional().describe(
-      '1-based line number to stop reading at (inclusive), applied to each file. Requires startLine.'
-    ),
-  })
-  .superRefine((value, ctx) => {
-    const hasHead = value.head !== undefined;
-    const hasStart = value.startLine !== undefined;
-    const hasEnd = value.endLine !== undefined;
-
-    if (hasHead && (hasStart || hasEnd)) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['head'],
-        message: 'head cannot be used together with startLine/endLine',
-      });
-    }
-
-    if (hasEnd && !hasStart) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['endLine'],
-        message: 'endLine requires startLine',
-      });
-    }
-
-    if (
-      value.startLine !== undefined &&
-      value.endLine !== undefined &&
-      value.endLine < value.startLine
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['endLine'],
-        message: 'endLine must be greater than or equal to startLine',
-      });
-    }
-  });
+  head: HeadLinesSchema.describe('Read only the first N lines of each file'),
+  startLine: LineNumberSchema.optional().describe(
+    '1-based line number to start reading from (inclusive), applied to each file.'
+  ),
+  endLine: LineNumberSchema.optional().describe(
+    '1-based line number to stop reading at (inclusive), applied to each file. Requires startLine.'
+  ),
+}).superRefine(validateReadRange);
 
 export const GetFileInfoInputSchema = z.strictObject({
   path: z
@@ -356,7 +337,13 @@ export const ListDirectoryOutputSchema = z.object({
   error: ErrorSchema.optional(),
 });
 
-export const SearchFilesOutputSchema = z.object({
+const SearchSummarySchema = z.object({
+  totalMatches: z.number().optional(),
+  truncated: z.boolean().optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const SearchFilesOutputSchema = SearchSummarySchema.extend({
   ok: z.boolean(),
   results: z
     .array(
@@ -367,12 +354,9 @@ export const SearchFilesOutputSchema = z.object({
       })
     )
     .optional(),
-  totalMatches: z.number().optional(),
-  truncated: z.boolean().optional(),
-  error: ErrorSchema.optional(),
 });
 
-export const SearchContentOutputSchema = z.object({
+export const SearchContentOutputSchema = SearchSummarySchema.extend({
   ok: z.boolean(),
   matches: z
     .array(
@@ -385,9 +369,6 @@ export const SearchContentOutputSchema = z.object({
       })
     )
     .optional(),
-  totalMatches: z.number().optional(),
-  truncated: z.boolean().optional(),
-  error: ErrorSchema.optional(),
 });
 
 export const TreeOutputSchema = z.object({
@@ -400,9 +381,7 @@ export const TreeOutputSchema = z.object({
   error: ErrorSchema.optional(),
 });
 
-export const ReadFileOutputSchema = z.object({
-  ok: z.boolean(),
-  path: z.string().optional(),
+const ReadResultSchema = z.object({
   content: z.string().optional(),
   truncated: z.boolean().optional(),
   totalLines: z.number().optional(),
@@ -412,28 +391,22 @@ export const ReadFileOutputSchema = z.object({
   endLine: z.number().optional(),
   linesRead: z.number().optional(),
   hasMoreLines: z.boolean().optional(),
+});
+
+export const ReadFileOutputSchema = ReadResultSchema.extend({
+  ok: z.boolean(),
+  path: z.string().optional(),
   error: ErrorSchema.optional(),
+});
+
+const ReadMultipleFileResultSchema = ReadResultSchema.extend({
+  path: z.string(),
+  error: z.string().optional(),
 });
 
 export const ReadMultipleFilesOutputSchema = z.object({
   ok: z.boolean(),
-  results: z
-    .array(
-      z.object({
-        path: z.string(),
-        content: z.string().optional(),
-        truncated: z.boolean().optional(),
-        readMode: z.enum(['full', 'head', 'range']).optional(),
-        head: z.number().optional(),
-        startLine: z.number().optional(),
-        endLine: z.number().optional(),
-        linesRead: z.number().optional(),
-        hasMoreLines: z.boolean().optional(),
-        totalLines: z.number().optional(),
-        error: z.string().optional(),
-      })
-    )
-    .optional(),
+  results: z.array(ReadMultipleFileResultSchema).optional(),
   summary: OperationSummarySchema.optional(),
   error: ErrorSchema.optional(),
 });

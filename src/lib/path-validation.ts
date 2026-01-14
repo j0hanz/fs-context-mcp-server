@@ -42,10 +42,20 @@ function isPathWithinRoot(root: string, candidate: string): boolean {
   return resolveWithinRoot(root, candidate) !== null;
 }
 
+function rethrowIfAborted(error: unknown): void {
+  if (error instanceof Error && error.name === 'AbortError') {
+    throw error;
+  }
+}
+
 const PATH_SEPARATOR = process.platform === 'win32' ? '\\' : '/';
 
 function normalizeForComparison(value: string): string {
   return process.platform === 'win32' ? value.toLowerCase() : value;
+}
+
+function isSamePath(left: string, right: string): boolean {
+  return normalizeForComparison(left) === normalizeForComparison(right);
 }
 
 function stripTrailingSeparator(normalized: string): string {
@@ -59,8 +69,7 @@ function normalizeAllowedDirectory(dir: string): string {
   if (normalized.length === 0) return '';
 
   const { root } = path.parse(normalized);
-  const isRootPath =
-    normalizeForComparison(root) === normalizeForComparison(normalized);
+  const isRootPath = isSamePath(root, normalized);
   if (isRootPath) return root;
 
   return stripTrailingSeparator(normalized);
@@ -101,11 +110,7 @@ async function expandAllowedDirectories(
     expanded.push(normalized);
 
     const normalizedReal = await resolveRealPath(normalized, signal);
-    if (
-      normalizedReal &&
-      normalizeForComparison(normalizedReal) !==
-        normalizeForComparison(normalized)
-    ) {
+    if (normalizedReal && !isSamePath(normalizedReal, normalized)) {
       expanded.push(normalizedReal);
     }
   }
@@ -373,9 +378,7 @@ async function resolveRealPathOrThrow(options: {
     assertNotAborted(signal);
     return await withAbort(fs.realpath(normalizedRequested), signal);
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw error;
-    }
+    rethrowIfAborted(error);
     throw toMcpError(requestedPath, error);
   }
 }
@@ -407,9 +410,7 @@ async function validateExistingPathDetailsInternal(
   return {
     requestedPath: normalizedRequested,
     resolvedPath: normalizedReal,
-    isSymlink:
-      normalizeForComparison(normalizedRequested) !==
-      normalizeForComparison(normalizedReal),
+    isSymlink: !isSamePath(normalizedRequested, normalizedReal),
   };
 }
 
@@ -464,16 +465,11 @@ async function maybeAddRealPath(
     assertNotAborted(signal);
     const realPath = await withAbort(fs.realpath(normalizedPath), signal);
     const normalizedReal = normalizePath(realPath);
-    if (
-      normalizeForComparison(normalizedReal) !==
-      normalizeForComparison(normalizedPath)
-    ) {
+    if (!isSamePath(normalizedReal, normalizedPath)) {
       validDirs.push(normalizedReal);
     }
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw error;
-    }
+    rethrowIfAborted(error);
   }
 }
 
@@ -489,9 +485,7 @@ async function resolveRootDirectory(
     if (!stats.isDirectory()) return null;
     return normalizedPath;
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw error;
-    }
+    rethrowIfAborted(error);
     return null;
   }
 }

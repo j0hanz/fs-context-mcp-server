@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
 import { ErrorCode } from '../../lib/errors.js';
 import {
   getAllowedDirectories,
@@ -14,28 +12,7 @@ import {
   SearchFilesInputSchema,
 } from '../../schemas.js';
 import { registerListDirectoryTool } from '../../tools.js';
-
-type ToolHandler = (args?: unknown, extra?: unknown) => Promise<unknown>;
-
-function createFakeServerCapture(): {
-  fakeServer: McpServer;
-  getHandler: () => ToolHandler;
-} {
-  let captured: ToolHandler | undefined;
-  const fakeServer = {
-    registerTool: (_name: string, _definition: unknown, handler: unknown) => {
-      captured = handler as ToolHandler;
-    },
-  } as const;
-
-  return {
-    fakeServer: fakeServer as unknown as McpServer,
-    getHandler: () => {
-      assert.ok(captured);
-      return captured;
-    },
-  };
-}
+import { createSingleToolCapture } from '../shared/diagnostics-env.js';
 
 void it('grep includes includeHidden=false by default', () => {
   const parsed = SearchContentInputSchema.parse({ pattern: 'console.log' });
@@ -71,7 +48,7 @@ await it('ls returns E_ACCESS_DENIED when no roots configured', async () => {
   await setAllowedDirectoriesResolved([]);
 
   try {
-    const { fakeServer, getHandler } = createFakeServerCapture();
+    const { fakeServer, getHandler } = createSingleToolCapture();
     registerListDirectoryTool(fakeServer);
     const handler = getHandler();
 

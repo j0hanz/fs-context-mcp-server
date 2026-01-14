@@ -1,41 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
-import { registerAllTools } from '../../tools.js';
-import { withFileOpsFixture } from '../lib/fixtures/file-ops-hooks.js';
-
-type ToolHandler = (args?: unknown, extra?: unknown) => Promise<unknown>;
-
-function createFakeServerCapture(): {
-  fakeServer: McpServer;
-  getHandler: (name: string) => ToolHandler;
-} {
-  const handlers = new Map<string, ToolHandler>();
-
-  const fakeServer = {
-    registerTool: (name: string, _definition: unknown, handler: unknown) => {
-      handlers.set(name, handler as ToolHandler);
-    },
-  } as const;
-
-  return {
-    fakeServer: fakeServer as unknown as McpServer,
-    getHandler: (name: string) => {
-      const handler = handlers.get(name);
-      assert.ok(handler, `Expected tool handler to be registered: ${name}`);
-      return handler;
-    },
-  };
-}
+import { withAllToolsFixture } from '../shared/diagnostics-env.js';
 
 void describe('find tool', () => {
-  withFileOpsFixture((getTestDir) => {
+  withAllToolsFixture((getHandler, getTestDir) => {
     void it('includes truncation marker in text output when truncated', async () => {
-      const { fakeServer, getHandler } = createFakeServerCapture();
-      registerAllTools(fakeServer);
-
       const handler = getHandler('find');
       const result = (await handler(
         {

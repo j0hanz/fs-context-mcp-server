@@ -2,15 +2,12 @@ import * as diagnosticsChannel from 'node:diagnostics_channel';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-
 import { registerListAllowedDirectoriesTool } from '../../tools.js';
 import {
+  createSingleToolCapture,
   enableDiagnosticsEnv,
   restoreDiagnosticsEnv,
 } from '../shared/diagnostics-env.js';
-
-type ToolHandler = () => Promise<unknown>;
 
 interface DiagnosticsSubscription {
   published: unknown[];
@@ -33,28 +30,8 @@ function subscribeDiagnostics(channel: string): DiagnosticsSubscription {
   };
 }
 
-function createFakeServerCapture(): {
-  fakeServer: McpServer;
-  getHandler: () => ToolHandler;
-} {
-  let captured: ToolHandler | undefined;
-  const fakeServer = {
-    registerTool: (_name: string, _definition: unknown, handler: unknown) => {
-      captured = handler as ToolHandler;
-    },
-  } as const;
-
-  return {
-    fakeServer: fakeServer as unknown as McpServer,
-    getHandler: () => {
-      assert.ok(captured);
-      return captured;
-    },
-  };
-}
-
 async function invokeRootsTool(): Promise<void> {
-  const { fakeServer, getHandler } = createFakeServerCapture();
+  const { fakeServer, getHandler } = createSingleToolCapture();
   registerListAllowedDirectoriesTool(fakeServer);
   const handler = getHandler();
   await handler();

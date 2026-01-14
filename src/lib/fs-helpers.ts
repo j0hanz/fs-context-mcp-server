@@ -176,9 +176,7 @@ interface ParallelState<T, R> {
 }
 
 function createParallelAbortError(): Error {
-  const error = new Error('Operation aborted');
-  error.name = 'AbortError';
-  return error;
+  return createAbortError();
 }
 
 function createState<T, R>(
@@ -433,6 +431,12 @@ interface NormalizedOptions {
   signal?: AbortSignal;
 }
 
+interface ReadContentOptions {
+  encoding: BufferEncoding;
+  maxSize: number;
+  signal?: AbortSignal;
+}
+
 export interface ReadFileResult {
   path: string;
   content: string;
@@ -509,6 +513,25 @@ function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
     normalized.signal = options.signal;
   }
   return normalized;
+}
+
+function prepareReadOptions(options: ReadFileOptions): NormalizedOptions {
+  const normalized = normalizeOptions(options);
+  assertNotAborted(normalized.signal);
+  return normalized;
+}
+
+function buildReadContentOptions(
+  normalized: NormalizedOptions
+): ReadContentOptions {
+  const readOptions: ReadContentOptions = {
+    encoding: normalized.encoding,
+    maxSize: normalized.maxSize,
+  };
+  if (normalized.signal) {
+    readOptions.signal = normalized.signal;
+  }
+  return readOptions;
 }
 
 function resolveReadMode(options: NormalizedOptions): ReadMode {
@@ -858,13 +881,7 @@ async function readHeadResult(
   normalized: NormalizedOptions
 ): Promise<ReadFileResult> {
   const head = requireHead(normalized, filePath);
-  const readOptions: Parameters<typeof readHeadContent>[2] = {
-    encoding: normalized.encoding,
-    maxSize: normalized.maxSize,
-  };
-  if (normalized.signal) {
-    readOptions.signal = normalized.signal;
-  }
+  const readOptions = buildReadContentOptions(normalized);
   const { content, truncated, linesRead, hasMoreLines } = await readHeadContent(
     handle,
     head,
@@ -886,7 +903,7 @@ async function readRangeResult(
   filePath: string,
   normalized: NormalizedOptions
 ): Promise<ReadFileResult> {
-  const { startLine, endLine, encoding, maxSize, signal } = normalized;
+  const { startLine, endLine } = normalized;
   if (startLine === undefined) {
     throw new McpError(
       ErrorCode.E_INVALID_INPUT,
@@ -895,13 +912,7 @@ async function readRangeResult(
     );
   }
 
-  const readOptions: Parameters<typeof readRangeContent>[3] = {
-    encoding,
-    maxSize,
-  };
-  if (signal) {
-    readOptions.signal = signal;
-  }
+  const readOptions = buildReadContentOptions(normalized);
 
   const { content, truncated, linesRead, hasMoreLines } =
     await readRangeContent(handle, startLine, endLine, readOptions);
@@ -991,8 +1002,7 @@ export async function readFileWithStats(
   stats: Stats,
   options: ReadFileOptions = {}
 ): Promise<ReadFileResult> {
-  const normalized = normalizeOptions(options);
-  assertNotAborted(normalized.signal);
+  const normalized = prepareReadOptions(options);
   return await readFileWithStatsInternal(
     filePath,
     validPath,
@@ -1005,8 +1015,7 @@ export async function readFile(
   filePath: string,
   options: ReadFileOptions = {}
 ): Promise<ReadFileResult> {
-  const normalized = normalizeOptions(options);
-  assertNotAborted(normalized.signal);
+  const normalized = prepareReadOptions(options);
   const validPath = await validateExistingPath(filePath, normalized.signal);
   assertNotAborted(normalized.signal);
   const stats = await withAbort(fsp.stat(validPath), normalized.signal);
