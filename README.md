@@ -19,9 +19,10 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 ## Features
 
 - Directory listing (immediate contents)
+- Directory tree rendering (bounded recursion)
 - File search with glob patterns
 - Content search (grep-like literal text search)
-- File reading with head previews (first N lines)
+- File reading with head previews (first N lines) and line ranges
 - Batch reads and metadata lookups in parallel
 - Security: path validation, symlink escape protection, read-only operations
 
@@ -30,6 +31,7 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 | Task                            | Tool        |
 | ------------------------------- | ----------- |
 | Explore project structure       | `ls`        |
+| Render a directory tree         | `tree`      |
 | Find files                      | `find`      |
 | Search for code patterns/text   | `grep`      |
 | Read source code                | `read`      |
@@ -175,8 +177,32 @@ directories and disable built-in excludes.
 | `includeIgnored` | boolean | No       | `false`      | Include ignored dirs and disable built-in excludes     |
 | `maxResults`     | number  | No       | `100`        | Maximum matches to return (1-10000)                    |
 
+Notes:
+
+- When `includeIgnored=false`, results also respect a root `.gitignore` file (if present under the base `path`).
+
 Returns: Matching paths (relative) with size and modified date. Structured
 output includes `ok`, `results`, `totalMatches`, and `truncated`.
+
+---
+
+### `tree`
+
+Render a directory tree (bounded recursion). Omit `path` to use the first
+allowed root.
+
+- `path` (string, optional; default: `first root`): Base directory to render
+- `maxDepth` (number, optional; default: `5`): Maximum recursion depth (0 = just the root)
+- `maxEntries` (number, optional; default: `1000`): Maximum number of entries before truncating
+- `includeHidden` (boolean, optional; default: `false`): Include hidden files/directories
+- `includeIgnored` (boolean, optional; default: `false`): Include ignored dirs and disable built-in + `.gitignore` filtering
+
+Notes:
+
+- When `includeIgnored=false`, the tree respects both built-in ignore rules (e.g., `node_modules`, `dist`, `.git`) and a root `.gitignore` file (if present).
+
+Returns: ASCII tree output plus a structured JSON tree (`ok`, `root`, `tree`,
+`ascii`, `truncated`, `totalEntries`).
 
 ---
 
@@ -194,9 +220,11 @@ Notes:
 - Reads are UTF-8 text only; binary files are rejected.
 - Full reads are capped by `MAX_FILE_SIZE` (default 10MB). When `head` is set,
   output stops at the line limit or size budget, whichever comes first.
+- `startLine`/`endLine` can be used to read an inclusive 1-based line range.
+- `head` cannot be combined with `startLine`/`endLine`.
 
 Returns: File content plus structured metadata (`ok`, `path`, `content`,
-`truncated`, `totalLines`).
+`truncated`, `totalLines`, and range metadata when applicable).
 
 ---
 
@@ -213,8 +241,10 @@ Notes:
 
 - Reads files as UTF-8 text; binary files are not filtered. Max size per file
   is capped by `MAX_FILE_SIZE` (default 10MB).
-- Total read budget across all files is capped at 100MB.
+- Total read budget across all files is capped by `MAX_READ_MANY_TOTAL_SIZE`.
 - No binary detection is performed; use `read` for single-file safety checks.
+- `startLine`/`endLine` can be used to read an inclusive 1-based line range (applied to each file).
+- `head` cannot be combined with `startLine`/`endLine`.
 
 Returns: Per-file content or error, plus structured summary (`total`,
 `succeeded`, `failed`).
@@ -231,7 +261,8 @@ Get detailed metadata about a file or directory.
 
 Returns: name, path, type, size, timestamps (created/modified/accessed),
 permissions, hidden status, MIME type (for files), and symlink target (if
-applicable).
+applicable). Structured results may include `tokenEstimate` (rule of thumb:
+ceil(size/4)).
 
 ---
 

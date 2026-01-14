@@ -16,12 +16,13 @@ All configuration is optional. Defaults work for most use cases.
 
 All optional. Sizes in bytes, timeouts in milliseconds.
 
-| Variable                    | Default           | Description                                               |
-| --------------------------- | ----------------- | --------------------------------------------------------- |
-| `MAX_FILE_SIZE`             | 10MB              | Max file size for `read`/`read_many` (range: 1MB-100MB)   |
-| `MAX_SEARCH_SIZE`           | 1MB               | Max file size scanned by `grep` (range: 100KB-10MB)       |
-| `DEFAULT_SEARCH_TIMEOUT`    | 30000             | Timeout for search/list operations (range: 100-3600000ms) |
-| `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)           |
+| Variable                    | Default           | Description                                                      |
+| --------------------------- | ----------------- | ---------------------------------------------------------------- |
+| `MAX_FILE_SIZE`             | 10MB              | Max file size for `read`/`read_many` (range: 1MB-100MB)          |
+| `MAX_READ_MANY_TOTAL_SIZE`  | 512KB             | Max combined estimated bytes for `read_many` (range: 10KB-100MB) |
+| `MAX_SEARCH_SIZE`           | 1MB               | Max file size scanned by `grep` (range: 100KB-10MB)              |
+| `DEFAULT_SEARCH_TIMEOUT`    | 30000             | Timeout for search/list operations (range: 100-3600000ms)        |
+| `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)                  |
 
 ## Configuration Examples
 
@@ -104,3 +105,5 @@ Notes:
 - All `env` values must be strings: `"150"` not `150`.
 - `${workspaceFolder}` auto-expands in VS Code.
 - Only configure variables that differ from defaults.
+- `find` respects root `.gitignore` by default (disable via `includeIgnored=true`).
+- `read`/`read_many` support `startLine`/`endLine` as an alternative to `head`.

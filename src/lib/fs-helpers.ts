@@ -411,12 +411,14 @@ function isBinarySlice(slice: Buffer): boolean {
   return slice.includes(0);
 }
 
-type ReadMode = 'head' | 'full';
+type ReadMode = 'head' | 'full' | 'range';
 
 export interface ReadFileOptions {
   encoding?: BufferEncoding;
   maxSize?: number;
   head?: number;
+  startLine?: number;
+  endLine?: number;
   skipBinary?: boolean;
   signal?: AbortSignal;
 }
@@ -425,6 +427,8 @@ interface NormalizedOptions {
   encoding: BufferEncoding;
   maxSize: number;
   head?: number;
+  startLine?: number;
+  endLine?: number;
   skipBinary: boolean;
   signal?: AbortSignal;
 }
@@ -436,11 +440,54 @@ export interface ReadFileResult {
   totalLines?: number;
   readMode: ReadMode;
   head?: number;
+  startLine?: number;
+  endLine?: number;
   linesRead?: number;
   hasMoreLines?: boolean;
 }
 
+function validateReadOptions(options: ReadFileOptions): void {
+  const hasHead = options.head !== undefined;
+  const hasStart = options.startLine !== undefined;
+  const hasEnd = options.endLine !== undefined;
+
+  if (hasHead && (hasStart || hasEnd)) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'head cannot be used together with startLine/endLine'
+    );
+  }
+
+  if (hasEnd && !hasStart) {
+    throw new McpError(ErrorCode.E_INVALID_INPUT, 'endLine requires startLine');
+  }
+
+  if (options.startLine !== undefined && options.startLine < 1) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'startLine must be at least 1'
+    );
+  }
+
+  if (options.endLine !== undefined && options.endLine < 1) {
+    throw new McpError(ErrorCode.E_INVALID_INPUT, 'endLine must be at least 1');
+  }
+
+  if (
+    options.startLine !== undefined &&
+    options.endLine !== undefined &&
+    options.endLine < options.startLine
+  ) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'endLine must be greater than or equal to startLine'
+    );
+  }
+}
+
 function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
+  validateReadOptions(options);
+
   const normalized: NormalizedOptions = {
     encoding: options.encoding ?? 'utf-8',
     maxSize: Math.min(
@@ -452,6 +499,12 @@ function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
   if (options.head !== undefined) {
     normalized.head = options.head;
   }
+  if (options.startLine !== undefined) {
+    normalized.startLine = options.startLine;
+  }
+  if (options.endLine !== undefined) {
+    normalized.endLine = options.endLine;
+  }
   if (options.signal) {
     normalized.signal = options.signal;
   }
@@ -460,6 +513,7 @@ function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
 
 function resolveReadMode(options: NormalizedOptions): ReadMode {
   if (options.head !== undefined) return 'head';
+  if (options.startLine !== undefined) return 'range';
   return 'full';
 }
 
@@ -594,6 +648,89 @@ async function readHeadContent(
   };
 }
 
+async function readRangeContent(
+  handle: FileHandle,
+  startLine: number,
+  endLine: number | undefined,
+  options: { encoding: BufferEncoding; maxSize: number; signal?: AbortSignal }
+): Promise<{
+  content: string;
+  truncated: boolean;
+  linesRead: number;
+  hasMoreLines: boolean;
+}> {
+  assertNotAborted(options.signal);
+
+  const lines: string[] = [];
+  let lineNumber = 0;
+  let estimatedBytes = 0;
+  const hasEndLine = endLine !== undefined;
+  let stoppedByLimit = false;
+  let reachedEof = false;
+
+  const iterator = handle
+    .readLines({ encoding: options.encoding, signal: options.signal })
+    [Symbol.asyncIterator]();
+
+  let hasMoreLines = false;
+
+  const stopAt = endLine ?? Number.POSITIVE_INFINITY;
+
+  let stoppedEarly = false;
+  let next = await iterator.next();
+
+  while (!next.done) {
+    const line = next.value;
+    lineNumber++;
+
+    if (lineNumber < startLine) {
+      next = await iterator.next();
+      continue;
+    }
+
+    if (lineNumber > stopAt) {
+      stoppedEarly = true;
+      break;
+    }
+
+    lines.push(line);
+
+    estimatedBytes += Buffer.byteLength(line, options.encoding) + 1;
+    if (estimatedBytes >= options.maxSize) {
+      stoppedByLimit = true;
+      stoppedEarly = true;
+      break;
+    }
+
+    if (hasEndLine && lineNumber === stopAt) {
+      const peek = await iterator.next();
+      hasMoreLines = !peek.done;
+      reachedEof = peek.done === true;
+      stoppedEarly = true;
+      break;
+    }
+
+    next = await iterator.next();
+  }
+
+  if (!stoppedEarly) {
+    reachedEof = true;
+  }
+
+  const content = lines.join('\n');
+  const linesRead = countLines(content);
+
+  const effectiveHasMoreLines =
+    hasEndLine && (hasMoreLines || (stoppedByLimit && !reachedEof));
+
+  return {
+    content,
+    truncated: stoppedByLimit || effectiveHasMoreLines,
+    linesRead,
+    hasMoreLines: effectiveHasMoreLines,
+  };
+}
+
 async function readFullContent(
   handle: FileHandle,
   encoding: BufferEncoding,
@@ -660,6 +797,30 @@ function buildHeadResult(
   };
 }
 
+function buildRangeResult(
+  validPath: string,
+  content: string,
+  truncated: boolean,
+  startLine: number,
+  endLine: number | undefined,
+  linesRead: number,
+  hasMoreLines: boolean
+): ReadFileResult {
+  const result: ReadFileResult = {
+    path: validPath,
+    content,
+    truncated,
+    readMode: 'range',
+    startLine,
+    linesRead,
+    hasMoreLines,
+  };
+  if (endLine !== undefined) {
+    result.endLine = endLine;
+  }
+  return result;
+}
+
 function buildFullResult(
   validPath: string,
   content: string,
@@ -719,6 +880,43 @@ async function readHeadResult(
   );
 }
 
+async function readRangeResult(
+  handle: FileHandle,
+  validPath: string,
+  filePath: string,
+  normalized: NormalizedOptions
+): Promise<ReadFileResult> {
+  const { startLine, endLine, encoding, maxSize, signal } = normalized;
+  if (startLine === undefined) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Missing startLine option',
+      filePath
+    );
+  }
+
+  const readOptions: Parameters<typeof readRangeContent>[3] = {
+    encoding,
+    maxSize,
+  };
+  if (signal) {
+    readOptions.signal = signal;
+  }
+
+  const { content, truncated, linesRead, hasMoreLines } =
+    await readRangeContent(handle, startLine, endLine, readOptions);
+
+  return buildRangeResult(
+    validPath,
+    content,
+    truncated,
+    startLine,
+    endLine,
+    linesRead,
+    hasMoreLines
+  );
+}
+
 async function readFullResult(
   handle: FileHandle,
   validPath: string,
@@ -747,6 +945,9 @@ async function readByMode(
   const mode = resolveReadMode(normalized);
   if (mode === 'head') {
     return await readHeadResult(handle, validPath, filePath, normalized);
+  }
+  if (mode === 'range') {
+    return await readRangeResult(handle, validPath, filePath, normalized);
   }
   return await readFullResult(handle, validPath, filePath, stats, normalized);
 }

@@ -26,6 +26,7 @@ import { listDirectory } from './lib/file-operations/list-directory.js';
 import { readMultipleFiles } from './lib/file-operations/read-multiple-files.js';
 import { searchContent } from './lib/file-operations/search-content.js';
 import { searchFiles } from './lib/file-operations/search-files.js';
+import { formatTreeAscii, treeDirectory } from './lib/file-operations/tree.js';
 import { createTimedAbortSignal, readFile } from './lib/fs-helpers.js';
 import { withToolDiagnostics } from './lib/observability.js';
 import { getAllowedDirectories } from './lib/path-validation.js';
@@ -46,6 +47,8 @@ import {
   SearchContentOutputSchema,
   SearchFilesInputSchema,
   SearchFilesOutputSchema,
+  TreeInputSchema,
+  TreeOutputSchema,
 } from './schemas.js';
 
 function buildContentBlock<T>(
@@ -287,6 +290,7 @@ interface FileInfoPayload {
   path: string;
   type: FileInfo['type'];
   size: number;
+  tokenEstimate?: number;
   created: string;
   modified: string;
   accessed: string;
@@ -302,6 +306,9 @@ function buildFileInfoPayload(info: FileInfo): FileInfoPayload {
     path: info.path,
     type: info.type,
     size: info.size,
+    ...(info.tokenEstimate !== undefined
+      ? { tokenEstimate: info.tokenEstimate }
+      : {}),
     created: info.created.toISOString(),
     modified: info.modified.toISOString(),
     accessed: info.accessed.toISOString(),
@@ -371,6 +378,20 @@ const SEARCH_FILES_TOOL = {
     'For text search inside files, use grep.',
   inputSchema: SearchFilesInputSchema,
   outputSchema: SearchFilesOutputSchema,
+  annotations: {
+    readOnlyHint: true,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+} as const;
+
+const TREE_TOOL = {
+  title: 'Tree',
+  description:
+    'Render a directory tree (bounded recursion). ' +
+    'Returns an ASCII tree for quick scanning and a structured JSON tree for programmatic use.',
+  inputSchema: TreeInputSchema,
+  outputSchema: TreeOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
@@ -552,6 +573,7 @@ async function handleSearchFiles(
   const excludePatterns = args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS;
   const result = await searchFiles(basePath, args.pattern, excludePatterns, {
     maxResults: args.maxResults,
+    respectGitignore: !args.includeIgnored,
     ...(signal ? { signal } : {}),
   });
   const relativeResults = result.results.map((entry) => ({
@@ -601,6 +623,60 @@ function registerSearchFilesTool(server: McpServer): void {
   );
 }
 
+async function handleTree(
+  args: z.infer<typeof TreeInputSchema>,
+  signal?: AbortSignal
+): Promise<ToolResponse<z.infer<typeof TreeOutputSchema>>> {
+  const basePath = resolvePathOrRoot(args.path);
+  const result = await treeDirectory(basePath, {
+    maxDepth: args.maxDepth,
+    maxEntries: args.maxEntries,
+    includeHidden: args.includeHidden,
+    includeIgnored: args.includeIgnored,
+    ...(signal ? { signal } : {}),
+  });
+
+  const ascii = formatTreeAscii(result.tree);
+
+  const structured: z.infer<typeof TreeOutputSchema> = {
+    ok: true,
+    root: result.root,
+    tree: result.tree,
+    ascii,
+    truncated: result.truncated,
+    totalEntries: result.totalEntries,
+  };
+
+  const text = result.truncated ? `${ascii}\n[truncated]` : ascii;
+  return buildToolResponse(text, structured);
+}
+
+function registerTreeTool(server: McpServer): void {
+  server.registerTool('tree', TREE_TOOL, (args, extra) => {
+    const targetPath = args.path ?? '.';
+    return withToolDiagnostics(
+      'tree',
+      () =>
+        withToolErrorHandling(
+          async () => {
+            const { signal, cleanup } = createTimedAbortSignal(
+              extra.signal,
+              DEFAULT_SEARCH_TIMEOUT_MS
+            );
+            try {
+              return await handleTree(args, signal);
+            } finally {
+              cleanup();
+            }
+          },
+          (error) =>
+            buildToolErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, targetPath)
+        ),
+      { path: targetPath }
+    );
+  });
+}
+
 async function handleReadFile(
   args: z.infer<typeof ReadFileInputSchema>,
   signal?: AbortSignal
@@ -613,18 +689,30 @@ async function handleReadFile(
   if (args.head !== undefined) {
     options.head = args.head;
   }
+  if (args.startLine !== undefined) {
+    options.startLine = args.startLine;
+  }
+  if (args.endLine !== undefined) {
+    options.endLine = args.endLine;
+  }
   if (signal) {
     options.signal = signal;
   }
   const result = await readFile(args.path, options);
 
-  const structured = {
+  const structured: z.infer<typeof ReadFileOutputSchema> = {
     ok: true,
     path: args.path,
     content: result.content,
     truncated: result.truncated,
     totalLines: result.totalLines,
-  } as const;
+    readMode: result.readMode,
+    head: result.head,
+    startLine: result.startLine,
+    endLine: result.endLine,
+    linesRead: result.linesRead,
+    hasMoreLines: result.hasMoreLines,
+  };
 
   return buildToolResponse(result.content, structured);
 }
@@ -668,6 +756,12 @@ async function handleReadMultipleFiles(
   if (args.head !== undefined) {
     options.head = args.head;
   }
+  if (args.startLine !== undefined) {
+    options.startLine = args.startLine;
+  }
+  if (args.endLine !== undefined) {
+    options.endLine = args.endLine;
+  }
   const results = await readMultipleFiles(args.paths, options);
 
   const structured: z.infer<typeof ReadMultipleFilesOutputSchema> = {
@@ -676,6 +770,13 @@ async function handleReadMultipleFiles(
       path: result.path,
       content: result.content,
       truncated: result.truncated,
+      readMode: result.readMode,
+      head: result.head,
+      startLine: result.startLine,
+      endLine: result.endLine,
+      linesRead: result.linesRead,
+      hasMoreLines: result.hasMoreLines,
+      totalLines: result.totalLines,
       error: result.error,
     })),
     summary: {
@@ -870,6 +971,7 @@ export function registerAllTools(server: McpServer): void {
   registerListAllowedDirectoriesTool(server);
   registerListDirectoryTool(server);
   registerSearchFilesTool(server);
+  registerTreeTool(server);
   registerReadFileTool(server);
   registerReadMultipleFilesTool(server);
   registerGetFileInfoTool(server);

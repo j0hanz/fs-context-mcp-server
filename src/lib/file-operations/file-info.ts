@@ -66,11 +66,13 @@ function buildFileInfoResult(
   mimeType: string | undefined,
   symlinkTarget: string | undefined
 ): FileInfo {
+  const tokenEstimate = stats.isFile() ? Math.ceil(stats.size / 4) : undefined;
   return {
     name,
     path: requestedPath,
     type: isSymlink ? 'symlink' : getFileType(stats),
     size: stats.size,
+    ...(tokenEstimate !== undefined ? { tokenEstimate } : {}),
     created: stats.birthtime,
     modified: stats.mtime,
     accessed: stats.atime,

@@ -8,6 +8,7 @@ import {
 } from '../constants.js';
 import { createTimedAbortSignal } from '../fs-helpers.js';
 import { validateExistingDirectory } from '../path-validation.js';
+import { isIgnoredByGitignore, loadRootGitignore } from './gitignore.js';
 import { globEntries } from './glob-engine.js';
 
 // Internal default for find tool - not exposed to MCP users
@@ -22,6 +23,7 @@ export interface SearchFilesOptions {
   baseNameMatch?: boolean;
   skipSymlinks?: boolean;
   includeHidden?: boolean;
+  respectGitignore?: boolean;
   signal?: AbortSignal;
 }
 
@@ -41,6 +43,7 @@ function normalizeOptions(options: SearchFilesOptions): NormalizedOptions {
     baseNameMatch: options.baseNameMatch ?? false,
     skipSymlinks: options.skipSymlinks ?? true,
     includeHidden: options.includeHidden ?? false,
+    respectGitignore: options.respectGitignore ?? false,
   };
   if (options.maxDepth !== undefined) {
     normalized.maxDepth = options.maxDepth;
@@ -198,6 +201,8 @@ function handleEntry(
 
 async function collectFromStream(
   stream: AsyncIterable<SearchEntry>,
+  root: string,
+  gitignoreMatcher: Awaited<ReturnType<typeof loadRootGitignore>>,
   normalized: NormalizedOptions,
   needsStats: boolean,
   state: CollectState,
@@ -206,6 +211,14 @@ async function collectFromStream(
   for await (const entry of stream) {
     if (shouldStopCollecting(state, normalized, signal)) break;
     state.filesScanned++;
+
+    if (
+      gitignoreMatcher &&
+      isIgnoredByGitignore(gitignoreMatcher, root, entry.path)
+    ) {
+      continue;
+    }
+
     handleEntry(
       entry,
       resolveEntryType(entry.dirent),
@@ -238,7 +251,20 @@ async function collectSearchResults(
     needsStats
   );
   const state = createCollectState();
-  await collectFromStream(stream, normalized, needsStats, state, signal);
+
+  const gitignoreMatcher = normalized.respectGitignore
+    ? await loadRootGitignore(root, signal)
+    : null;
+
+  await collectFromStream(
+    stream,
+    root,
+    gitignoreMatcher,
+    normalized,
+    needsStats,
+    state,
+    signal
+  );
   return buildCollectResult(state);
 }
 

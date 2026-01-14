@@ -42,6 +42,13 @@ export const MAX_TEXT_FILE_SIZE = parseEnvInt(
   1024 * 1024,
   100 * 1024 * 1024
 );
+
+export const DEFAULT_READ_MANY_MAX_TOTAL_SIZE = parseEnvInt(
+  'MAX_READ_MANY_TOTAL_SIZE',
+  512 * 1024,
+  10 * 1024,
+  100 * 1024 * 1024
+);
 export const DEFAULT_SEARCH_TIMEOUT_MS = parseEnvInt(
   'DEFAULT_SEARCH_TIMEOUT',
   30000,

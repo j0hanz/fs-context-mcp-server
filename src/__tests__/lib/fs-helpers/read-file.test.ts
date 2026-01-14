@@ -22,6 +22,23 @@ void describe('readFile', () => {
       assert.strictEqual(result.readMode, 'head');
     });
 
+    void it('readFile reads an inclusive line range', async () => {
+      const result = await readFile(path.join(getTestDir(), 'multiline.txt'), {
+        startLine: 10,
+        endLine: 12,
+      });
+
+      assert.strictEqual(result.readMode, 'range');
+      assert.strictEqual(result.startLine, 10);
+      assert.strictEqual(result.endLine, 12);
+      assert.strictEqual(result.truncated, true);
+      assert.strictEqual(result.hasMoreLines, true);
+      assert.ok(result.content.includes('Line 10'));
+      assert.ok(result.content.includes('Line 12'));
+      assert.ok(!result.content.includes('Line 9'));
+      assert.ok(!result.content.includes('Line 13'));
+    });
+
     void it('readFile rejects non-files', async () => {
       await assert.rejects(readFile(getTestDir()), /Not a file/);
     });

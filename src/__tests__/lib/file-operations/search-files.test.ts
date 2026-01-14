@@ -1,3 +1,4 @@
+import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -23,6 +24,23 @@ function registerSearchFilesBasics(getTestDir: () => string): void {
   void it('searchFiles finds markdown files', async () => {
     const result = await searchFiles(getTestDir(), '**/*.md');
     assert.strictEqual(result.results.length, 2);
+  });
+
+  void it('searchFiles respects root .gitignore when enabled', async () => {
+    const gitignorePath = path.join(getTestDir(), '.gitignore');
+    await fs.writeFile(gitignorePath, 'docs/\n');
+    try {
+      const result = await searchFiles(getTestDir(), '**/*.md', [], {
+        respectGitignore: true,
+      });
+      assert.strictEqual(result.results.length, 1);
+      assert.strictEqual(
+        result.results.some((r) => r.path.includes('docs')),
+        false
+      );
+    } finally {
+      await fs.rm(gitignorePath, { force: true });
+    }
   });
 }
 

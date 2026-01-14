@@ -72,6 +72,22 @@ function registerReadMultipleLimits(getTestDir: () => string): void {
     assert.strictEqual(results[0].truncated, true);
     assert.strictEqual(results[0].readMode, 'head');
   });
+
+  void it('readMultipleFiles supports inclusive line ranges', async () => {
+    const filePath = path.join(getTestDir(), 'multiline.txt');
+    const results = await readMultipleFiles([filePath], {
+      startLine: 2,
+      endLine: 3,
+    });
+
+    const content = results[0].content ?? '';
+    assert.ok(content.includes('Line 2'));
+    assert.ok(content.includes('Line 3'));
+    assert.ok(!content.includes('Line 1'));
+    assert.strictEqual(results[0].readMode, 'range');
+    assert.strictEqual(results[0].startLine, 2);
+    assert.strictEqual(results[0].endLine, 3);
+  });
 }
 
 void describe('readMultipleFiles', () => {

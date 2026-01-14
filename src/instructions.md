@@ -74,6 +74,24 @@ Find files by glob pattern.
 
 - **Args:** `pattern` (req, max 1000ch), `path` (opt), `maxResults` (opt/100), `includeIgnored` (opt/false).
 - **Ref:** `**/*.ts` (recursive), `src/*` (flat). Matches relative paths.
+- **Notes:** When `includeIgnored=false`, results also respect a root `.gitignore` file (if present under the search base path).
+
+### tree
+
+Render a directory tree (bounded recursion) for quick structure discovery.
+
+- **Args:** `path` (opt), `maxDepth` (opt/5), `maxEntries` (opt/1000), `includeHidden` (opt/false), `includeIgnored` (opt/false)
+- **Returns:** ASCII tree text plus a structured JSON tree.
+- **Notes:**
+  - When `includeIgnored=false`, the tree respects both built-in ignore rules (e.g., `node_modules`, `dist`, `.git`) and a root `.gitignore` file (if present under the base `path`).
+  - When `includeIgnored=true`, both built-in ignores and `.gitignore` filtering are disabled.
+  - Results may be truncated when `maxEntries` is reached.
+
+Example:
+
+```text
+tree(path="src", maxDepth=3, maxEntries=500)
+```
 
 ### grep
 
@@ -86,14 +104,14 @@ Search text within file contents (literal, case-insensitive).
 
 Read single text file content.
 
-- **Args:** `path` (req), `head` (opt/lines).
+- **Args:** `path` (req), `head` (opt/lines), `startLine`/`endLine` (opt, 1-based; mutually exclusive with `head`).
 - **Ref:** Rejects binary. Use `head` for large files.
 
 ### read_many
 
 Read multiple text files.
 
-- **Args:** `paths` (req, max 100), `head` (opt).
+- **Args:** `paths` (req, max 100), `head` (opt), `startLine`/`endLine` (opt, 1-based; mutually exclusive with `head`).
 - **Ref:** No binary detection (use `stat` first). Returns per-file result/error.
 
 ### stat / stat_many

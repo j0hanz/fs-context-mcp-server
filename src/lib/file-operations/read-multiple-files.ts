@@ -1,7 +1,11 @@
 import * as fsp from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 
-import { MAX_TEXT_FILE_SIZE, PARALLEL_CONCURRENCY } from '../constants.js';
+import {
+  DEFAULT_READ_MANY_MAX_TOTAL_SIZE,
+  MAX_TEXT_FILE_SIZE,
+  PARALLEL_CONCURRENCY,
+} from '../constants.js';
 import {
   processInParallel,
   readFile,
@@ -15,8 +19,10 @@ export interface ReadMultipleResult {
   content?: string;
   truncated?: boolean;
   totalLines?: number;
-  readMode?: 'full' | 'head';
+  readMode?: 'full' | 'head' | 'range';
   head?: number;
+  startLine?: number;
+  endLine?: number;
   linesRead?: number;
   hasMoreLines?: boolean;
   error?: string;
@@ -27,6 +33,8 @@ interface NormalizedReadMultipleOptions {
   maxSize: number;
   maxTotalSize: number;
   head?: number;
+  startLine?: number;
+  endLine?: number;
 }
 
 export interface ReadMultipleOptions {
@@ -34,6 +42,8 @@ export interface ReadMultipleOptions {
   maxSize?: number;
   maxTotalSize?: number;
   head?: number;
+  startLine?: number;
+  endLine?: number;
   signal?: AbortSignal;
 }
 
@@ -48,17 +58,27 @@ function buildReadOptions(options: NormalizedReadMultipleOptions): {
   encoding: BufferEncoding;
   maxSize: number;
   head?: number;
+  startLine?: number;
+  endLine?: number;
 } {
   const readOptions: {
     encoding: BufferEncoding;
     maxSize: number;
     head?: number;
+    startLine?: number;
+    endLine?: number;
   } = {
     encoding: options.encoding,
     maxSize: options.maxSize,
   };
   if (options.head !== undefined) {
     readOptions.head = options.head;
+  }
+  if (options.startLine !== undefined) {
+    readOptions.startLine = options.startLine;
+  }
+  if (options.endLine !== undefined) {
+    readOptions.endLine = options.endLine;
   }
   return readOptions;
 }
@@ -75,6 +95,8 @@ function buildReadMultipleResult(
   };
   if (result.totalLines !== undefined) value.totalLines = result.totalLines;
   if (result.head !== undefined) value.head = result.head;
+  if (result.startLine !== undefined) value.startLine = result.startLine;
+  if (result.endLine !== undefined) value.endLine = result.endLine;
   if (result.linesRead !== undefined) value.linesRead = result.linesRead;
   if (result.hasMoreLines !== undefined) {
     value.hasMoreLines = result.hasMoreLines;
@@ -106,7 +128,7 @@ async function readSingleFile(
 }
 
 function isPartialRead(options: NormalizedReadMultipleOptions): boolean {
-  return options.head !== undefined;
+  return options.head !== undefined || options.startLine !== undefined;
 }
 
 async function readFilesInParallel(
@@ -134,10 +156,16 @@ function normalizeReadMultipleOptions(
       options.maxSize ?? MAX_TEXT_FILE_SIZE,
       MAX_TEXT_FILE_SIZE
     ),
-    maxTotalSize: options.maxTotalSize ?? 100 * 1024 * 1024,
+    maxTotalSize: options.maxTotalSize ?? DEFAULT_READ_MANY_MAX_TOTAL_SIZE,
   };
   if (options.head !== undefined) {
     normalized.head = options.head;
+  }
+  if (options.startLine !== undefined) {
+    normalized.startLine = options.startLine;
+  }
+  if (options.endLine !== undefined) {
+    normalized.endLine = options.endLine;
   }
   return normalized;
 }
