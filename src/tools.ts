@@ -246,6 +246,7 @@ function buildStructuredSearchResult(
       file: match.relativeFile,
       line: match.line,
       content: match.content,
+      matchCount: match.matchCount,
       ...(match.contextBefore
         ? { contextBefore: [...match.contextBefore] }
         : {}),

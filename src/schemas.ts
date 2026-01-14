@@ -106,11 +106,11 @@ const FileInfoSchema = z.object({
     .number()
     .optional()
     .describe('Approximate token count estimate (rule of thumb: ceil(size/4))'),
-  created: z.string().optional(),
+  created: z.string(),
   modified: z.string(),
-  accessed: z.string().optional(),
+  accessed: z.string(),
   permissions: z.string(),
-  isHidden: z.boolean().optional(),
+  isHidden: z.boolean(),
   mimeType: z.string().optional(),
   symlinkTarget: z.string().optional(),
 });
@@ -364,6 +364,7 @@ export const SearchContentOutputSchema = SearchSummarySchema.extend({
         file: z.string().describe('Relative path from search base'),
         line: z.number(),
         content: z.string(),
+        matchCount: z.number(),
         contextBefore: z.array(z.string()).optional(),
         contextAfter: z.array(z.string()).optional(),
       })

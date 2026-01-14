@@ -202,8 +202,6 @@ async function validateFile(
   return { filePath, index, validPath, stats };
 }
 
-type SizeEstimator = (stats: Stats) => number;
-
 function estimatePartialSize(stats: Stats, maxSize: number): number {
   return Math.min(stats.size, maxSize);
 }
@@ -212,26 +210,26 @@ function estimateFullSize(stats: Stats): number {
   return stats.size;
 }
 
-function applyBudget(
-  orderedResults: ValidatedFileInfo[],
-  estimateSize: SizeEstimator,
-  maxTotalSize: number
-): { skippedBudget: Set<number>; validated: Map<number, ValidatedFileInfo> } {
-  const skippedBudget = new Set<number>();
-  const validated = new Map<number, ValidatedFileInfo>();
-  let totalSize = 0;
-
-  for (const result of orderedResults) {
-    validated.set(result.index, result);
-    const estimatedSize = estimateSize(result.stats);
-    if (totalSize + estimatedSize > maxTotalSize) {
-      skippedBudget.add(result.index);
-      continue;
-    }
-    totalSize += estimatedSize;
+function markRemainingSkipped(
+  startIndex: number,
+  total: number,
+  skippedBudget: Set<number>
+): void {
+  for (let index = startIndex; index < total; index += 1) {
+    skippedBudget.add(index);
   }
+}
 
-  return { skippedBudget, validated };
+async function tryValidateFile(
+  filePath: string,
+  index: number,
+  signal?: AbortSignal
+): Promise<ValidatedFileInfo | undefined> {
+  try {
+    return await validateFile(filePath, index, signal);
+  } catch {
+    return undefined;
+  }
 }
 
 async function collectFileBudget(
@@ -244,18 +242,33 @@ async function collectFileBudget(
   skippedBudget: Set<number>;
   validated: Map<number, ValidatedFileInfo>;
 }> {
-  const { results } = await processInParallel(
-    filePaths.map((filePath, index) => ({ filePath, index })),
-    async ({ filePath, index }) => validateFile(filePath, index, signal),
-    PARALLEL_CONCURRENCY,
-    signal
-  );
-
-  const orderedResults = [...results].sort((a, b) => a.index - b.index);
+  const skippedBudget = new Set<number>();
+  const validated = new Map<number, ValidatedFileInfo>();
   const estimateSize = partialRead
     ? (stats: Stats) => estimatePartialSize(stats, maxSize)
     : estimateFullSize;
-  return applyBudget(orderedResults, estimateSize, maxTotalSize);
+  let totalSize = 0;
+
+  for (let index = 0; index < filePaths.length; index += 1) {
+    const filePath = filePaths[index];
+    if (!filePath) continue;
+
+    const info = await tryValidateFile(filePath, index, signal);
+    if (!info) continue;
+
+    validated.set(index, info);
+
+    const estimatedSize = estimateSize(info.stats);
+    if (totalSize + estimatedSize > maxTotalSize) {
+      skippedBudget.add(index);
+      markRemainingSkipped(index + 1, filePaths.length, skippedBudget);
+      return { skippedBudget, validated };
+    }
+
+    totalSize += estimatedSize;
+  }
+
+  return { skippedBudget, validated };
 }
 
 function buildOutput(filePaths: readonly string[]): ReadMultipleResult[] {
