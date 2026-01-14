@@ -317,7 +317,14 @@ try {
 
 function resolveToolErrorCode(message: string): ErrorCode {
   const lower = message.toLowerCase();
-  if (lower.includes('not found')) return ErrorCode.E_NOT_FOUND;
+  // Be conservative: this path only receives an error message string from the SDK.
+  // Prefer avoiding broad substring classifications that can mislabel tool/protocol errors.
+  if (lower.includes('timeout') || lower.includes('timed out')) {
+    return ErrorCode.E_TIMEOUT;
+  }
+  if (lower.includes('tool') && lower.includes('not found')) {
+    return ErrorCode.E_INVALID_INPUT;
+  }
   if (
     lower.includes('invalid arguments') ||
     lower.includes('input validation')

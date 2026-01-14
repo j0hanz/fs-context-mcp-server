@@ -1103,7 +1103,12 @@ class SearchWorkerPool {
         request: scanRequest,
       });
 
-      worker.postMessage(scanRequest);
+      try {
+        worker.postMessage(scanRequest);
+      } catch (error: unknown) {
+        slot.pending.delete(scanRequest.id);
+        safeReject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
   }
 
@@ -1116,7 +1121,11 @@ class SearchWorkerPool {
       const pending = slot.pending.get(id);
       if (!pending) return;
       slot.pending.delete(id);
-      worker.postMessage({ type: 'cancel', id });
+      try {
+        worker.postMessage({ type: 'cancel', id });
+      } catch {
+        // Ignore: cancellation should still reject the local pending promise.
+      }
       pending.reject(new Error('Scan cancelled'));
     };
   }
@@ -1156,7 +1165,11 @@ class SearchWorkerPool {
     const terminatePromises: Promise<number>[] = [];
     for (const slot of this.slots) {
       if (slot.worker) {
-        slot.worker.postMessage({ type: 'shutdown' });
+        try {
+          slot.worker.postMessage({ type: 'shutdown' });
+        } catch {
+          // Ignore: worker may already be terminating.
+        }
         terminatePromises.push(slot.worker.terminate());
         slot.worker = null;
       }
