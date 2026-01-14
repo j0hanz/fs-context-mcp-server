@@ -3,7 +3,10 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { treeDirectory } from '../../../lib/file-operations/tree.js';
+import {
+  formatTreeAscii,
+  treeDirectory,
+} from '../../../lib/file-operations/tree.js';
 import { withFileOpsFixture } from '../fixtures/file-ops-hooks.js';
 
 void describe('treeDirectory', () => {
@@ -62,6 +65,15 @@ void describe('treeDirectory', () => {
       } finally {
         await fs.rm(gitignorePath, { force: true });
       }
+    });
+
+    void it('formatTreeAscii renders a tree with connectors', async () => {
+      const result = await treeDirectory(getTestDir(), { maxDepth: 2 });
+      const ascii = formatTreeAscii(result.tree);
+      assert.ok(
+        ascii.includes('└── ') || ascii.includes('├── '),
+        `Expected connectors in ASCII tree output, got:\n${ascii}`
+      );
     });
   });
 });

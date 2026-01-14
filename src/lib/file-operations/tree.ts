@@ -118,8 +118,12 @@ function sortTree(node: TreeEntry): void {
 export function formatTreeAscii(tree: TreeEntry): string {
   const lines: string[] = [];
 
-  const walk = (node: TreeEntry, prefix: string, isLast: boolean): void => {
-    const isRoot = prefix.length === 0;
+  const walk = (
+    node: TreeEntry,
+    prefix: string,
+    isLast: boolean,
+    isRoot: boolean
+  ): void => {
     let connector = '';
     let linePrefix = '';
     if (!isRoot) {
@@ -138,11 +142,11 @@ export function formatTreeAscii(tree: TreeEntry): string {
 
     const count = node.children.length;
     node.children.forEach((child, index) => {
-      walk(child, nextPrefix, index === count - 1);
+      walk(child, nextPrefix, index === count - 1, false);
     });
   };
 
-  walk(tree, '', true);
+  walk(tree, '', true, true);
   return lines.join('\n');
 }
 

@@ -587,10 +587,32 @@ async function handleSearchFiles(
     totalMatches: result.summary.matched,
     truncated: result.summary.truncated,
   };
-  const text = joinLines([
-    `Found ${relativeResults.length}:`,
-    ...relativeResults.map((entry) => `  ${entry.path}`),
-  ]);
+
+  let truncatedReason: string | undefined;
+  if (result.summary.truncated) {
+    if (result.summary.stoppedReason === 'timeout') {
+      truncatedReason = 'timeout';
+    } else if (result.summary.stoppedReason === 'maxFiles') {
+      truncatedReason = `max files (${result.summary.filesScanned})`;
+    } else {
+      truncatedReason = `max results (${result.summary.matched})`;
+    }
+  }
+
+  const summaryOptions: Parameters<typeof formatOperationSummary>[0] = {
+    truncated: result.summary.truncated,
+    ...(truncatedReason ? { truncatedReason } : {}),
+  };
+
+  const textLines =
+    relativeResults.length === 0
+      ? ['No matches']
+      : [
+          `Found ${relativeResults.length}:`,
+          ...relativeResults.map((entry) => `  ${entry.path}`),
+        ];
+
+  const text = joinLines(textLines) + formatOperationSummary(summaryOptions);
   return buildToolResponse(text, structured);
 }
 

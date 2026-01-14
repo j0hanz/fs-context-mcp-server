@@ -13,7 +13,7 @@ Use this server to explore, search, and read filesystem content within allowed w
 
 ### Strategies
 
-- **Discovery:** Unsure directories? Call `roots`. File name pattern? `find`. Content text? `grep`.
+- **Discovery:** Unsure directories? Call `roots`. Directory structure? `tree` / `ls`. File name pattern (glob)? `find`. Content text? `grep`.
 - **Reading:** Multiple files? `read_many`. Large file? `read` with `head`. Binary check? `stat`.
 
 ---
@@ -74,7 +74,18 @@ Find files by glob pattern.
 
 - **Args:** `pattern` (req, max 1000ch), `path` (opt), `maxResults` (opt/100), `includeIgnored` (opt/false).
 - **Ref:** `**/*.ts` (recursive), `src/*` (flat). Matches relative paths.
-- **Notes:** When `includeIgnored=false`, results also respect a root `.gitignore` file (if present under the search base path).
+- **Notes:**
+  - `find` matches file paths via glob patterns (it does not search file contents).
+  - `find` returns files only (directories like `src/` will not match unless you use `tree` / `ls`).
+  - When `includeIgnored=false`, results also respect a root `.gitignore` file (if present under the search base path).
+
+Examples:
+
+```text
+find(path="src", pattern="**/*.ts", maxResults=500)  → find TypeScript files under src/
+find(pattern="**/*.md")                               → find markdown files from the default base path
+grep(path="src", pattern="buildToolResponse")        → find text inside files (use grep, not find)
+```
 
 ### tree
 
@@ -119,7 +130,7 @@ Read multiple text files.
 Get metadata for single or multiple paths.
 
 - **Args:** `path` (req) / `paths` (req).
-- **Returns:** Type, size, modified, permissions, mimeType.
+- **Returns:** Type, size, modified, permissions, mimeType (and `tokenEstimate` when available).
 
 ---
 
