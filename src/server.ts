@@ -29,6 +29,11 @@ import {
   RESERVED_DEVICE_NAMES,
   setAllowedDirectoriesResolved,
 } from './lib/path-validation.js';
+import { createInMemoryResourceStore } from './lib/resource-store.js';
+import {
+  registerInstructionResource,
+  registerResultResources,
+} from './resources.js';
 import { registerAllTools } from './tools.js';
 import { buildToolErrorResponse } from './tools.js';
 
@@ -351,7 +356,7 @@ function extractExplicitErrorCode(message: string): ErrorCode | undefined {
 }
 
 type ToolErrorBuilder = (errorMessage: string) => {
-  content: { type: 'text'; text: string }[];
+  content: unknown[];
   structuredContent: Record<string, unknown>;
   isError: true;
 };
@@ -372,9 +377,12 @@ function patchToolErrorHandling(server: McpServer): void {
 export function createServer(options: ServerOptions = {}): McpServer {
   setServerOptions(options);
 
+  const resourceStore = createInMemoryResourceStore();
+
   const serverConfig: ConstructorParameters<typeof McpServer>[1] = {
     capabilities: {
       logging: {},
+      resources: {},
     },
   };
   if (serverInstructions) {
@@ -390,7 +398,10 @@ export function createServer(options: ServerOptions = {}): McpServer {
   );
 
   patchToolErrorHandling(server);
-  registerAllTools(server);
+
+  registerInstructionResource(server, serverInstructions);
+  registerResultResources(server, resourceStore);
+  registerAllTools(server, { resourceStore });
 
   return server;
 }

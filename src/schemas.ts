@@ -340,6 +340,7 @@ export const ListDirectoryOutputSchema = z.object({
 const SearchSummarySchema = z.object({
   totalMatches: z.number().optional(),
   truncated: z.boolean().optional(),
+  resourceUri: z.string().optional(),
   error: ErrorSchema.optional(),
 });
 
@@ -385,6 +386,7 @@ export const TreeOutputSchema = z.object({
 const ReadResultSchema = z.object({
   content: z.string().optional(),
   truncated: z.boolean().optional(),
+  resourceUri: z.string().optional(),
   totalLines: z.number().optional(),
   readMode: z.enum(['full', 'head', 'range']).optional(),
   head: z.number().optional(),

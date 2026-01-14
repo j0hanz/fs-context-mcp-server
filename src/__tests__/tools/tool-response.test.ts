@@ -9,9 +9,12 @@ void it('buildToolResponse includes JSON content matching structuredContent', ()
   const result = buildToolResponse('human text', structured);
 
   assert.ok(result.content.length >= 2);
-  const jsonContent = result.content[1];
+  const jsonContent = result.content[result.content.length - 1];
   assert.ok(jsonContent);
-  assert.deepStrictEqual(JSON.parse(jsonContent.text), structured);
+  assert.deepStrictEqual(
+    JSON.parse((jsonContent as { text: string }).text),
+    structured
+  );
   assert.deepStrictEqual(result.structuredContent, structured);
 });
 
@@ -25,8 +28,8 @@ void it('buildToolErrorResponse includes JSON content matching structuredContent
   assert.strictEqual(result.isError, true);
   assert.ok(result.content.length >= 2);
 
-  const jsonContent = result.content[1];
+  const jsonContent = result.content[result.content.length - 1];
   assert.ok(jsonContent);
-  const parsed = JSON.parse(jsonContent.text) as unknown;
+  const parsed = JSON.parse((jsonContent as { text: string }).text) as unknown;
   assert.deepStrictEqual(parsed, result.structuredContent);
 });

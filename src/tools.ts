@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js';
 
 import type { z } from 'zod';
 
@@ -30,6 +31,7 @@ import { formatTreeAscii, treeDirectory } from './lib/file-operations/tree.js';
 import { createTimedAbortSignal, readFile } from './lib/fs-helpers.js';
 import { withToolDiagnostics } from './lib/observability.js';
 import { getAllowedDirectories } from './lib/path-validation.js';
+import type { ResourceStore } from './lib/resource-store.js';
 import {
   GetFileInfoInputSchema,
   GetFileInfoOutputSchema,
@@ -51,14 +53,40 @@ import {
   TreeOutputSchema,
 } from './schemas.js';
 
+const MAX_INLINE_CONTENT_CHARS = 20_000;
+const MAX_INLINE_PREVIEW_CHARS = 4_000;
+const MAX_INLINE_MATCHES = 50;
+
+function buildTextPreview(text: string): string {
+  if (text.length <= MAX_INLINE_PREVIEW_CHARS) return text;
+  return `${text.slice(0, MAX_INLINE_PREVIEW_CHARS)}\n… [truncated preview]`;
+}
+
+function buildResourceLink(params: {
+  uri: string;
+  name: string;
+  mimeType?: string;
+  description?: string;
+}): ContentBlock {
+  return {
+    type: 'resource_link',
+    uri: params.uri,
+    name: params.name,
+    ...(params.description ? { description: params.description } : {}),
+    ...(params.mimeType ? { mimeType: params.mimeType } : {}),
+  };
+}
+
 function buildContentBlock<T>(
   text: string,
-  structuredContent: T
-): { content: { type: 'text'; text: string }[]; structuredContent: T } {
+  structuredContent: T,
+  extraContent: ContentBlock[] = []
+): { content: ContentBlock[]; structuredContent: T } {
   const json = JSON.stringify(structuredContent);
   return {
     content: [
       { type: 'text', text },
+      ...extraContent,
       { type: 'text', text: json },
     ],
     structuredContent,
@@ -86,12 +114,13 @@ function resolveDetailedError(
 
 export function buildToolResponse<T>(
   text: string,
-  structuredContent: T
+  structuredContent: T,
+  extraContent: ContentBlock[] = []
 ): {
-  content: { type: 'text'; text: string }[];
+  content: ContentBlock[];
   structuredContent: T;
 } {
-  return buildContentBlock(text, structuredContent);
+  return buildContentBlock(text, structuredContent, extraContent);
 }
 
 type ToolResponse<T> = ReturnType<typeof buildToolResponse<T>> &
@@ -108,7 +137,7 @@ interface ToolErrorStructuredContent extends Record<string, unknown> {
 }
 
 interface ToolErrorResponse extends Record<string, unknown> {
-  content: { type: 'text'; text: string }[];
+  content: ContentBlock[];
   structuredContent: ToolErrorStructuredContent;
   isError: true;
 }
@@ -702,7 +731,8 @@ function registerTreeTool(server: McpServer): void {
 
 async function handleReadFile(
   args: z.infer<typeof ReadFileInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  resourceStore?: ResourceStore
 ): Promise<ToolResponse<z.infer<typeof ReadFileOutputSchema>>> {
   const options: Parameters<typeof readFile>[1] = {
     encoding: 'utf-8',
@@ -728,6 +758,7 @@ async function handleReadFile(
     path: args.path,
     content: result.content,
     truncated: result.truncated,
+    resourceUri: undefined,
     totalLines: result.totalLines,
     readMode: result.readMode,
     head: result.head,
@@ -737,10 +768,44 @@ async function handleReadFile(
     hasMoreLines: result.hasMoreLines,
   };
 
-  return buildToolResponse(result.content, structured);
+  if (!resourceStore || result.content.length <= MAX_INLINE_CONTENT_CHARS) {
+    return buildToolResponse(result.content, structured);
+  }
+
+  const entry = resourceStore.putText({
+    name: `read:${path.basename(args.path)}`,
+    mimeType: 'text/plain',
+    text: result.content,
+  });
+
+  const preview = buildTextPreview(result.content);
+  const structuredWithResource: z.infer<typeof ReadFileOutputSchema> = {
+    ...structured,
+    content: preview,
+    truncated: true,
+    resourceUri: entry.uri,
+  };
+
+  const text = joinLines([
+    `Output too large to inline (${result.content.length} chars).`,
+    'Preview:',
+    preview,
+  ]);
+
+  return buildToolResponse(text, structuredWithResource, [
+    buildResourceLink({
+      uri: entry.uri,
+      name: entry.name,
+      mimeType: entry.mimeType,
+      description: 'Full file contents',
+    }),
+  ]);
 }
 
-function registerReadFileTool(server: McpServer): void {
+function registerReadFileTool(
+  server: McpServer,
+  options: { resourceStore?: ResourceStore }
+): void {
   const handler = (
     args: z.infer<typeof ReadFileInputSchema>,
     extra: { signal?: AbortSignal }
@@ -755,7 +820,7 @@ function registerReadFileTool(server: McpServer): void {
               DEFAULT_SEARCH_TIMEOUT_MS
             );
             try {
-              return await handleReadFile(args, signal);
+              return await handleReadFile(args, signal, options.resourceStore);
             } finally {
               cleanup();
             }
@@ -771,7 +836,8 @@ function registerReadFileTool(server: McpServer): void {
 
 async function handleReadMultipleFiles(
   args: z.infer<typeof ReadMultipleFilesInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  resourceStore?: ResourceStore
 ): Promise<ToolResponse<z.infer<typeof ReadMultipleFilesOutputSchema>>> {
   const options: Parameters<typeof readMultipleFiles>[1] = {
     ...(signal ? { signal } : {}),
@@ -787,12 +853,40 @@ async function handleReadMultipleFiles(
   }
   const results = await readMultipleFiles(args.paths, options);
 
+  type ReadManyResult = Awaited<ReturnType<typeof readMultipleFiles>>[number];
+  type ReadManyResultWithResource = ReadManyResult & { resourceUri?: string };
+
+  const mappedResults: ReadManyResultWithResource[] = results.map(
+    (result): ReadManyResultWithResource => {
+      if (!resourceStore || !result.content) {
+        return result;
+      }
+      if (result.content.length <= MAX_INLINE_CONTENT_CHARS) {
+        return result;
+      }
+
+      const entry = resourceStore.putText({
+        name: `read:${path.basename(result.path)}`,
+        mimeType: 'text/plain',
+        text: result.content,
+      });
+
+      return {
+        ...result,
+        content: buildTextPreview(result.content),
+        truncated: true,
+        resourceUri: entry.uri,
+      };
+    }
+  );
+
   const structured: z.infer<typeof ReadMultipleFilesOutputSchema> = {
     ok: true,
-    results: results.map((result) => ({
+    results: mappedResults.map((result) => ({
       path: result.path,
       content: result.content,
       truncated: result.truncated,
+      resourceUri: result.resourceUri,
       readMode: result.readMode,
       head: result.head,
       startLine: result.startLine,
@@ -803,14 +897,14 @@ async function handleReadMultipleFiles(
       error: result.error,
     })),
     summary: {
-      total: results.length,
-      succeeded: results.filter((r) => r.error === undefined).length,
-      failed: results.filter((r) => r.error !== undefined).length,
+      total: mappedResults.length,
+      succeeded: mappedResults.filter((r) => r.error === undefined).length,
+      failed: mappedResults.filter((r) => r.error !== undefined).length,
     },
   };
 
   const text = joinLines(
-    results.map((result) => {
+    mappedResults.map((result) => {
       if (result.error) {
         return `${result.path}: ${result.error}`;
       }
@@ -821,7 +915,10 @@ async function handleReadMultipleFiles(
   return buildToolResponse(text, structured);
 }
 
-function registerReadMultipleFilesTool(server: McpServer): void {
+function registerReadMultipleFilesTool(
+  server: McpServer,
+  options: { resourceStore?: ResourceStore }
+): void {
   server.registerTool('read_many', READ_MULTIPLE_FILES_TOOL, (args, extra) => {
     const primaryPath = args.paths[0] ?? '';
     return withToolDiagnostics(
@@ -834,7 +931,11 @@ function registerReadMultipleFilesTool(server: McpServer): void {
               DEFAULT_SEARCH_TIMEOUT_MS
             );
             try {
-              return await handleReadMultipleFiles(args, signal);
+              return await handleReadMultipleFiles(
+                args,
+                signal,
+                options.resourceStore
+              );
             } finally {
               cleanup();
             }
@@ -959,7 +1060,8 @@ function registerGetMultipleFileInfoTool(server: McpServer): void {
 
 async function handleSearchContent(
   args: z.infer<typeof SearchContentInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  resourceStore?: ResourceStore
 ): Promise<ToolResponse<z.infer<typeof SearchContentOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
   const result = await searchContent(
@@ -969,19 +1071,69 @@ async function handleSearchContent(
       ? { includeHidden: args.includeHidden, signal }
       : { includeHidden: args.includeHidden }
   );
-  return buildToolResponse(
-    buildSearchTextResult(result),
-    buildStructuredSearchResult(result)
-  );
+  const structuredFull = buildStructuredSearchResult(result);
+  const normalizedMatches = normalizeSearchMatches(result);
+  const needsExternalize = normalizedMatches.length > MAX_INLINE_MATCHES;
+
+  if (!resourceStore || !needsExternalize) {
+    return buildToolResponse(buildSearchTextResult(result), structuredFull);
+  }
+
+  const previewMatches = normalizedMatches.slice(0, MAX_INLINE_MATCHES);
+  const previewStructured: z.infer<typeof SearchContentOutputSchema> = {
+    ok: true,
+    matches: previewMatches.map((match) => ({
+      file: match.relativeFile,
+      line: match.line,
+      content: match.content,
+      matchCount: match.matchCount,
+      ...(match.contextBefore
+        ? { contextBefore: [...match.contextBefore] }
+        : {}),
+      ...(match.contextAfter ? { contextAfter: [...match.contextAfter] } : {}),
+    })),
+    totalMatches: structuredFull.totalMatches,
+    truncated: true,
+    resourceUri: undefined,
+  };
+
+  const entry = resourceStore.putText({
+    name: 'grep:matches',
+    mimeType: 'application/json',
+    text: JSON.stringify(structuredFull),
+  });
+
+  previewStructured.resourceUri = entry.uri;
+
+  const text = joinLines([
+    `Found ${normalizedMatches.length} (showing first ${MAX_INLINE_MATCHES}):`,
+    ...previewMatches.map((match) => {
+      const lineNum = String(match.line).padStart(4);
+      return `  ${match.relativeFile}:${lineNum}: ${match.content}`;
+    }),
+  ]);
+
+  return buildToolResponse(text, previewStructured, [
+    buildResourceLink({
+      uri: entry.uri,
+      name: entry.name,
+      mimeType: entry.mimeType,
+      description: 'Full grep results as JSON (structuredContent)',
+    }),
+  ]);
 }
 
-function registerSearchContentTool(server: McpServer): void {
+function registerSearchContentTool(
+  server: McpServer,
+  options: { resourceStore?: ResourceStore }
+): void {
   server.registerTool('grep', SEARCH_CONTENT_TOOL, (args, extra) =>
     withToolDiagnostics(
       'grep',
       () =>
         withToolErrorHandling(
-          async () => handleSearchContent(args, extra.signal),
+          async () =>
+            handleSearchContent(args, extra.signal, options.resourceStore),
           (error) =>
             buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
         ),
@@ -990,14 +1142,17 @@ function registerSearchContentTool(server: McpServer): void {
   );
 }
 
-export function registerAllTools(server: McpServer): void {
+export function registerAllTools(
+  server: McpServer,
+  options: { resourceStore?: ResourceStore } = {}
+): void {
   registerListAllowedDirectoriesTool(server);
   registerListDirectoryTool(server);
   registerSearchFilesTool(server);
   registerTreeTool(server);
-  registerReadFileTool(server);
-  registerReadMultipleFilesTool(server);
+  registerReadFileTool(server, options);
+  registerReadMultipleFilesTool(server, options);
   registerGetFileInfoTool(server);
   registerGetMultipleFileInfoTool(server);
-  registerSearchContentTool(server);
+  registerSearchContentTool(server, options);
 }
