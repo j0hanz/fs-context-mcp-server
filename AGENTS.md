@@ -2,76 +2,58 @@
 
 ## Project Overview
 
-- Secure, read-only MCP server for filesystem exploration (list/search/read/stat).
-- Tech: TypeScript (ESM, `type: module`), Node.js `>=20.0.0`, `@modelcontextprotocol/sdk`.
-- Published package: `@j0hanz/fs-context-mcp` (CLI bin: `fs-context-mcp`).
+- **Goal**: Secure, read-only Model Context Protocol (MCP) server for filesystem operations.
+- **Stack**: Node.js (>=22.17.0), TypeScript 5.9.x, MCP SDK.
+- **Key Libraries**: `zod`, `re2`, `safe-regex2`.
 
 ## Repo Map / Structure
 
-- `src/`: TypeScript source for the MCP server.
-  - `src/index.ts`: CLI entry point.
-  - `src/server.ts`: Server wiring + roots handling.
-  - `src/tools.ts`: Tool registration.
-  - `src/schemas.ts`: Zod schemas.
-  - `src/lib/`: Core logic (fs helpers, path validation, file operations, observability).
-  - `src/__tests__/`: `node:test` test suite (`*.test.ts`).
-  - `src/instructions.md`: Tool usage instructions copied into the build output.
-- `node-tests/`: Extra Node.js tests (invoked by `npm run test:node`).
-- `scripts/Quality-Gates.ps1`: PowerShell quality gates (measure/compare/safe-refactor).
-- `.github/workflows/publish.yml`: Release-triggered CI publish workflow.
-- `docs/`: Static assets (currently `docs/logo.png`).
-- `dist/`: Build output (generated).
-- `CONFIGURATION.md`: Environment variable + CLI configuration reference.
+- `src/`: Source code (`index.ts`, `server.ts`, `tools.ts`, `lib/`).
+- `dist/`: Compiled JavaScript output.
+- `docs/`: Documentation assets.
+- `metrics/`: JSON reports for code quality and churn.
+- `node-tests/`: Isolated Node.js runtime tests.
+- `scripts/`: PowerShell automation (`Quality-Gates.ps1`).
+- `eslint.config.mjs`: Flat config for ESLint.
 
 ## Setup & Environment
 
-- Node.js: `>=20.0.0` (see `package.json#engines`).
-- Package manager: npm (repo includes `package-lock.json`).
-- Install deps (local dev): `npm install`
-- Install deps (CI/clean): `npm ci`
-- Config docs: `CONFIGURATION.md` and `README.md`.
+- **Package Manager**: `npm` (manifest: `package-lock.json`).
+- **Install**: `npm install`
+- **Requirement**: Node.js >= 22.17.0 (engine).
 
 ## Development Workflow
 
-- Dev (watch): `npm run dev`
-- Build: `npm run build`
-  - Runs `tsc -p tsconfig.build.json`, then `npm run validate:instructions`, then `npm run copy:assets`.
-- Run built server: `npm run start`
-- Clean build output: `npm run clean`
-- MCP Inspector (manual testing): `npm run inspector`
+- **Dev Server**: `npm run dev` (runs `src/index.ts` with `tsx watch`).
+- **Build**: `npm run build` (cleans, validates, copies assets, compiles).
+- **Start Production**: `npm run start` (runs `dist/index.js`).
+- **MCP Inspector**: `npm run inspector` (debugs with `@modelcontextprotocol/inspector`).
 
 ## Testing
 
-- All tests: `npm test`
-  - Uses Node’s built-in test runner with TS via `tsx/esm` (see `package.json#scripts.test`).
-  - Test files live under `src/__tests__/` and match `src/__tests__/**/*.test.ts`.
-- Watch mode: `npm run test:watch`
-- Coverage: `npm run test:coverage`
-- Extra Node test: `npm run test:node`
+- **Unit Tests**: `npm test` (uses native `node --test` runner).
+- **Watch Mode**: `npm run test:watch`
+- **Coverage**: `npm run test:coverage`
+- **Isolated Node Tests**: `npm run test:node`
+- **Locations**: `src/__tests__/**/*.test.ts`, `node-tests/*.test.ts`.
 
 ## Code Style & Conventions
 
-- TypeScript config: `tsconfig.json` (ESM `NodeNext`, strict).
-- Lint: `npm run lint` (config in `eslint.config.mjs`).
-- Format: `npm run format` (config in `.prettierrc`, includes import sorting).
-- Repo-specific implementation rules for TS/JS/package edits:
-  - `.github/instructions/typescript-mcp-server.instructions.md`
-  - `.github/instructions/zod-v4.instructions.md`
+- **Lint**: `npm run lint` (ESLint with strict type-checking).
+- **Format**: `npm run format` (Prettier).
+- **Type Check**: `npm run type-check` (TSC no-emit).
+- **Strictness**: `noImplicitOverride`, `noUncheckedIndexedAccess`, `strict` enabled in `tsconfig.json`.
 
 ## Build / Release
 
-- Build output: `dist/` (see `package.json#main`, `#types`, `#bin`).
-- Publish pipeline: GitHub Release publish triggers `.github/workflows/publish.yml`.
-  - CI runs: `npm ci`, `npm run lint`, `npm run type-check`, `npm run test`, `npm run build`.
-  - Version is derived from the release tag name (strips leading `v`) and applied with `npm version ... --no-git-tag-version`.
-  - Publishes with `npm publish --access public` (Trusted Publishing / OIDC).
-- Local prepublish guard: `npm run prepublishOnly` runs `lint`, `type-check`, `build`.
+- **Output Directory**: `dist/`
+- **Pre-publish**: `npm run prepublishOnly` (runs lint, type-check, and build).
+- **Clean**: `npm run clean`.
+- **Assets**: `npm run copy:assets` (syncs `src/instructions.md` to `dist/`).
 
 ## Security & Safety
 
-- This server is intentionally read-only; do not add write/delete operations without a deliberate security review.
-- Access is restricted to explicitly allowed roots (CLI args, `--allow-cwd`, and/or client-provided MCP Roots); see `README.md` / `CONFIGURATION.md`.
-- Windows-specific constraints are documented (e.g., drive-relative paths like `C:path` are rejected; reserved device names blocked).
-- Resource limits are configurable via env vars (see `CONFIGURATION.md`):
-  - `MAX_FILE_SIZE`, `MAX_SEARCH_SIZE`, `DEFAULT_SEARCH_TIMEOUT`, `FS_CONTEXT_SEARCH_WORKERS`.
-- Regex search is validated to avoid ReDoS (see dependencies like `re2` / `safe-regex2`).
+- **Read-Only**: Server is designed to be read-only; no write operations in `src/`.
+- **Regex Safety**: Uses `re2` and `safe-regex2` to prevent ReDoS.
+- **Path Validation**: `src/lib/path-validation.ts` enforces root containment and blocks symlink escapes.
+- **Audit**: `scripts/Quality-Gates.ps1` includes `npm audit` checks (`Get-SecurityMetrics`).
