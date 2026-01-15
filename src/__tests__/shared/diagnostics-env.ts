@@ -36,7 +36,7 @@ export function restoreDiagnosticsEnv(snapshot: DiagnosticsEnvSnapshot): void {
 
 export type ToolHandler = (args?: unknown, extra?: unknown) => Promise<unknown>;
 
-export function createNamedToolCapture(): {
+function createNamedToolCapture(): {
   fakeServer: McpServer;
   getHandler: (name: string) => ToolHandler;
 } {

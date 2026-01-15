@@ -2,5 +2,5 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "entry": ["src/index.ts", "src/lib/file-operations/search-worker.ts"],
   "project": ["src/**/*.ts", "node-tests/**/*.ts"],
-  "ignoreDependencies": ["jscpd"]
+  "ignoreDependencies": ["jscpd", "ignore", "re2", "safe-regex2"]
 }
