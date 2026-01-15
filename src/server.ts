@@ -383,6 +383,7 @@ export function createServer(options: ServerOptions = {}): McpServer {
     capabilities: {
       logging: {},
       resources: {},
+      tools: {},
     },
   };
   if (serverInstructions) {
