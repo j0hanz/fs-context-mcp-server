@@ -1,7 +1,10 @@
 import * as path from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { ContentBlock } from '@modelcontextprotocol/sdk/types.js';
+import type {
+  ContentBlock,
+  ProgressNotificationParams,
+} from '@modelcontextprotocol/sdk/types.js';
 
 import type { z } from 'zod';
 
@@ -144,6 +147,29 @@ interface ToolErrorResponse extends Record<string, unknown> {
 
 export type ToolResult<T> = ToolResponse<T> | ToolErrorResponse;
 
+type ProgressToken = string | number;
+
+interface ToolExtra {
+  signal?: AbortSignal;
+  _meta?: {
+    progressToken?: ProgressToken | undefined;
+  };
+  sendNotification?: (notification: {
+    method: 'notifications/progress';
+    params: ProgressNotificationParams;
+  }) => Promise<void>;
+}
+
+interface ToolRegistrationOptions {
+  resourceStore?: ResourceStore;
+  isInitialized?: () => boolean;
+}
+
+const NOT_INITIALIZED_ERROR = new McpError(
+  ErrorCode.E_INVALID_INPUT,
+  'Client not initialized; wait for notifications/initialized'
+);
+
 async function withToolErrorHandling<T>(
   run: () => Promise<ToolResponse<T>>,
   onError: (error: unknown) => ToolResult<T>
@@ -181,6 +207,103 @@ export function buildToolErrorResponse(
   return {
     ...buildContentBlock(text, structuredContent),
     isError: true,
+  };
+}
+
+function buildNotInitializedResult<T>(): ToolResult<T> {
+  return buildToolErrorResponse(
+    NOT_INITIALIZED_ERROR,
+    ErrorCode.E_INVALID_INPUT
+  );
+}
+
+async function sendProgressNotification(
+  extra: ToolExtra,
+  params: ProgressNotificationParams
+): Promise<void> {
+  if (!extra.sendNotification) return;
+  try {
+    await extra.sendNotification({
+      method: 'notifications/progress',
+      params,
+    });
+  } catch {
+    // Ignore progress notification failures to avoid breaking tool execution.
+  }
+}
+
+function resolveToolOk(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return true;
+  const typed = result as { isError?: unknown; structuredContent?: unknown };
+  if (typed.isError === true) return false;
+  const structured = typed.structuredContent;
+  if (
+    structured &&
+    typeof structured === 'object' &&
+    'ok' in structured &&
+    typeof (structured as { ok?: unknown }).ok === 'boolean'
+  ) {
+    return Boolean((structured as { ok?: boolean }).ok);
+  }
+  return true;
+}
+
+async function withProgress<T>(
+  tool: string,
+  extra: ToolExtra,
+  run: () => Promise<T>
+): Promise<T> {
+  const token = extra._meta?.progressToken;
+  if (!token) {
+    return await run();
+  }
+
+  const total = 1;
+  await sendProgressNotification(extra, {
+    progressToken: token,
+    progress: 0,
+    total,
+    message: `${tool} started`,
+  });
+
+  try {
+    const result = await run();
+    const ok = resolveToolOk(result);
+    await sendProgressNotification(extra, {
+      progressToken: token,
+      progress: total,
+      total,
+      message: ok ? `${tool} completed` : `${tool} failed`,
+    });
+    return result;
+  } catch (error) {
+    await sendProgressNotification(extra, {
+      progressToken: token,
+      progress: total,
+      total,
+      message: `${tool} failed`,
+    });
+    throw error;
+  }
+}
+
+function wrapToolHandler<Args, Result>(
+  handler: (args: Args, extra: ToolExtra) => Promise<ToolResult<Result>>,
+  options: { guard?: (() => boolean) | undefined; progressTool?: string }
+): (args: Args, extra?: ToolExtra) => Promise<ToolResult<Result>> {
+  return async (args: Args, extra?: ToolExtra) => {
+    const resolvedExtra = extra ?? {};
+    if (options.guard && !options.guard()) {
+      return buildNotInitializedResult();
+    }
+
+    if (options.progressTool) {
+      return await withProgress(options.progressTool, resolvedExtra, () =>
+        handler(args, resolvedExtra)
+      );
+    }
+
+    return await handler(args, resolvedExtra);
   };
 }
 
@@ -521,7 +644,10 @@ function handleListAllowedDirectories(): ToolResponse<
   return buildToolResponse(buildTextRoots(dirs), structured);
 }
 
-export function registerListAllowedDirectoriesTool(server: McpServer): void {
+export function registerListAllowedDirectoriesTool(
+  server: McpServer,
+  options: ToolRegistrationOptions = {}
+): void {
   const handler = (): Promise<
     ToolResult<z.infer<typeof ListAllowedDirectoriesOutputSchema>>
   > =>
@@ -533,7 +659,11 @@ export function registerListAllowedDirectoriesTool(server: McpServer): void {
       (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN)
     );
 
-  server.registerTool('roots', LIST_ALLOWED_DIRECTORIES_TOOL, handler);
+  server.registerTool(
+    'roots',
+    LIST_ALLOWED_DIRECTORIES_TOOL,
+    wrapToolHandler(handler, { guard: options.isInitialized })
+  );
 }
 
 function buildStructuredListEntry(
@@ -576,8 +706,14 @@ async function handleListDirectory(
   );
 }
 
-export function registerListDirectoryTool(server: McpServer): void {
-  server.registerTool('ls', LIST_DIRECTORY_TOOL, (args, extra) =>
+export function registerListDirectoryTool(
+  server: McpServer,
+  options: ToolRegistrationOptions = {}
+): void {
+  const handler = (
+    args: z.infer<typeof ListDirectoryInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof ListDirectoryOutputSchema>>> =>
     withToolDiagnostics(
       'ls',
       () =>
@@ -591,7 +727,12 @@ export function registerListDirectoryTool(server: McpServer): void {
             )
         ),
       { path: args.path ?? '.' }
-    )
+    );
+
+  server.registerTool(
+    'ls',
+    LIST_DIRECTORY_TOOL,
+    wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }
 
@@ -646,8 +787,14 @@ async function handleSearchFiles(
   return buildToolResponse(text, structured);
 }
 
-function registerSearchFilesTool(server: McpServer): void {
-  server.registerTool('find', SEARCH_FILES_TOOL, (args, extra) =>
+function registerSearchFilesTool(
+  server: McpServer,
+  options: ToolRegistrationOptions = {}
+): void {
+  const handler = (
+    args: z.infer<typeof SearchFilesInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof SearchFilesOutputSchema>>> =>
     withToolDiagnostics(
       'find',
       () =>
@@ -671,7 +818,15 @@ function registerSearchFilesTool(server: McpServer): void {
             )
         ),
       { path: args.path ?? '.' }
-    )
+    );
+
+  server.registerTool(
+    'find',
+    SEARCH_FILES_TOOL,
+    wrapToolHandler(handler, {
+      guard: options.isInitialized,
+      progressTool: 'find',
+    })
   );
 }
 
@@ -703,8 +858,14 @@ async function handleTree(
   return buildToolResponse(text, structured);
 }
 
-function registerTreeTool(server: McpServer): void {
-  server.registerTool('tree', TREE_TOOL, (args, extra) => {
+function registerTreeTool(
+  server: McpServer,
+  options: ToolRegistrationOptions = {}
+): void {
+  const handler = (
+    args: z.infer<typeof TreeInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof TreeOutputSchema>>> => {
     const targetPath = args.path ?? '.';
     return withToolDiagnostics(
       'tree',
@@ -726,7 +887,16 @@ function registerTreeTool(server: McpServer): void {
         ),
       { path: targetPath }
     );
-  });
+  };
+
+  server.registerTool(
+    'tree',
+    TREE_TOOL,
+    wrapToolHandler(handler, {
+      guard: options.isInitialized,
+      progressTool: 'tree',
+    })
+  );
 }
 
 async function handleReadFile(
@@ -804,11 +974,11 @@ async function handleReadFile(
 
 function registerReadFileTool(
   server: McpServer,
-  options: { resourceStore?: ResourceStore }
+  options: ToolRegistrationOptions = {}
 ): void {
   const handler = (
     args: z.infer<typeof ReadFileInputSchema>,
-    extra: { signal?: AbortSignal }
+    extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof ReadFileOutputSchema>>> =>
     withToolDiagnostics(
       'read',
@@ -831,7 +1001,11 @@ function registerReadFileTool(
       { path: args.path }
     );
 
-  server.registerTool('read', READ_FILE_TOOL, handler);
+  server.registerTool(
+    'read',
+    READ_FILE_TOOL,
+    wrapToolHandler(handler, { guard: options.isInitialized })
+  );
 }
 
 async function handleReadMultipleFiles(
@@ -917,9 +1091,12 @@ async function handleReadMultipleFiles(
 
 function registerReadMultipleFilesTool(
   server: McpServer,
-  options: { resourceStore?: ResourceStore }
+  options: ToolRegistrationOptions = {}
 ): void {
-  server.registerTool('read_many', READ_MULTIPLE_FILES_TOOL, (args, extra) => {
+  const handler = (
+    args: z.infer<typeof ReadMultipleFilesInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof ReadMultipleFilesOutputSchema>>> => {
     const primaryPath = args.paths[0] ?? '';
     return withToolDiagnostics(
       'read_many',
@@ -945,7 +1122,13 @@ function registerReadMultipleFilesTool(
         ),
       { path: primaryPath }
     );
-  });
+  };
+
+  server.registerTool(
+    'read_many',
+    READ_MULTIPLE_FILES_TOOL,
+    wrapToolHandler(handler, { guard: options.isInitialized })
+  );
 }
 
 async function handleGetFileInfo(
@@ -965,8 +1148,14 @@ async function handleGetFileInfo(
   return buildToolResponse(formatFileInfoDetails(info), structured);
 }
 
-function registerGetFileInfoTool(server: McpServer): void {
-  server.registerTool('stat', GET_FILE_INFO_TOOL, (args, extra) =>
+function registerGetFileInfoTool(
+  server: McpServer,
+  options: ToolRegistrationOptions = {}
+): void {
+  const handler = (
+    args: z.infer<typeof GetFileInfoInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof GetFileInfoOutputSchema>>> =>
     withToolDiagnostics(
       'stat',
       () =>
@@ -986,7 +1175,12 @@ function registerGetFileInfoTool(server: McpServer): void {
             buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, args.path)
         ),
       { path: args.path }
-    )
+    );
+
+  server.registerTool(
+    'stat',
+    GET_FILE_INFO_TOOL,
+    wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }
 
@@ -1028,33 +1222,41 @@ async function handleGetMultipleFileInfo(
   return buildToolResponse(text, structured);
 }
 
-function registerGetMultipleFileInfoTool(server: McpServer): void {
+function registerGetMultipleFileInfoTool(
+  server: McpServer,
+  options: ToolRegistrationOptions = {}
+): void {
+  const handler = (
+    args: z.infer<typeof GetMultipleFileInfoInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof GetMultipleFileInfoOutputSchema>>> => {
+    const primaryPath = args.paths[0] ?? '';
+    return withToolDiagnostics(
+      'stat_many',
+      () =>
+        withToolErrorHandling(
+          async () => {
+            const { signal, cleanup } = createTimedAbortSignal(
+              extra.signal,
+              DEFAULT_SEARCH_TIMEOUT_MS
+            );
+            try {
+              return await handleGetMultipleFileInfo(args, signal);
+            } finally {
+              cleanup();
+            }
+          },
+          (error) =>
+            buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, primaryPath)
+        ),
+      { path: primaryPath }
+    );
+  };
+
   server.registerTool(
     'stat_many',
     GET_MULTIPLE_FILE_INFO_TOOL,
-    (args, extra) => {
-      const primaryPath = args.paths[0] ?? '';
-      return withToolDiagnostics(
-        'stat_many',
-        () =>
-          withToolErrorHandling(
-            async () => {
-              const { signal, cleanup } = createTimedAbortSignal(
-                extra.signal,
-                DEFAULT_SEARCH_TIMEOUT_MS
-              );
-              try {
-                return await handleGetMultipleFileInfo(args, signal);
-              } finally {
-                cleanup();
-              }
-            },
-            (error) =>
-              buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, primaryPath)
-          ),
-        { path: primaryPath }
-      );
-    }
+    wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }
 
@@ -1125,9 +1327,12 @@ async function handleSearchContent(
 
 function registerSearchContentTool(
   server: McpServer,
-  options: { resourceStore?: ResourceStore }
+  options: ToolRegistrationOptions = {}
 ): void {
-  server.registerTool('grep', SEARCH_CONTENT_TOOL, (args, extra) =>
+  const handler = (
+    args: z.infer<typeof SearchContentInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof SearchContentOutputSchema>>> =>
     withToolDiagnostics(
       'grep',
       () =>
@@ -1138,21 +1343,29 @@ function registerSearchContentTool(
             buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
         ),
       { path: args.path ?? '.' }
-    )
+    );
+
+  server.registerTool(
+    'grep',
+    SEARCH_CONTENT_TOOL,
+    wrapToolHandler(handler, {
+      guard: options.isInitialized,
+      progressTool: 'grep',
+    })
   );
 }
 
 export function registerAllTools(
   server: McpServer,
-  options: { resourceStore?: ResourceStore } = {}
+  options: ToolRegistrationOptions = {}
 ): void {
-  registerListAllowedDirectoriesTool(server);
-  registerListDirectoryTool(server);
-  registerSearchFilesTool(server);
-  registerTreeTool(server);
+  registerListAllowedDirectoriesTool(server, options);
+  registerListDirectoryTool(server, options);
+  registerSearchFilesTool(server, options);
+  registerTreeTool(server, options);
   registerReadFileTool(server, options);
   registerReadMultipleFilesTool(server, options);
-  registerGetFileInfoTool(server);
-  registerGetMultipleFileInfoTool(server);
+  registerGetFileInfoTool(server, options);
+  registerGetMultipleFileInfoTool(server, options);
   registerSearchContentTool(server, options);
 }

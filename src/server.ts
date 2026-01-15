@@ -10,7 +10,11 @@ import {
   InitializedNotificationSchema,
   RootsListChangedNotificationSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import type { Root } from '@modelcontextprotocol/sdk/types.js';
+import type {
+  LoggingLevel,
+  LoggingMessageNotificationParams,
+  Root,
+} from '@modelcontextprotocol/sdk/types.js';
 
 import { z } from 'zod';
 
@@ -143,22 +147,54 @@ let rootsUpdateTimeout: ReturnType<typeof setTimeout> | undefined;
 let rootDirectories: string[] = [];
 let clientInitialized = false;
 let serverOptions: ServerOptions = {};
+const MCP_LOGGER_NAME = 'fs-context';
+
+function logToMcp(
+  server: McpServer | undefined,
+  level: LoggingLevel,
+  data: string
+): void {
+  if (!server) {
+    console.error(data);
+    return;
+  }
+
+  const params: LoggingMessageNotificationParams = {
+    level,
+    logger: MCP_LOGGER_NAME,
+    data,
+  };
+
+  void server.sendLoggingMessage(params).catch((error: unknown) => {
+    console.error(
+      `Failed to send MCP log (${level}):`,
+      data,
+      error instanceof Error ? error.message : String(error)
+    );
+  });
+}
 
 function setServerOptions(options: ServerOptions): void {
   serverOptions = options;
 }
 
-function logMissingDirectories(options: ServerOptions): void {
+function logMissingDirectories(
+  options: ServerOptions,
+  server?: McpServer
+): void {
   if (options.allowCwd) {
-    console.error('No directories specified. Using current working directory:');
+    logToMcp(
+      server,
+      'notice',
+      'No directories specified. Using current working directory.'
+    );
     return;
   }
 
-  console.error(
-    'WARNING: No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol.'
-  );
-  console.error(
-    'The server will not be able to access any files until directories are configured.'
+  logToMcp(
+    server,
+    'warning',
+    'No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol. The server will not be able to access any files until directories are configured.'
   );
 }
 
@@ -215,9 +251,10 @@ async function updateRootsFromClient(server: McpServer): Promise<void> {
     const roots = extractRoots(rootsResult);
     rootDirectories = await resolveRootDirectories(roots);
   } catch (error) {
-    console.error(
-      '[DEBUG] MCP Roots protocol unavailable or failed:',
-      error instanceof Error ? error.message : String(error)
+    logToMcp(
+      server,
+      'debug',
+      `[DEBUG] MCP Roots protocol unavailable or failed: ${error instanceof Error ? error.message : String(error)}`
     );
   } finally {
     await recomputeAllowedDirectories();
@@ -294,9 +331,9 @@ function registerRootHandlers(server: McpServer): void {
   );
 }
 
-function logMissingDirectoriesIfNeeded(): void {
+function logMissingDirectoriesIfNeeded(server: McpServer): void {
   if (getAllowedDirectories().length === 0) {
-    logMissingDirectories(serverOptions);
+    logMissingDirectories(serverOptions, server);
   }
 }
 
@@ -402,7 +439,10 @@ export function createServer(options: ServerOptions = {}): McpServer {
 
   registerInstructionResource(server, serverInstructions);
   registerResultResources(server, resourceStore);
-  registerAllTools(server, { resourceStore });
+  registerAllTools(server, {
+    resourceStore,
+    isInitialized: () => clientInitialized,
+  });
 
   return server;
 }
@@ -416,5 +456,5 @@ export async function startServer(server: McpServer): Promise<void> {
 
   await server.connect(transport);
 
-  logMissingDirectoriesIfNeeded();
+  logMissingDirectoriesIfNeeded(server);
 }
