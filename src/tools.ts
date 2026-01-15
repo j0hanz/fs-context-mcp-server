@@ -376,15 +376,13 @@ function buildSearchTextResult(
     ...(truncatedReason ? { truncatedReason } : {}),
   };
 
-  return (
-    joinLines([
-      `Found ${normalizedMatches.length}:`,
-      ...normalizedMatches.map((match) => {
-        const lineNum = String(match.line).padStart(4);
-        return `  ${match.relativeFile}:${lineNum}: ${match.content}`;
-      }),
-    ]) + formatOperationSummary(summaryOptions)
-  );
+  const lines: string[] = [`Found ${normalizedMatches.length}:`];
+  for (const match of normalizedMatches) {
+    const lineNum = String(match.line).padStart(4);
+    lines.push(`  ${match.relativeFile}:${lineNum}: ${match.content}`);
+  }
+
+  return joinLines(lines) + formatOperationSummary(summaryOptions);
 }
 
 function buildStructuredSearchResult(

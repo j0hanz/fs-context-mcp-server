@@ -1220,7 +1220,7 @@ function createParallelScanConfig(
   maxResults: number,
   signal: AbortSignal
 ): ParallelScanConfig {
-  const debug = process.env.FS_CONTEXT_SEARCH_WORKERS_DEBUG === '1';
+  const debug = process.env['FS_CONTEXT_SEARCH_WORKERS_DEBUG'] === '1';
   return {
     pool: getSearchWorkerPool(SEARCH_WORKERS, debug),
     pattern,

@@ -7,15 +7,15 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function hasBooleanOk(value: unknown): value is { ok: boolean } {
-  return isObject(value) && typeof value.ok === 'boolean';
+  return isObject(value) && typeof value['ok'] === 'boolean';
 }
 
 function resolveDiagnosticsOk(result: unknown): boolean | undefined {
   if (!isObject(result)) return undefined;
-  if (result.isError === true) return false;
+  if (result['isError'] === true) return false;
   if (hasBooleanOk(result)) return result.ok;
 
-  const structured = result.structuredContent;
+  const structured = result['structuredContent'];
   if (hasBooleanOk(structured)) return structured.ok;
 
   return undefined;
@@ -35,8 +35,8 @@ function resolvePrimitiveDiagnosticsMessage(
 
 function resolveObjectDiagnosticsMessage(error: unknown): string | undefined {
   if (error instanceof Error) return error.message;
-  if (isObject(error) && typeof error.message === 'string') {
-    return error.message;
+  if (isObject(error) && typeof error['message'] === 'string') {
+    return error['message'];
   }
   try {
     return JSON.stringify(error);
@@ -98,12 +98,14 @@ const PERF_CHANNEL = channel('fs-context:perf');
 const OPS_TRACE = tracingChannel<unknown, OpsTraceContext>('fs-context:ops');
 
 function parseDiagnosticsEnabled(): boolean {
-  const normalized = process.env.FS_CONTEXT_DIAGNOSTICS?.trim().toLowerCase();
+  const normalized = process.env['FS_CONTEXT_DIAGNOSTICS']
+    ?.trim()
+    .toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 function parseDiagnosticsDetail(): DiagnosticsDetail {
-  const normalized = process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL?.trim();
+  const normalized = process.env['FS_CONTEXT_DIAGNOSTICS_DETAIL']?.trim();
   if (normalized === '2') return 2;
   if (normalized === '1') return 1;
   return 0;
