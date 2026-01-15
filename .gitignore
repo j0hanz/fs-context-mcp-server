@@ -56,3 +56,5 @@ coverage/
 reports/
 metrics/
 scripts/
+
+todos.json
