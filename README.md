@@ -2,29 +2,58 @@
 
 <img src="docs/logo.png" alt="FS Context MCP Server Logo" width="125">
 
-A secure, read-only MCP server for filesystem scanning, searching, and analysis with comprehensive security validation.
+A read-only MCP server that provides AI assistants with secure filesystem access for exploring, searching, and reading files within approved directories.
 
 [![npm version](https://img.shields.io/npm/v/@j0hanz/fs-context-mcp.svg)](https://www.npmjs.com/package/@j0hanz/fs-context-mcp)
 [![License](https://img.shields.io/npm/l/@j0hanz/fs-context-mcp)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22.17.0-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-blue)](https://www.typescriptlang.org/)
 [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.25.2-purple)](https://modelcontextprotocol.io)
 
 ## One-Click Install
 
-[![Install with NPX in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=fs-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D)[![Install with NPX in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=fs-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D&quality=insiders)
+[![Install with NPX in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=fs-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D) [![Install with NPX in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=fs-context&inputs=%5B%5D&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%2C%22%24%7BworkspaceFolder%7D%22%5D%7D&quality=insiders)
 
 [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/install-mcp?name=fs-context&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZnMtY29udGV4dC1tY3BAbGF0ZXN0IiwiJHt3b3Jrc3BhY2VGb2xkZXJ9Il19)
 
+## Overview
+
+This server enables AI assistants to navigate your filesystem through a set of read-only tools:
+
+- Explore directory structures with `ls` and `tree`
+- Find files using glob patterns with `find`
+- Search file contents with `grep`
+- Read files with options for previews, line ranges, and batch operations
+- Access file metadata through `stat` and `stat_many`
+
+All operations are restricted to explicitly approved directories, with no write or modification capabilities.
+
 ## Features
 
-- Directory listing (immediate contents)
-- Directory tree rendering (bounded recursion)
-- File search with glob patterns
-- Content search (grep-like literal text search)
-- File reading with head previews (first N lines) and line ranges
-- Batch reads and metadata lookups in parallel
-- Security: path validation, symlink escape protection, read-only operations
+### Directory Operations
+
+- List directory contents with `ls`
+- Render directory trees with configurable depth using `tree`
+- Find files by glob patterns with `find`
+
+### File Operations
+
+- Read single files with optional line ranges or head preview
+- Batch read up to 100 files in a single operation
+- Get file metadata (size, timestamps, permissions) with `stat` and `stat_many`
+
+### Search
+
+- Content search across files using `grep`
+- Respects `.gitignore` patterns and common ignore directories
+- Configurable search timeout and worker threads
+
+### Security
+
+- Read-only operations only
+- Access restricted to explicitly approved directories
+- Path traversal protection (blocks `..` and symlink escapes)
+- RE2-based regex engine prevents ReDoS attacks
 
 ## When to Use
 
@@ -42,23 +71,23 @@ A secure, read-only MCP server for filesystem scanning, searching, and analysis 
 
 ## Quick Start
 
-### NPX (recommended)
+### NPX (Recommended)
 
-Allow the current working directory explicitly:
+**For current directory:**
 
 ```bash
 npx -y @j0hanz/fs-context-mcp@latest --allow-cwd
 ```
 
-Or pass explicit directories:
+**For specific projects:**
 
 ```bash
 npx -y @j0hanz/fs-context-mcp@latest /path/to/project /path/to/docs
 ```
 
-If your MCP client supports the Roots protocol, you can omit directory arguments and let the client provide allowed directories. Otherwise, pass explicit directories or use `--allow-cwd` (if neither is provided, the server starts with no accessible directories until roots are provided).
+> **Note:** If your MCP client supports the Roots protocol, you can omit directory arguments—the client will provide them automatically.
 
-### VS Code (workspace folder)
+### VS Code
 
 Add to `.vscode/mcp.json`:
 
@@ -75,20 +104,26 @@ Add to `.vscode/mcp.json`:
 
 ## Installation
 
-### NPX (no install)
+### NPX
+
+Run without installation:
 
 ```bash
 npx -y @j0hanz/fs-context-mcp@latest /path/to/dir1 /path/to/dir2
 ```
 
-### Global installation
+### Global Installation
+
+For permanent setup across all projects:
 
 ```bash
 npm install -g @j0hanz/fs-context-mcp
 fs-context-mcp /path/to/your/project
 ```
 
-### From source
+### From Source
+
+For contributors or custom builds:
 
 ```bash
 git clone https://github.com/j0hanz/fs-context-mcp-server.git
@@ -448,7 +483,7 @@ Add to Windsurf's MCP configuration:
 
 </details>
 
-## Security
+## Security Details
 
 This server implements multiple layers of security:
 
