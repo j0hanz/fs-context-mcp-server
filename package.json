@@ -1,6 +1,6 @@
 {
   "name": "@j0hanz/fs-context-mcp",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "mcpName": "io.github.j0hanz/fs-context",
   "description": "🔍 Read-only MCP server for secure filesystem exploration, searching, and analysis",
   "type": "module",
