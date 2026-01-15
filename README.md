@@ -123,11 +123,24 @@ All configuration is optional. Sizes in bytes, timeouts in milliseconds.
 | Variable                    | Default           | Description                                               |
 | --------------------------- | ----------------- | --------------------------------------------------------- |
 | `MAX_FILE_SIZE`             | 10MB              | Max file size for read operations (range: 1MB-100MB)      |
+| `MAX_READ_MANY_TOTAL_SIZE`  | 512KB             | Max combined size for `read_many` (range: 10KB-100MB)     |
 | `MAX_SEARCH_SIZE`           | 1MB               | Max file size for content search (range: 100KB-10MB)      |
 | `DEFAULT_SEARCH_TIMEOUT`    | 30000             | Timeout for search/list operations (range: 100-3600000ms) |
 | `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)           |
 
 See [CONFIGURATION.md](CONFIGURATION.md) for examples and CLI usage.
+
+## Resources
+
+This server exposes standard MCP resources to provide static documentation and handle large content efficiently.
+
+| Resource URI               | Description                                                                         |
+| :------------------------- | :---------------------------------------------------------------------------------- |
+| `internal://instructions`  | Returns the detailed usage instructions (Markdown) for this server.                 |
+| `fs-context://result/{id}` | Access to large file content or search results that were truncated in tool outputs. |
+
+**Note on Large Outputs:**
+Tools like `read`, `read_many`, and `grep` automatically cache content exceeding value limits (default 20k chars). In these cases, the tool returns a preview and a `resource_link` (URI) that can be read by the client to retrieve the full content.
 
 ## Tools
 
@@ -210,18 +223,20 @@ Returns: ASCII tree output plus a structured JSON tree (`ok`, `root`, `tree`,
 
 Read the contents of a text file.
 
-| Parameter | Type   | Required | Default | Description             |
-| --------- | ------ | -------- | ------- | ----------------------- |
-| `path`    | string | Yes      | -       | File path to read       |
-| `head`    | number | No       | -       | Read only first N lines |
+| Parameter   | Type   | Required | Default | Description                    |
+| ----------- | ------ | -------- | ------- | ------------------------------ |
+| `path`      | string | Yes      | -       | File path to read              |
+| `head`      | number | No       | -       | Read only first N lines        |
+| `startLine` | number | No       | -       | 1-based start line (inclusive) |
+| `endLine`   | number | No       | -       | 1-based end line (inclusive)   |
 
 Notes:
 
 - Reads are UTF-8 text only; binary files are rejected.
 - Full reads are capped by `MAX_FILE_SIZE` (default 10MB). When `head` is set,
   output stops at the line limit or size budget, whichever comes first.
-- `startLine`/`endLine` can be used to read an inclusive 1-based line range.
 - `head` cannot be combined with `startLine`/`endLine`.
+- If the content exceeds a size limit (default 20k chars), the tool returns a `resource_link` instead of inline content.
 
 Returns: File content plus structured metadata (`ok`, `path`, `content`,
 `truncated`, `totalLines`, and range metadata when applicable).
@@ -232,10 +247,12 @@ Returns: File content plus structured metadata (`ok`, `path`, `content`,
 
 Read multiple files in parallel.
 
-| Parameter | Type     | Required | Default | Description                          |
-| --------- | -------- | -------- | ------- | ------------------------------------ |
-| `paths`   | string[] | Yes      | -       | Array of file paths (max 100)        |
-| `head`    | number   | No       | -       | Read only first N lines of each file |
+| Parameter   | Type     | Required | Default | Description                             |
+| ----------- | -------- | -------- | ------- | --------------------------------------- |
+| `paths`     | string[] | Yes      | -       | Array of file paths (max 100)           |
+| `head`      | number   | No       | -       | Read only first N lines of each file    |
+| `startLine` | number   | No       | -       | 1-based start line (inclusive) per file |
+| `endLine`   | number   | No       | -       | 1-based end line (inclusive) per file   |
 
 Notes:
 
@@ -243,8 +260,8 @@ Notes:
   is capped by `MAX_FILE_SIZE` (default 10MB).
 - Total read budget across all files is capped by `MAX_READ_MANY_TOTAL_SIZE`.
 - No binary detection is performed; use `read` for single-file safety checks.
-- `startLine`/`endLine` can be used to read an inclusive 1-based line range (applied to each file).
 - `head` cannot be combined with `startLine`/`endLine`.
+- If any file content exceeds the inline limit, it is returned as a `resource_link`.
 
 Returns: Per-file content or error, plus structured summary (`total`,
 `succeeded`, `failed`).
