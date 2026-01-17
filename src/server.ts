@@ -245,6 +245,12 @@ async function resolveRootDirectories(roots: Root[]): Promise<string[]> {
 
 async function updateRootsFromClient(server: McpServer): Promise<void> {
   try {
+    const clientCapabilities = server.server.getClientCapabilities();
+    if (!clientCapabilities?.roots) {
+      rootDirectories = [];
+      return;
+    }
+
     const rootsResult = await server.server.listRoots(undefined, {
       timeout: ROOTS_TIMEOUT_MS,
     });

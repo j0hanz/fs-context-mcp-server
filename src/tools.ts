@@ -516,7 +516,7 @@ const LIST_DIRECTORY_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
@@ -531,7 +531,7 @@ const SEARCH_FILES_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
@@ -545,7 +545,7 @@ const TREE_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
@@ -560,7 +560,7 @@ const READ_FILE_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
@@ -575,7 +575,7 @@ const READ_MULTIPLE_FILES_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
@@ -588,7 +588,7 @@ const GET_FILE_INFO_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
@@ -600,7 +600,7 @@ const GET_MULTIPLE_FILE_INFO_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
@@ -616,7 +616,7 @@ const SEARCH_CONTENT_TOOL = {
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,
-    openWorldHint: true,
+    openWorldHint: false,
   },
 } as const;
 
