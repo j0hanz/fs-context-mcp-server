@@ -20,7 +20,8 @@
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist', {recursive:true, force:true}); require('fs').rmSync('.tsbuildinfo', {recursive:true, force:true}); ['tsconfig.tsbuildinfo', 'tsconfig.build.tsbuildinfo', 'tsconfig.test.tsbuildinfo'].forEach(f => require('fs').rmSync(f, {force:true}))\"",
     "validate:instructions": "node -e \"require('fs').accessSync('src/instructions.md')\"",
-    "build": "npm run clean && tsc -p tsconfig.json && npm run validate:instructions && npm run copy:assets && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
+    "build": "tsc -p tsconfig.json && npm run validate:instructions && npm run copy:assets && node -e \"require('fs').chmodSync('dist/index.js', '755')\"",
+    "build:clean": "npm run clean && npm run build",
     "copy:assets": "node -e \"require('fs').mkdirSync('dist', { recursive: true }); require('fs').copyFileSync('src/instructions.md', 'dist/instructions.md')\"",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
@@ -28,12 +29,12 @@
     "test:watch": "node --test --watch --import tsx/esm \"src/__tests__/**/*.test.ts\"",
     "test:coverage": "node --test --experimental-test-coverage --import tsx/esm \"src/__tests__/**/*.test.ts\"",
     "test:node": "node --test --import tsx/esm node-tests/errors-is-node-error.test.ts",
-    "test:dist": "npm run build && node --test --import tsx/esm node-tests/search-content-workers-dist.test.ts",
+    "test:dist": "npm run build:clean && node --test --import tsx/esm node-tests/search-content-workers-dist.test.ts",
     "lint": "eslint .",
     "format": "prettier --write .",
     "type-check": "tsc -p tsconfig.json --noEmit",
     "inspector": "npx @modelcontextprotocol/inspector",
-    "prepublishOnly": "npm run lint && npm run type-check && npm run build"
+    "prepublishOnly": "npm run lint && npm run type-check && npm run build:clean"
   },
   "keywords": [
     "mcp",

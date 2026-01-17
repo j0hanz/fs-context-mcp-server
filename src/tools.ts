@@ -356,10 +356,10 @@ function buildListTextResult(
 }
 
 function buildSearchTextResult(
-  result: Awaited<ReturnType<typeof searchContent>>
+  result: Awaited<ReturnType<typeof searchContent>>,
+  normalizedMatches: NormalizedSearchMatch[]
 ): string {
   const { summary } = result;
-  const normalizedMatches = normalizeSearchMatches(result);
 
   if (normalizedMatches.length === 0) return 'No matches';
 
@@ -386,10 +386,9 @@ function buildSearchTextResult(
 }
 
 function buildStructuredSearchResult(
-  result: Awaited<ReturnType<typeof searchContent>>
+  result: Awaited<ReturnType<typeof searchContent>>,
+  normalizedMatches: NormalizedSearchMatch[]
 ): z.infer<typeof SearchContentOutputSchema> {
-  const normalizedMatches = normalizeSearchMatches(result);
-
   return {
     ok: true,
     matches: normalizedMatches.map((match) => ({
@@ -1271,12 +1270,15 @@ async function handleSearchContent(
       ? { includeHidden: args.includeHidden, signal }
       : { includeHidden: args.includeHidden }
   );
-  const structuredFull = buildStructuredSearchResult(result);
   const normalizedMatches = normalizeSearchMatches(result);
+  const structuredFull = buildStructuredSearchResult(result, normalizedMatches);
   const needsExternalize = normalizedMatches.length > MAX_INLINE_MATCHES;
 
   if (!resourceStore || !needsExternalize) {
-    return buildToolResponse(buildSearchTextResult(result), structuredFull);
+    return buildToolResponse(
+      buildSearchTextResult(result, normalizedMatches),
+      structuredFull
+    );
   }
 
   const previewMatches = normalizedMatches.slice(0, MAX_INLINE_MATCHES);

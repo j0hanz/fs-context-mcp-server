@@ -196,27 +196,80 @@ interface PendingAfter {
 
 interface ContextState {
   before: string[];
+  beforeStart: number;
+  beforeSize: number;
+  beforeCapacity: number;
   pendingAfter: PendingAfter[];
+  pendingAfterStart: number;
 }
 
 function makeContext(): ContextState {
-  return { before: [], pendingAfter: [] };
+  return {
+    before: [],
+    beforeStart: 0,
+    beforeSize: 0,
+    beforeCapacity: 0,
+    pendingAfter: [],
+    pendingAfterStart: 0,
+  };
+}
+
+function snapshotContextBefore(ctx: ContextState): string[] {
+  if (ctx.beforeSize === 0) return [];
+  const result = new Array<string>(ctx.beforeSize);
+  for (let i = 0; i < ctx.beforeSize; i += 1) {
+    const index = (ctx.beforeStart + i) % ctx.beforeCapacity;
+    result[i] = ctx.before[index] ?? '';
+  }
+  return result;
 }
 
 function pushContext(ctx: ContextState, line: string, max: number): void {
   if (max <= 0) return;
 
-  ctx.before.push(line);
-  if (ctx.before.length > max) ctx.before.shift();
+  if (ctx.beforeCapacity !== max) {
+    ctx.before = new Array<string>(max);
+    ctx.beforeStart = 0;
+    ctx.beforeSize = 0;
+    ctx.beforeCapacity = max;
+  }
 
-  for (const pending of ctx.pendingAfter) {
+  const insertIndex = (ctx.beforeStart + ctx.beforeSize) % ctx.beforeCapacity;
+  ctx.before[insertIndex] = line;
+  if (ctx.beforeSize < ctx.beforeCapacity) {
+    ctx.beforeSize += 1;
+  } else {
+    ctx.beforeStart = (ctx.beforeStart + 1) % ctx.beforeCapacity;
+  }
+
+  for (
+    let index = ctx.pendingAfterStart;
+    index < ctx.pendingAfter.length;
+    index += 1
+  ) {
+    const pending = ctx.pendingAfter[index];
+    if (!pending) continue;
     if (pending.left <= 0) continue;
     pending.buffer.push(line);
     pending.left -= 1;
   }
 
-  while (ctx.pendingAfter.length > 0 && ctx.pendingAfter[0]?.left === 0) {
-    ctx.pendingAfter.shift();
+  while (
+    ctx.pendingAfterStart < ctx.pendingAfter.length &&
+    ctx.pendingAfter[ctx.pendingAfterStart]?.left === 0
+  ) {
+    ctx.pendingAfterStart += 1;
+  }
+
+  if (ctx.pendingAfterStart >= ctx.pendingAfter.length) {
+    ctx.pendingAfter = [];
+    ctx.pendingAfterStart = 0;
+  } else if (
+    ctx.pendingAfterStart > 32 &&
+    ctx.pendingAfterStart > ctx.pendingAfter.length / 2
+  ) {
+    ctx.pendingAfter = ctx.pendingAfter.slice(ctx.pendingAfterStart);
+    ctx.pendingAfterStart = 0;
   }
 }
 
@@ -279,7 +332,9 @@ function appendMatch(
   contextBeforeOverride?: readonly string[]
 ): void {
   const contextBefore =
-    contextLines > 0 ? (contextBeforeOverride ?? [...ctx.before]) : undefined;
+    contextLines > 0
+      ? (contextBeforeOverride ?? snapshotContextBefore(ctx))
+      : undefined;
   const contextAfterBuffer = contextLines > 0 ? [] : undefined;
   const match: ContentMatch = {
     file: requestedPath,
@@ -307,7 +362,8 @@ function recordLineMatch(
   matches: ContentMatch[],
   ctx: ContextState
 ): void {
-  const contextBefore = options.contextLines > 0 ? [...ctx.before] : undefined;
+  const contextBefore =
+    options.contextLines > 0 ? snapshotContextBefore(ctx) : undefined;
   const trimmedLine = updateContext(line, options.contextLines, ctx);
   const count = matcher(line);
   if (count > 0) {

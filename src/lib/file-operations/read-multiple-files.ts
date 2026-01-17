@@ -232,6 +232,27 @@ async function tryValidateFile(
   }
 }
 
+async function validateFilesInParallel(
+  filePaths: readonly string[],
+  signal?: AbortSignal
+): Promise<Map<number, ValidatedFileInfo>> {
+  const tasks = filePaths
+    .map((filePath, index) => ({ filePath, index }))
+    .filter((task) => task.filePath);
+  const { results } = await processInParallel(
+    tasks,
+    async (task) => tryValidateFile(task.filePath, task.index, signal),
+    PARALLEL_CONCURRENCY
+  );
+
+  const validated = new Map<number, ValidatedFileInfo>();
+  for (const info of results) {
+    if (!info) continue;
+    validated.set(info.index, info);
+  }
+  return validated;
+}
+
 async function collectFileBudget(
   filePaths: readonly string[],
   partialRead: boolean,
@@ -243,7 +264,7 @@ async function collectFileBudget(
   validated: Map<number, ValidatedFileInfo>;
 }> {
   const skippedBudget = new Set<number>();
-  const validated = new Map<number, ValidatedFileInfo>();
+  const validated = await validateFilesInParallel(filePaths, signal);
   const estimateSize = partialRead
     ? (stats: Stats) => estimatePartialSize(stats, maxSize)
     : estimateFullSize;
@@ -253,10 +274,8 @@ async function collectFileBudget(
     const filePath = filePaths[index];
     if (!filePath) continue;
 
-    const info = await tryValidateFile(filePath, index, signal);
+    const info = validated.get(index);
     if (!info) continue;
-
-    validated.set(index, info);
 
     const estimatedSize = estimateSize(info.stats);
     if (totalSize + estimatedSize > maxTotalSize) {

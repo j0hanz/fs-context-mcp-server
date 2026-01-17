@@ -55,6 +55,7 @@ function getCachedMatcher(pattern: string, options: MatcherOptions): Matcher {
 }
 
 const cancelledRequests = new Set<number>();
+const activeRequests = new Set<number>();
 
 function consumeCancelled(id: number): boolean {
   if (!cancelledRequests.has(id)) {
@@ -95,6 +96,7 @@ async function handleScanRequest(request: ScanRequest): Promise<void> {
   } = request;
 
   if (consumeCancelled(id)) return;
+  activeRequests.add(id);
 
   try {
     const matcher = getCachedMatcher(pattern, matcherOptions);
@@ -116,6 +118,9 @@ async function handleScanRequest(request: ScanRequest): Promise<void> {
   } catch (err) {
     if (consumeCancelled(id)) return;
     parentPort?.postMessage(buildErrorResponse(id, err));
+  } finally {
+    activeRequests.delete(id);
+    cancelledRequests.delete(id);
   }
 }
 
@@ -125,7 +130,9 @@ function handleMessage(message: WorkerRequest): void {
       void handleScanRequest(message);
       break;
     case 'cancel':
-      cancelledRequests.add(message.id);
+      if (activeRequests.has(message.id)) {
+        cancelledRequests.add(message.id);
+      }
       break;
     case 'shutdown':
       process.exit(0);
