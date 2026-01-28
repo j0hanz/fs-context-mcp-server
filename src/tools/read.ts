@@ -14,7 +14,6 @@ import { createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas.js';
 import {
-  applyLineRangeOptions,
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
@@ -52,7 +51,15 @@ async function handleReadFile(
     maxSize: MAX_TEXT_FILE_SIZE,
     skipBinary: true,
   };
-  applyLineRangeOptions(options, args);
+  if (args.head !== undefined) {
+    options.head = args.head;
+  }
+  if (args.startLine !== undefined) {
+    options.startLine = args.startLine;
+  }
+  if (args.endLine !== undefined) {
+    options.endLine = args.endLine;
+  }
   if (signal) {
     options.signal = signal;
   }

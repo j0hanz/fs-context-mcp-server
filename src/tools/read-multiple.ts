@@ -14,7 +14,6 @@ import {
   ReadMultipleFilesOutputSchema,
 } from '../schemas.js';
 import {
-  applyLineRangeOptions,
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
@@ -50,7 +49,15 @@ async function handleReadMultipleFiles(
   const options: Parameters<typeof readMultipleFiles>[1] = {
     ...(signal ? { signal } : {}),
   };
-  applyLineRangeOptions(options, args);
+  if (args.head !== undefined) {
+    options.head = args.head;
+  }
+  if (args.startLine !== undefined) {
+    options.startLine = args.startLine;
+  }
+  if (args.endLine !== undefined) {
+    options.endLine = args.endLine;
+  }
   const results = await readMultipleFiles(args.paths, options);
 
   type ReadManyResult = Awaited<ReturnType<typeof readMultipleFiles>>[number];

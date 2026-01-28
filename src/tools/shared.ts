@@ -18,36 +18,9 @@ const MAX_INLINE_PREVIEW_CHARS = 4_000;
 
 type ResourceEntry = ReturnType<ResourceStore['putText']>;
 
-interface LineRangeArgs {
-  head?: number;
-  startLine?: number;
-  endLine?: number;
-}
-
-interface LineRangeArgsInput {
-  head?: number | undefined;
-  startLine?: number | undefined;
-  endLine?: number | undefined;
-}
-
 function buildTextPreview(text: string): string {
   if (text.length <= MAX_INLINE_PREVIEW_CHARS) return text;
   return `${text.slice(0, MAX_INLINE_PREVIEW_CHARS)}\n… [truncated preview]`;
-}
-
-export function applyLineRangeOptions(
-  target: LineRangeArgs,
-  source: LineRangeArgsInput
-): void {
-  if (source.head !== undefined) {
-    target.head = source.head;
-  }
-  if (source.startLine !== undefined) {
-    target.startLine = source.startLine;
-  }
-  if (source.endLine !== undefined) {
-    target.endLine = source.endLine;
-  }
 }
 
 export function maybeExternalizeTextContent(
