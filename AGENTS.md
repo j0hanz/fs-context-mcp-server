@@ -69,6 +69,7 @@
   - Exception: tests may intentionally write JSON to stdout for harnessing (see [node-tests/search-content-workers-dist.test.ts](node-tests/search-content-workers-dist.test.ts)).
 - Do not weaken path/roots security checks (allowed roots, symlink escapes, reserved names) without adding tests in [src/**tests**/security/](src/__tests__/security/).
 - Do not read, print, or commit token/secret files (repo contains files named `.mcpregistry_*_token` in the root).
+- Do not disable or bypass existing ESLint/TypeScript rules without explicit approval.
 
 ## 6) Testing Strategy (Verified)
 
