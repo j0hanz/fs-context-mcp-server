@@ -11,18 +11,23 @@ All configuration is optional. Defaults work for most use cases.
 - If nothing is configured and the client provides no roots, the server starts with no accessible directories and logs a warning until roots are provided.
 - Windows drive-relative paths like `C:path` are rejected. Use `C:\path` or `C:/path`.
 - Reserved Windows device names (e.g., `CON`, `NUL`) are blocked.
+- If multiple roots are configured, tool calls must provide `path` to disambiguate.
 
 ## Environment Variables
 
 All optional. Sizes in bytes, timeouts in milliseconds.
 
-| Variable                    | Default           | Description                                                      |
-| --------------------------- | ----------------- | ---------------------------------------------------------------- |
-| `MAX_FILE_SIZE`             | 10MB              | Max file size for `read`/`read_many` (range: 1MB-100MB)          |
-| `MAX_READ_MANY_TOTAL_SIZE`  | 512KB             | Max combined estimated bytes for `read_many` (range: 10KB-100MB) |
-| `MAX_SEARCH_SIZE`           | 1MB               | Max file size scanned by `grep` (range: 100KB-10MB)              |
-| `DEFAULT_SEARCH_TIMEOUT`    | 30000             | Timeout for search/list operations (range: 100-3600000ms)        |
-| `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)                  |
+| Variable                     | Default           | Description                                                       |
+| ---------------------------- | ----------------- | ----------------------------------------------------------------- |
+| `MAX_FILE_SIZE`              | 10MB              | Max file size for `read`/`read_many` (range: 1MB-100MB)           |
+| `MAX_READ_MANY_TOTAL_SIZE`   | 512KB             | Max combined estimated bytes for `read_many` (range: 10KB-100MB)  |
+| `MAX_SEARCH_SIZE`            | 1MB               | Max file size scanned by `grep` (range: 100KB-10MB)               |
+| `DEFAULT_SEARCH_TIMEOUT`     | 30000             | Timeout for search/list operations (range: 100-3600000ms)         |
+| `FS_CONTEXT_SEARCH_WORKERS`  | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)                   |
+| `FS_CONTEXT_ALLOW_SENSITIVE` | false             | Allow reading sensitive files (set to `true` to disable denylist) |
+| `FS_CONTEXT_DENYLIST`        | (empty)           | Additional denylist patterns (comma-separated globs)              |
+| `FS_CONTEXT_ALLOWLIST`       | (empty)           | Allowlist patterns that override denylist (comma-separated globs) |
+| `FS_CONTEXT_TOOL_LOG_ERRORS` | false             | Log tool failures to stderr with duration                         |
 
 ## Configuration Examples
 
@@ -106,4 +111,16 @@ Notes:
 - `${workspaceFolder}` auto-expands in VS Code.
 - Only configure variables that differ from defaults.
 - `find` respects root `.gitignore` by default (disable via `includeIgnored=true`).
+- `find` and `grep` only read the root `.gitignore` file (nested `.gitignore` files are ignored).
 - `read`/`read_many` support `startLine`/`endLine` as an alternative to `head`.
+- Sensitive file protection blocks common secret filenames (e.g., `.env`, `.npmrc`) unless allowlisted.
+
+## Sensitive File Policy
+
+By default, reads and content searches are blocked for common secret filenames to reduce accidental leakage. The default denylist includes patterns like `.env`, `.npmrc`, `.aws/credentials`, `*.pem`, and `.mcpregistry_*_token`.
+
+You can customize with:
+
+- `FS_CONTEXT_ALLOW_SENSITIVE=true` to disable the default denylist.
+- `FS_CONTEXT_DENYLIST` to add extra deny patterns (comma-separated globs using `*`).
+- `FS_CONTEXT_ALLOWLIST` to allow specific paths even if they match the denylist.

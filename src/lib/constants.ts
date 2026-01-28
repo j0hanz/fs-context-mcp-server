@@ -20,6 +20,27 @@ function parseEnvInt(
   return parsed;
 }
 
+function parseEnvBool(envVar: string, defaultValue: boolean): boolean {
+  const value = process.env[envVar];
+  if (value === undefined) return defaultValue;
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
+  console.error(
+    `[WARNING] Invalid ${envVar} value: ${value} (must be true/false). Using default: ${String(defaultValue)}`
+  );
+  return defaultValue;
+}
+
+function parseEnvList(envVar: string): string[] {
+  const value = process.env[envVar];
+  if (!value) return [];
+  return value
+    .split(/[,\n]/u)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 // Auto-tuned parallelism based on CPU cores (no env override)
 function getOptimalParallelism(): number {
   const cpuCores = availableParallelism();
@@ -56,6 +77,10 @@ export const DEFAULT_SEARCH_TIMEOUT_MS = parseEnvInt(
   3600000
 );
 
+const ALLOW_SENSITIVE_FILES = parseEnvBool('FS_CONTEXT_ALLOW_SENSITIVE', false);
+const ENV_DENYLIST = parseEnvList('FS_CONTEXT_DENYLIST');
+const ENV_ALLOWLIST = parseEnvList('FS_CONTEXT_ALLOWLIST');
+
 /**
  * Number of search worker threads to use.
  * Default: CPU cores (capped at 8 for optimal I/O performance).
@@ -76,6 +101,31 @@ export const DEFAULT_SEARCH_MAX_FILES = 20000;
 // Non-configurable constants
 export const MAX_LINE_CONTENT_LENGTH = 200;
 export const BINARY_CHECK_BUFFER_SIZE = 512;
+
+export const DEFAULT_SENSITIVE_PATTERNS = [
+  '.env',
+  '.env.*',
+  '.npmrc',
+  '.pypirc',
+  '.aws/credentials',
+  '.aws/config',
+  '.mcpregistry_*_token',
+  '*.pem',
+  '*.key',
+  '*.p12',
+  '*.pfx',
+  '*.crt',
+  '*.cer',
+  '*id_rsa*',
+  '*id_dsa*',
+] as const;
+
+export const SENSITIVE_FILE_DENYLIST = [
+  ...(ALLOW_SENSITIVE_FILES ? [] : DEFAULT_SENSITIVE_PATTERNS),
+  ...ENV_DENYLIST,
+];
+
+export const SENSITIVE_FILE_ALLOWLIST = [...ENV_ALLOWLIST];
 
 export const KNOWN_BINARY_EXTENSIONS = new Set([
   '.png',

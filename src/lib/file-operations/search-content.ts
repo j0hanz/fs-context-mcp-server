@@ -31,6 +31,7 @@ import {
   publishOpsTraceStart,
   shouldPublishOpsTrace,
 } from '../observability.js';
+import { assertAllowedFileAccess, isSensitivePath } from '../path-policy.js';
 import {
   getAllowedDirectories,
   isPathWithinDirectories,
@@ -593,6 +594,8 @@ async function executeSearchSingleFile(
 
     summary.filesScanned = 1;
 
+    assertAllowedFileAccess(file.requestedPath, file.resolvedPath);
+
     const matcher = buildMatcher(pattern, context.matcherOptions);
     await scanSequentialFile(
       file,
@@ -688,6 +691,11 @@ async function* collectFromStream(
 
     const resolved = await resolveEntryPath(entry, allowedDirs, signal);
     if (!resolved) {
+      summary.skippedInaccessible++;
+      continue;
+    }
+
+    if (isSensitivePath(resolved.requestedPath, resolved.resolvedPath)) {
       summary.skippedInaccessible++;
       continue;
     }

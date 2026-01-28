@@ -45,7 +45,7 @@ All operations are restricted to explicitly approved directories, with no write 
 ### Search
 
 - Content search across files using `grep`
-- Respects `.gitignore` patterns and common ignore directories
+- Respects root `.gitignore` patterns and common ignore directories
 - Configurable search timeout and worker threads
 
 ### Security
@@ -54,6 +54,7 @@ All operations are restricted to explicitly approved directories, with no write 
 - Access restricted to explicitly approved directories
 - Path traversal protection (blocks `..` and symlink escapes)
 - RE2-based regex engine prevents ReDoS attacks
+- Sensitive files (e.g., `.env`, `.npmrc`) are blocked by default; override via env allowlist
 
 ## When to Use
 
@@ -148,6 +149,7 @@ Notes:
 
 - Windows drive-relative paths like `C:path` are rejected. Use `C:\path` or `C:/path`.
 - Reserved Windows device names (e.g., `CON`, `NUL`) are blocked.
+- If multiple roots are configured, tools require an explicit `path` to disambiguate.
 
 ## Configuration
 
@@ -155,15 +157,29 @@ All configuration is optional. Sizes in bytes, timeouts in milliseconds.
 
 ### Environment Variables
 
-| Variable                    | Default           | Description                                               |
-| --------------------------- | ----------------- | --------------------------------------------------------- |
-| `MAX_FILE_SIZE`             | 10MB              | Max file size for read operations (range: 1MB-100MB)      |
-| `MAX_READ_MANY_TOTAL_SIZE`  | 512KB             | Max combined size for `read_many` (range: 10KB-100MB)     |
-| `MAX_SEARCH_SIZE`           | 1MB               | Max file size for content search (range: 100KB-10MB)      |
-| `DEFAULT_SEARCH_TIMEOUT`    | 30000             | Timeout for search/list operations (range: 100-3600000ms) |
-| `FS_CONTEXT_SEARCH_WORKERS` | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)           |
+| Variable                     | Default           | Description                                                       |
+| ---------------------------- | ----------------- | ----------------------------------------------------------------- |
+| `MAX_FILE_SIZE`              | 10MB              | Max file size for read operations (range: 1MB-100MB)              |
+| `MAX_READ_MANY_TOTAL_SIZE`   | 512KB             | Max combined size for `read_many` (range: 10KB-100MB)             |
+| `MAX_SEARCH_SIZE`            | 1MB               | Max file size for content search (range: 100KB-10MB)              |
+| `DEFAULT_SEARCH_TIMEOUT`     | 30000             | Timeout for search/list operations (range: 100-3600000ms)         |
+| `FS_CONTEXT_SEARCH_WORKERS`  | min(cpu cores, 8) | Search worker threads (range: 0-16; 0 disables)                   |
+| `FS_CONTEXT_ALLOW_SENSITIVE` | false             | Allow reading sensitive files (set to `true` to disable denylist) |
+| `FS_CONTEXT_DENYLIST`        | (empty)           | Additional denylist patterns (comma-separated globs)              |
+| `FS_CONTEXT_ALLOWLIST`       | (empty)           | Allowlist patterns that override denylist (comma-separated globs) |
+| `FS_CONTEXT_TOOL_LOG_ERRORS` | false             | Log tool failures to stderr with duration                         |
 
 See [CONFIGURATION.md](CONFIGURATION.md) for examples and CLI usage.
+
+### Sensitive File Policy
+
+By default, reads and content searches are blocked for common secret filenames to reduce accidental leakage. The default denylist includes patterns like `.env`, `.npmrc`, `.aws/credentials`, `*.pem`, and `.mcpregistry_*_token`.
+
+You can customize with:
+
+- `FS_CONTEXT_ALLOW_SENSITIVE=true` to disable the default denylist.
+- `FS_CONTEXT_DENYLIST` to add extra deny patterns (comma-separated globs using `*`).
+- `FS_CONTEXT_ALLOWLIST` to allow specific paths even if they match the denylist.
 
 ## Resources
 
@@ -199,12 +215,12 @@ Returns: Allowed directory paths. Structured output includes `ok` and
 ### `ls`
 
 List the immediate contents of a directory (non-recursive). Omit `path` to use
-the first allowed root.
+the sole allowed root (when only one root is configured).
 
-| Parameter       | Type    | Required | Default      | Description                                     |
-| --------------- | ------- | -------- | ------------ | ----------------------------------------------- |
-| `path`          | string  | No       | `first root` | Directory path to list (omit to use first root) |
-| `includeHidden` | boolean | No       | `false`      | Include hidden files and directories            |
+| Parameter       | Type    | Required | Default     | Description                                             |
+| --------------- | ------- | -------- | ----------- | ------------------------------------------------------- |
+| `path`          | string  | No       | `only root` | Directory path to list (omit when only one root exists) |
+| `includeHidden` | boolean | No       | `false`     | Include hidden files and directories                    |
 
 Returns: Entries with name, relativePath, type, size, and modified time.
 Structured output includes `ok`, `path`, `entries`, and `totalEntries`.
@@ -213,21 +229,22 @@ Structured output includes `ok`, `path`, `entries`, and `totalEntries`.
 
 ### `find`
 
-Search for files using glob patterns. Omit `path` to search from the first
-allowed root. By default, `find` excludes common dependency/build directories
+Search for files using glob patterns. Omit `path` to search from the sole
+allowed root (when only one root is configured). By default, `find` excludes common dependency/build directories
 (node_modules, dist, .git, etc.); set `includeIgnored: true` to include ignored
 directories and disable built-in excludes.
 
-| Parameter        | Type    | Required | Default      | Description                                            |
-| ---------------- | ------- | -------- | ------------ | ------------------------------------------------------ |
-| `path`           | string  | No       | `first root` | Base directory to search from (omit to use first root) |
-| `pattern`        | string  | Yes      | -            | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`)          |
-| `includeIgnored` | boolean | No       | `false`      | Include ignored dirs and disable built-in excludes     |
-| `maxResults`     | number  | No       | `100`        | Maximum matches to return (1-10000)                    |
+| Parameter        | Type    | Required | Default     | Description                                                    |
+| ---------------- | ------- | -------- | ----------- | -------------------------------------------------------------- |
+| `path`           | string  | No       | `only root` | Base directory to search from (omit when only one root exists) |
+| `pattern`        | string  | Yes      | -           | Glob pattern (e.g., `**/*.ts`, `src/**/*.js`)                  |
+| `includeIgnored` | boolean | No       | `false`     | Include ignored dirs and disable built-in excludes             |
+| `maxResults`     | number  | No       | `100`       | Maximum matches to return (1-10000)                            |
 
 Notes:
 
 - When `includeIgnored=false`, results also respect a root `.gitignore` file (if present under the base `path`).
+- Nested `.gitignore` files are not parsed.
 
 Returns: Matching paths (relative) with size and modified date. Structured
 output includes `ok`, `results`, `totalMatches`, and `truncated`.
@@ -236,10 +253,10 @@ output includes `ok`, `results`, `totalMatches`, and `truncated`.
 
 ### `tree`
 
-Render a directory tree (bounded recursion). Omit `path` to use the first
-allowed root.
+Render a directory tree (bounded recursion). Omit `path` to use the sole
+allowed root (when only one root is configured).
 
-- `path` (string, optional; default: `first root`): Base directory to render
+- `path` (string, optional; default: `only root`): Base directory to render
 - `maxDepth` (number, optional; default: `5`): Maximum recursion depth (0 = just the root)
 - `maxEntries` (number, optional; default: `1000`): Maximum number of entries before truncating
 - `includeHidden` (boolean, optional; default: `false`): Include hidden files/directories
@@ -340,11 +357,11 @@ Search for text content within files.
 
 `pattern` is treated as a literal string and matched case-insensitively.
 
-| Parameter       | Type    | Required | Default      | Description                              |
-| --------------- | ------- | -------- | ------------ | ---------------------------------------- |
-| `path`          | string  | No       | `first root` | Base directory or file path to search in |
-| `pattern`       | string  | Yes      | -            | Text pattern to search for               |
-| `includeHidden` | boolean | No       | `false`      | Include hidden files and directories     |
+| Parameter       | Type    | Required | Default     | Description                                                               |
+| --------------- | ------- | -------- | ----------- | ------------------------------------------------------------------------- |
+| `path`          | string  | No       | `only root` | Base directory or file path to search in (omit when only one root exists) |
+| `pattern`       | string  | Yes      | -           | Text pattern to search for                                                |
+| `includeHidden` | boolean | No       | `false`     | Include hidden files and directories                                      |
 
 Example (search a single file):
 

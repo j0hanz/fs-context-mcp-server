@@ -205,6 +205,18 @@ function getReservedDeviceName(segment: string): string | undefined {
   return RESERVED_DEVICE_NAMES.has(baseName) ? baseName : undefined;
 }
 
+export function getReservedDeviceNameForPath(
+  requestedPath: string
+): string | undefined {
+  if (process.platform !== 'win32') return undefined;
+  const segments = requestedPath.split(/[\\/]/);
+  for (const segment of segments) {
+    const reserved = getReservedDeviceName(segment);
+    if (reserved) return reserved;
+  }
+  return undefined;
+}
+
 function ensureNoReservedWindowsNames(requestedPath: string): void {
   if (process.platform !== 'win32') return;
 
@@ -221,15 +233,19 @@ function ensureNoReservedWindowsNames(requestedPath: string): void {
   }
 }
 
-function ensureNoWindowsDriveRelativePath(requestedPath: string): void {
-  if (process.platform !== 'win32') return;
+export function isWindowsDriveRelativePath(requestedPath: string): boolean {
+  if (process.platform !== 'win32') return false;
   const driveLetter = requestedPath.charCodeAt(0);
   const isAsciiLetter =
     (driveLetter >= 65 && driveLetter <= 90) ||
     (driveLetter >= 97 && driveLetter <= 122);
-  if (!isAsciiLetter || requestedPath[1] !== ':') return;
+  if (!isAsciiLetter || requestedPath[1] !== ':') return false;
   const next = requestedPath[2];
-  if (next === '\\' || next === '/') return;
+  return next !== '\\' && next !== '/';
+}
+
+function ensureNoWindowsDriveRelativePath(requestedPath: string): void {
+  if (!isWindowsDriveRelativePath(requestedPath)) return;
   throw new McpError(
     ErrorCode.E_INVALID_INPUT,
     'Windows drive-relative paths are not allowed. Use C:\\path or C:/path instead of C:path.',

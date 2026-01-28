@@ -27,10 +27,11 @@ import {
 } from './lib/fs-helpers.js';
 import {
   getAllowedDirectories,
+  getReservedDeviceNameForPath,
   getValidRootDirectories,
   isPathWithinDirectories,
+  isWindowsDriveRelativePath,
   normalizePath,
-  RESERVED_DEVICE_NAMES,
   setAllowedDirectoriesResolved,
 } from './lib/path-validation.js';
 import { createInMemoryResourceStore } from './lib/resource-store.js';
@@ -48,31 +49,21 @@ export interface ParseArgsResult {
 
 function validateCliPath(inputPath: string): void {
   if (inputPath.includes('\0')) {
-    throw new Error('Path contains null bytes');
+    throw new Error('Error: Path contains null bytes');
   }
 
   if (isWindowsDriveRelativePath(inputPath)) {
     throw new Error(
-      'Windows drive-relative paths are not allowed. Use C:\\path or C:/path instead of C:path.'
+      'Error: Windows drive-relative paths are not allowed. Use C:\\path or C:/path instead of C:path.'
     );
   }
 
-  const reserved = getReservedCliDeviceName(inputPath);
+  const reserved = getReservedDeviceNameForPath(inputPath);
   if (reserved) {
-    throw new Error(`Reserved device name not allowed: ${reserved}`);
+    throw new Error(
+      `Error: Windows reserved device name not allowed: ${reserved}`
+    );
   }
-}
-
-function isWindowsDriveRelativePath(inputPath: string): boolean {
-  if (process.platform !== 'win32') return false;
-  return /^[a-zA-Z]:(?![\\/])/.test(inputPath);
-}
-
-function getReservedCliDeviceName(inputPath: string): string | undefined {
-  if (process.platform !== 'win32') return undefined;
-  const basename = path.basename(inputPath).split('.')[0]?.toUpperCase();
-  if (!basename) return undefined;
-  return RESERVED_DEVICE_NAMES.has(basename) ? basename : undefined;
 }
 
 async function validateDirectoryPath(inputPath: string): Promise<string> {

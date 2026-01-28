@@ -242,7 +242,8 @@ async function validateFilesInParallel(
   const { results } = await processInParallel(
     tasks,
     async (task) => tryValidateFile(task.filePath, task.index, signal),
-    PARALLEL_CONCURRENCY
+    PARALLEL_CONCURRENCY,
+    signal
   );
 
   const validated = new Map<number, ValidatedFileInfo>();

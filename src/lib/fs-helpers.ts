@@ -13,6 +13,7 @@ import {
   PARALLEL_CONCURRENCY,
 } from './constants.js';
 import { ErrorCode, McpError } from './errors.js';
+import { assertAllowedFileAccess } from './path-policy.js';
 import { validateExistingPath } from './path-validation.js';
 
 function createAbortError(message = 'Operation aborted'): Error {
@@ -981,6 +982,7 @@ async function readFileWithStatsInternal(
   normalized: NormalizedOptions
 ): Promise<ReadFileResult> {
   assertNotAborted(normalized.signal);
+  assertAllowedFileAccess(filePath, validPath);
 
   assertFileStats(filePath, stats);
 

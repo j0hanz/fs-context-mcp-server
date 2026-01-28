@@ -53,6 +53,26 @@ function resolveDiagnosticsErrorMessage(error?: unknown): string | undefined {
   );
 }
 
+function resolveResultErrorMessage(result: unknown): string | undefined {
+  if (!isObject(result)) return undefined;
+  const { structuredContent } = result;
+  if (!isObject(structuredContent)) return undefined;
+  const { error } = structuredContent;
+  if (!isObject(error)) return undefined;
+  const { message } = error;
+  return typeof message === 'string' ? message : undefined;
+}
+
+function logToolError(
+  tool: string,
+  durationMs: number,
+  message?: string
+): void {
+  const rounded = durationMs.toFixed(1);
+  const suffix = message ? `: ${message}` : '';
+  console.error(`[ToolError] ${tool} failed in ${rounded}ms${suffix}`);
+}
+
 function captureEventLoopUtilization(): EventLoopUtilization {
   return performance.eventLoopUtilization();
 }
@@ -109,6 +129,13 @@ function parseDiagnosticsDetail(): DiagnosticsDetail {
   if (normalized === '2') return 2;
   if (normalized === '1') return 1;
   return 0;
+}
+
+function parseToolErrorLogging(): boolean {
+  const normalized = process.env['FS_CONTEXT_TOOL_LOG_ERRORS']
+    ?.trim()
+    .toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 function hashPath(value: string): string {
@@ -280,8 +307,27 @@ export async function withToolDiagnostics<T>(
   run: () => Promise<T>,
   options?: { path?: string }
 ): Promise<T> {
+  const shouldLogErrors = parseToolErrorLogging();
   if (!parseDiagnosticsEnabled()) {
-    return await run();
+    if (!shouldLogErrors) {
+      return await run();
+    }
+
+    const startNs = process.hrtime.bigint();
+    try {
+      const result = await run();
+      const ok = resolveDiagnosticsOk(result);
+      if (ok === false) {
+        const durationMs =
+          Number(process.hrtime.bigint() - startNs) / 1_000_000;
+        logToolError(tool, durationMs, resolveResultErrorMessage(result));
+      }
+      return result;
+    } catch (error: unknown) {
+      const durationMs = Number(process.hrtime.bigint() - startNs) / 1_000_000;
+      logToolError(tool, durationMs, resolveDiagnosticsErrorMessage(error));
+      throw error;
+    }
   }
 
   const shouldPublishTool = TOOL_CHANNEL.hasSubscribers;

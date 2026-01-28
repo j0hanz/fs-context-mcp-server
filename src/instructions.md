@@ -31,6 +31,7 @@ _Do NOT repeat JSON schema. Focus on behavior and pitfalls._
 - **`ls`**
   - **Purpose:** Non-recursive directory listing.
   - **Inputs:** `path` (relative to root). default: root.
+  - **Multi-root:** If multiple roots are configured, you must provide `path`.
   - **Default filters:** Excludes common ignored directories (node_modules, dist, .git, etc). Set `includeIgnored=true` to include them.
   - **Latency:** Fast.
   - **Common failure modes:** `E_NOT_FOUND` if path incorrect.
@@ -38,18 +39,23 @@ _Do NOT repeat JSON schema. Focus on behavior and pitfalls._
 - **`find`**
   - **Purpose:** Recursive file search by globs.
   - **Inputs:** `pattern` (glob like `**/*.ts`), `path` (base dir).
+  - **Multi-root:** If multiple roots are configured, you must provide `path`.
   - **Side effects:** None.
   - **Latency:** Scans disk; bounded by `maxResults` (default 100).
+  - **Gitignore scope:** Only the root `.gitignore` is applied (nested `.gitignore` is not parsed).
 
 - **`grep`**
   - **Purpose:** Content search using RE2 regex.
   - **Inputs:** `pattern` (regex), `path` (base).
   - **Limits:** Skips binaries & files >1MB. Truncates results >50 matches.
+  - **Multi-root:** If multiple roots are configured, you must provide `path`.
+  - **Sensitive files:** Access to common secret files is blocked by default. Override with `FS_CONTEXT_ALLOW_SENSITIVE=1` or add `FS_CONTEXT_ALLOWLIST`.
 
 - **`read` / `read_many`**
   - **Purpose:** Read file contents.
   - **Inputs:** `path`/`paths`. Optional: `head` (first N lines) OR `startLine`/`endLine`.
   - **Gotchas:** `head` is mutually exclusive with `startLine`/`endLine`. Large content returns `resourceUri` link.
+  - **Sensitive files:** Access to common secret files (e.g., `.env`, `.npmrc`) is blocked by default. Override with `FS_CONTEXT_ALLOW_SENSITIVE=1` or add `FS_CONTEXT_ALLOWLIST`.
 
 - **`stat` / `stat_many`**
   - **Purpose:** Metadata (size, modified, type) without content.
@@ -58,6 +64,7 @@ _Do NOT repeat JSON schema. Focus on behavior and pitfalls._
 - **`tree`**
   - **Purpose:** ASCII + JSON tree visualization.
   - **Limits:** Max depth/entries apply. Good for high-level "glance".
+  - **Multi-root:** If multiple roots are configured, you must provide `path`.
 
 ## 4. Error Handling Strategy
 
