@@ -9,7 +9,7 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['dist', 'node_modules', '*.config.mjs', '*.config.js'],
+    ignores: ['dist', 'node_modules', '*.config.mjs', '*.config.js', 'scripts'],
   },
   eslint.configs.recommended,
   sonarjs.configs.recommended,
