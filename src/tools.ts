@@ -29,6 +29,7 @@ import {
 import { listDirectory } from './lib/file-operations/list-directory.js';
 import { readMultipleFiles } from './lib/file-operations/read-multiple-files.js';
 import { searchContent } from './lib/file-operations/search-content.js';
+import type { SearchContentOptions } from './lib/file-operations/search-content.js';
 import { searchFiles } from './lib/file-operations/search-files.js';
 import { formatTreeAscii, treeDirectory } from './lib/file-operations/tree.js';
 import { createTimedAbortSignal, readFile } from './lib/fs-helpers.js';
@@ -1260,16 +1261,21 @@ function registerGetMultipleFileInfoTool(
 async function handleSearchContent(
   args: z.infer<typeof SearchContentInputSchema>,
   signal?: AbortSignal,
-  resourceStore?: ResourceStore
+  resourceStore?: ResourceStore,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<ToolResponse<z.infer<typeof SearchContentOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
-  const result = await searchContent(
-    basePath,
-    args.pattern,
-    signal
-      ? { includeHidden: args.includeHidden, signal }
-      : { includeHidden: args.includeHidden }
-  );
+  const options: SearchContentOptions = {
+    includeHidden: args.includeHidden,
+  };
+  if (signal) {
+    options.signal = signal;
+  }
+  if (onProgress) {
+    options.onProgress = onProgress;
+  }
+
+  const result = await searchContent(basePath, args.pattern, options);
   const normalizedMatches = normalizeSearchMatches(result);
   const structuredFull = buildStructuredSearchResult(result, normalizedMatches);
   const needsExternalize = normalizedMatches.length > MAX_INLINE_MATCHES;
@@ -1325,6 +1331,24 @@ async function handleSearchContent(
   ]);
 }
 
+function createProgressReporter(
+  extra: ToolExtra
+): (progress: { total?: number; current: number }) => void {
+  return (progress) => {
+    const token = extra._meta?.progressToken;
+    if (token && extra.sendNotification) {
+      void extra.sendNotification({
+        method: 'notifications/progress',
+        params: {
+          progressToken: token,
+          total: progress.total,
+          progress: progress.current,
+        },
+      });
+    }
+  };
+}
+
 function registerSearchContentTool(
   server: McpServer,
   options: ToolRegistrationOptions = {}
@@ -1338,7 +1362,12 @@ function registerSearchContentTool(
       () =>
         withToolErrorHandling(
           async () =>
-            handleSearchContent(args, extra.signal, options.resourceStore),
+            handleSearchContent(
+              args,
+              extra.signal,
+              options.resourceStore,
+              createProgressReporter(extra)
+            ),
           (error) =>
             buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
         ),

@@ -60,6 +60,7 @@ interface SearchOptions {
 
 export interface SearchContentOptions extends Partial<SearchOptions> {
   signal?: AbortSignal;
+  onProgress?: (progress: { total?: number; current: number }) => void;
 }
 
 type ResolvedOptions = SearchOptions;
@@ -676,7 +677,8 @@ async function* collectFromStream(
   opts: ResolvedOptions,
   allowedDirs: readonly string[],
   signal: AbortSignal,
-  summary: ScanSummary
+  summary: ScanSummary,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): AsyncGenerator<ResolvedFile> {
   for await (const entry of stream) {
     if (!entry.dirent.isFile()) continue;
@@ -691,6 +693,9 @@ async function* collectFromStream(
     }
 
     summary.filesScanned++;
+    if (onProgress && summary.filesScanned % 50 === 0) {
+      onProgress({ current: summary.filesScanned });
+    }
     yield resolved;
   }
 }
@@ -699,7 +704,8 @@ function collectFilesStream(
   root: string,
   opts: ResolvedOptions,
   allowedDirs: readonly string[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): { stream: AsyncGenerator<ResolvedFile>; summary: ScanSummary } {
   const summary = createScanSummary();
 
@@ -717,7 +723,14 @@ function collectFilesStream(
   });
 
   return {
-    stream: collectFromStream(stream, opts, allowedDirs, signal, summary),
+    stream: collectFromStream(
+      stream,
+      opts,
+      allowedDirs,
+      signal,
+      summary,
+      onProgress
+    ),
     summary,
   };
 }
@@ -1613,14 +1626,16 @@ async function executeSearch(
   pattern: string,
   opts: ResolvedOptions,
   allowedDirs: readonly string[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<SearchContentResult> {
   return await withSearchExecution(pattern, opts, async (context) => {
     const { stream, summary } = collectFilesStream(
       root,
       opts,
       allowedDirs,
-      signal
+      signal,
+      onProgress
     );
     const matches = await scanMatches(
       stream,
@@ -1656,7 +1671,14 @@ export async function searchContent(
         details.resolvedPath,
         signal
       );
-      return await executeSearch(root, pattern, opts, allowedDirs, signal);
+      return await executeSearch(
+        root,
+        pattern,
+        opts,
+        allowedDirs,
+        signal,
+        options.onProgress
+      );
     }
 
     if (stats.isFile()) {
