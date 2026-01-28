@@ -36,6 +36,11 @@ void it('ls includes includeHidden=false by default', () => {
   assert.strictEqual(parsed.includeHidden, false);
 });
 
+void it('ls includes includeIgnored=false by default', () => {
+  const parsed = ListDirectoryInputSchema.parse({});
+  assert.strictEqual(parsed.includeIgnored, false);
+});
+
 void it('ls rejects unknown parameters', () => {
   assert.throws(
     () => ListDirectoryInputSchema.parse({ pattern: '**/*' }),

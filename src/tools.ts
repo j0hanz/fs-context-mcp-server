@@ -511,6 +511,7 @@ const LIST_DIRECTORY_TOOL = {
     'List the immediate contents of a directory (non-recursive). ' +
     'Returns name, relative path, type (file/directory/symlink), size, and modified date. ' +
     'Omit path to list the workspace root. ' +
+    'Use includeIgnored=true to include ignored directories like node_modules. ' +
     'For recursive searches, use find instead.',
   inputSchema: ListDirectoryInputSchema,
   outputSchema: ListDirectoryOutputSchema,
@@ -695,6 +696,7 @@ async function handleListDirectory(
   const dirPath = resolvePathOrRoot(args.path);
   const options: Parameters<typeof listDirectory>[1] = {
     includeHidden: args.includeHidden,
+    excludePatterns: args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS,
     ...(signal ? { signal } : {}),
   };
   const result = await listDirectory(dirPath, options);
@@ -1075,6 +1077,17 @@ async function handleReadMultipleFiles(
     },
   };
 
+  const resourceLinks = mappedResults.flatMap((result) => {
+    if (!result.resourceUri) return [];
+    return [
+      buildResourceLink({
+        uri: result.resourceUri,
+        name: `read:${path.basename(result.path)}`,
+        description: 'Full file contents',
+      }),
+    ];
+  });
+
   const text = joinLines(
     mappedResults.map((result) => {
       if (result.error) {
@@ -1084,7 +1097,7 @@ async function handleReadMultipleFiles(
     })
   );
 
-  return buildToolResponse(text, structured);
+  return buildToolResponse(text, structured, resourceLinks);
 }
 
 function registerReadMultipleFilesTool(

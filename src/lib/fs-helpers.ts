@@ -743,8 +743,9 @@ async function readRangeContent(
   const content = lines.join('\n');
   const linesRead = countLines(content);
 
-  const effectiveHasMoreLines =
-    hasEndLine && (hasMoreLines || (stoppedByLimit && !reachedEof));
+  const effectiveHasMoreLines = hasEndLine
+    ? hasMoreLines || (stoppedByLimit && !reachedEof)
+    : stoppedByLimit && !reachedEof;
 
   return {
     content,

@@ -83,7 +83,7 @@
 
 ## 7) Common Pitfalls (Verified Only)
 
-- Node version mismatch risk: CI workflow uses Node 20 while the package declares Node `>=22.17.0` (see [.github/workflows/publish.yml](.github/workflows/publish.yml) vs [package.json](package.json)). If you change runtime APIs, validate under the engine version.
+- Node runtime version alignment: CI uses Node 22.17.0 to match the package engine `>=22.17.0` (see [.github/workflows/publish.yml](.github/workflows/publish.yml) and [package.json](package.json)). Validate runtime API changes under that engine.
 - Tools may return `E_ACCESS_DENIED` until roots are configured (see [src/**tests**/tools/tool-defaults.test.ts](src/__tests__/tools/tool-defaults.test.ts) and root/roots logic in [src/server.ts](src/server.ts)).
 - `head` cannot be combined with `startLine`/`endLine` for reads (enforced in [src/schemas.ts](src/schemas.ts)).
 

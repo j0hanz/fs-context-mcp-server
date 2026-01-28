@@ -148,6 +148,13 @@ export const ListDirectoryInputSchema = z.strictObject({
     .optional()
     .default(false)
     .describe('Include hidden files and directories'),
+  includeIgnored: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Include normally ignored directories (node_modules, dist, .git, etc).'
+    ),
 });
 
 export const ListAllowedDirectoriesInputSchema = z

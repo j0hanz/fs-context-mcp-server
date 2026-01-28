@@ -31,6 +31,7 @@ _Do NOT repeat JSON schema. Focus on behavior and pitfalls._
 - **`ls`**
   - **Purpose:** Non-recursive directory listing.
   - **Inputs:** `path` (relative to root). default: root.
+  - **Default filters:** Excludes common ignored directories (node_modules, dist, .git, etc). Set `includeIgnored=true` to include them.
   - **Latency:** Fast.
   - **Common failure modes:** `E_NOT_FOUND` if path incorrect.
 

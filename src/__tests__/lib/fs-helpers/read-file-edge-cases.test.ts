@@ -17,6 +17,18 @@ void describe('readFile edge cases', () => {
       assert.strictEqual(result.hasMoreLines, false);
     });
 
+    void it('readFile range without endLine reports hasMoreLines when truncated by size', async () => {
+      const result = await readFile(path.join(getTestDir(), 'multiline.txt'), {
+        startLine: 1,
+        maxSize: 32,
+      });
+      assert.strictEqual(result.readMode, 'range');
+      assert.strictEqual(result.startLine, 1);
+      assert.strictEqual(result.endLine, undefined);
+      assert.strictEqual(result.truncated, true);
+      assert.strictEqual(result.hasMoreLines, true);
+    });
+
     void it('readFile handles empty file', async () => {
       const emptyFile = path.join(getTestDir(), 'empty-read.txt');
       await fs.writeFile(emptyFile, '');
