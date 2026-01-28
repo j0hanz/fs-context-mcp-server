@@ -61,9 +61,58 @@ const MAX_INLINE_CONTENT_CHARS = 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
 const MAX_INLINE_MATCHES = 50;
 
+type ResourceEntry = ReturnType<ResourceStore['putText']>;
+
+interface LineRangeArgs {
+  head?: number;
+  startLine?: number;
+  endLine?: number;
+}
+
+interface LineRangeArgsInput {
+  head?: number | undefined;
+  startLine?: number | undefined;
+  endLine?: number | undefined;
+}
+
 function buildTextPreview(text: string): string {
   if (text.length <= MAX_INLINE_PREVIEW_CHARS) return text;
   return `${text.slice(0, MAX_INLINE_PREVIEW_CHARS)}\n… [truncated preview]`;
+}
+
+function applyLineRangeOptions(
+  target: LineRangeArgs,
+  source: LineRangeArgsInput
+): void {
+  if (source.head !== undefined) {
+    target.head = source.head;
+  }
+  if (source.startLine !== undefined) {
+    target.startLine = source.startLine;
+  }
+  if (source.endLine !== undefined) {
+    target.endLine = source.endLine;
+  }
+}
+
+function maybeExternalizeTextContent(
+  resourceStore: ResourceStore | undefined,
+  content: string,
+  params: { name: string; mimeType?: string }
+): { entry: ResourceEntry; preview: string } | undefined {
+  if (!resourceStore) return undefined;
+  if (content.length <= MAX_INLINE_CONTENT_CHARS) return undefined;
+
+  const entry = resourceStore.putText({
+    name: params.name,
+    ...(params.mimeType !== undefined ? { mimeType: params.mimeType } : {}),
+    text: content,
+  });
+
+  return {
+    entry,
+    preview: buildTextPreview(content),
+  };
 }
 
 function buildResourceLink(params: {
@@ -379,11 +428,32 @@ function buildSearchTextResult(
 
   const lines: string[] = [`Found ${normalizedMatches.length}:`];
   for (const match of normalizedMatches) {
-    const lineNum = String(match.line).padStart(4);
-    lines.push(`  ${match.relativeFile}:${lineNum}: ${match.content}`);
+    lines.push(formatSearchMatchLine(match));
   }
 
   return joinLines(lines) + formatOperationSummary(summaryOptions);
+}
+
+type SearchMatchPayload = NonNullable<
+  z.infer<typeof SearchContentOutputSchema>['matches']
+>[number];
+
+function buildSearchMatchPayload(
+  match: NormalizedSearchMatch
+): SearchMatchPayload {
+  return {
+    file: match.relativeFile,
+    line: match.line,
+    content: match.content,
+    matchCount: match.matchCount,
+    ...(match.contextBefore ? { contextBefore: [...match.contextBefore] } : {}),
+    ...(match.contextAfter ? { contextAfter: [...match.contextAfter] } : {}),
+  };
+}
+
+function formatSearchMatchLine(match: NormalizedSearchMatch): string {
+  const lineNum = String(match.line).padStart(4);
+  return `  ${match.relativeFile}:${lineNum}: ${match.content}`;
 }
 
 function buildStructuredSearchResult(
@@ -392,16 +462,7 @@ function buildStructuredSearchResult(
 ): z.infer<typeof SearchContentOutputSchema> {
   return {
     ok: true,
-    matches: normalizedMatches.map((match) => ({
-      file: match.relativeFile,
-      line: match.line,
-      content: match.content,
-      matchCount: match.matchCount,
-      ...(match.contextBefore
-        ? { contextBefore: [...match.contextBefore] }
-        : {}),
-      ...(match.contextAfter ? { contextAfter: [...match.contextAfter] } : {}),
-    })),
+    matches: normalizedMatches.map(buildSearchMatchPayload),
     totalMatches: result.summary.matches,
     truncated: result.summary.truncated,
   };
@@ -909,15 +970,7 @@ async function handleReadFile(
     maxSize: MAX_TEXT_FILE_SIZE,
     skipBinary: true,
   };
-  if (args.head !== undefined) {
-    options.head = args.head;
-  }
-  if (args.startLine !== undefined) {
-    options.startLine = args.startLine;
-  }
-  if (args.endLine !== undefined) {
-    options.endLine = args.endLine;
-  }
+  applyLineRangeOptions(options, args);
   if (signal) {
     options.signal = signal;
   }
@@ -938,17 +991,16 @@ async function handleReadFile(
     hasMoreLines: result.hasMoreLines,
   };
 
-  if (!resourceStore || result.content.length <= MAX_INLINE_CONTENT_CHARS) {
+  const externalized = maybeExternalizeTextContent(
+    resourceStore,
+    result.content,
+    { name: `read:${path.basename(args.path)}`, mimeType: 'text/plain' }
+  );
+  if (!externalized) {
     return buildToolResponse(result.content, structured);
   }
 
-  const entry = resourceStore.putText({
-    name: `read:${path.basename(args.path)}`,
-    mimeType: 'text/plain',
-    text: result.content,
-  });
-
-  const preview = buildTextPreview(result.content);
+  const { entry, preview } = externalized;
   const structuredWithResource: z.infer<typeof ReadFileOutputSchema> = {
     ...structured,
     content: preview,
@@ -1016,15 +1068,7 @@ async function handleReadMultipleFiles(
   const options: Parameters<typeof readMultipleFiles>[1] = {
     ...(signal ? { signal } : {}),
   };
-  if (args.head !== undefined) {
-    options.head = args.head;
-  }
-  if (args.startLine !== undefined) {
-    options.startLine = args.startLine;
-  }
-  if (args.endLine !== undefined) {
-    options.endLine = args.endLine;
-  }
+  applyLineRangeOptions(options, args);
   const results = await readMultipleFiles(args.paths, options);
 
   type ReadManyResult = Awaited<ReturnType<typeof readMultipleFiles>>[number];
@@ -1032,24 +1076,23 @@ async function handleReadMultipleFiles(
 
   const mappedResults: ReadManyResultWithResource[] = results.map(
     (result): ReadManyResultWithResource => {
-      if (!resourceStore || !result.content) {
+      if (!result.content) {
         return result;
       }
-      if (result.content.length <= MAX_INLINE_CONTENT_CHARS) {
+      const externalized = maybeExternalizeTextContent(
+        resourceStore,
+        result.content,
+        { name: `read:${path.basename(result.path)}`, mimeType: 'text/plain' }
+      );
+      if (!externalized) {
         return result;
       }
-
-      const entry = resourceStore.putText({
-        name: `read:${path.basename(result.path)}`,
-        mimeType: 'text/plain',
-        text: result.content,
-      });
 
       return {
         ...result,
-        content: buildTextPreview(result.content),
+        content: externalized.preview,
         truncated: true,
-        resourceUri: entry.uri,
+        resourceUri: externalized.entry.uri,
       };
     }
   );
@@ -1303,16 +1346,7 @@ async function handleSearchContent(
   const previewMatches = normalizedMatches.slice(0, MAX_INLINE_MATCHES);
   const previewStructured: z.infer<typeof SearchContentOutputSchema> = {
     ok: true,
-    matches: previewMatches.map((match) => ({
-      file: match.relativeFile,
-      line: match.line,
-      content: match.content,
-      matchCount: match.matchCount,
-      ...(match.contextBefore
-        ? { contextBefore: [...match.contextBefore] }
-        : {}),
-      ...(match.contextAfter ? { contextAfter: [...match.contextAfter] } : {}),
-    })),
+    matches: previewMatches.map(buildSearchMatchPayload),
     totalMatches: structuredFull.totalMatches,
     truncated: true,
     resourceUri: undefined,
@@ -1328,10 +1362,7 @@ async function handleSearchContent(
 
   const text = joinLines([
     `Found ${normalizedMatches.length} (showing first ${MAX_INLINE_MATCHES}):`,
-    ...previewMatches.map((match) => {
-      const lineNum = String(match.line).padStart(4);
-      return `  ${match.relativeFile}:${lineNum}: ${match.content}`;
-    }),
+    ...previewMatches.map(formatSearchMatchLine),
   ]);
 
   return buildToolResponse(text, previewStructured, [
