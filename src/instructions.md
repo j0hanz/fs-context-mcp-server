@@ -1,52 +1,66 @@
-# FS Context MCP Server Instructions
+# fs-context Instructions
 
-> **Guidance for the Agent:** These instructions are available as a resource (`internal://instructions`). Load them when you are confused about tool usage.
+> Guidance for the Agent: These instructions are available as a resource (`internal://instructions`) or prompt (`get-help`). Load them when you are unsure about tool usage.
 
 ## 1. Core Capability
 
-- **Domain:** Read-only filesystem exploration, search, and inspection within allowed roots.
-- **Primary Resources:** `Roots`, `DirectoryEntries`, `TreeEntries`, `SearchMatches`, `FileInfo`.
-- **Available Tools:** `roots`, `ls`, `tree`, `find`, `grep`, `read`, `read_many`, `stat`, `stat_many` (9 read-only tools).
+- **Domain:** Read-only filesystem exploration, search, and inspection within explicitly allowed roots.
+- **Primary Resources:** Directory trees, file content, metadata, and search results.
 
 ## 2. The "Golden Path" Workflows (Critical)
 
-_Follow this order; do not guess paths._
+_Describe the standard order of operations using ONLY tools that exist._
 
-### Workflow A: Workspace Discovery
+### Workflow A: Discovery & Navigation
 
-1. Call `roots` to confirm access.
-2. Call `tree` or `ls` to map structure.
-3. Call `read` or `read_many` to inspect files.
-   > **Constraint:** Never assume a path; list or tree first.
+1. Call `roots` to confirm designated access points.
+2. Call `ls` (for single directory) or `tree` (for structure) to map layout.
+   > Constraint: Never guess paths. Always list first.
 
-### Workflow B: Find and Inspect Code
+### Workflow B: Search & Retrieval
 
-1. Call `find` to locate files by glob.
-2. Call `grep` to confirm content matches.
-3. Call `read` (or `read_many`) to open the exact file.
-   > **Constraint:** `find` is path-only; use `grep` for content.
+1. Call `find` to locate files by name/glob pattern.
+2. Call `grep` to find code by content/regex.
+3. Call `read` (single) or `read_many` (batch) to inspect specific files.
+   > Constraint: Large readings return incomplete previews with resource URIs (`fs-context://result/...`).
 
-### Workflow C: File Metadata Inspection
+## 3. Tool Nuances & Gotchas
 
-1. Call `stat` for single file/directory metadata (size, modified, permissions, MIME type).
-2. Call `stat_many` for batch operations (up to 100 paths).
-3. Use `tokenEstimate` field to gauge content size before reading.
-   > **Constraint:** `stat` does not read file content; use `read` for that.
+_Do NOT repeat JSON schema. Focus on behavior and pitfalls._
 
-## 3. Tool Nuances & "Gotchas"
+- **`ls`**
+  - **Purpose:** Non-recursive directory listing.
+  - **Inputs:** `path` (relative to root). default: root.
+  - **Latency:** Fast.
+  - **Common failure modes:** `E_NOT_FOUND` if path incorrect.
 
-- **`roots`**: Returns allowed directories (MCP roots or CLI `--allowed-dirs`). Call this first to confirm access.
-- **`ls`**: Non-recursive listing. Returns name, type, size, modified date. Use `includeHidden` for dotfiles.
-- **`find`**: Glob-only path matching. When `includeIgnored=false`, built-in ignores and a root `.gitignore` are honored.
-- **`tree`**: Bounded by `maxDepth`/`maxEntries`; may truncate when entry limits are hit. Returns both ASCII art and JSON structure.
-- **`grep`**: Literal, case-insensitive search; skips binaries and files >1MB. Returns line numbers and match context.
-- **`read` / `read_many`**: `head` is mutually exclusive with `startLine`/`endLine`. Large content may return a resource link (`fs-context://result/{id}`).
-- **`read_many`**: No binary detection; use `stat` first if unsure. Max 100 files per call.
-- **`stat` / `stat_many`**: Returns metadata only (no content). Includes `tokenEstimate` (approx. size/4). Max 100 paths for batch.
-- **Resource Caching:** Large results return `resourceUri` (e.g., `fs-context://result/{id}`) instead of inline content. These are ephemeral and not guaranteed to persist.
+- **`find`**
+  - **Purpose:** Recursive file search by globs.
+  - **Inputs:** `pattern` (glob like `**/*.ts`), `path` (base dir).
+  - **Side effects:** None.
+  - **Latency:** Scans disk; bounded by `maxResults` (default 100).
+
+- **`grep`**
+  - **Purpose:** Content search using RE2 regex.
+  - **Inputs:** `pattern` (regex), `path` (base).
+  - **Limits:** Skips binaries & files >1MB. Truncates results >50 matches.
+
+- **`read` / `read_many`**
+  - **Purpose:** Read file contents.
+  - **Inputs:** `path`/`paths`. Optional: `head` (first N lines) OR `startLine`/`endLine`.
+  - **Gotchas:** `head` is mutually exclusive with `startLine`/`endLine`. Large content returns `resourceUri` link.
+
+- **`stat` / `stat_many`**
+  - **Purpose:** Metadata (size, modified, type) without content.
+  - **Inputs:** `path`/`paths`.
+
+- **`tree`**
+  - **Purpose:** ASCII + JSON tree visualization.
+  - **Limits:** Max depth/entries apply. Good for high-level "glance".
 
 ## 4. Error Handling Strategy
 
-- `E_ACCESS_DENIED`: Call `roots` and retry with an allowed path.
-- `E_TOO_LARGE`: Use `head` or `startLine`/`endLine` to reduce size.
-- `E_TIMEOUT`: Narrow the path scope or reduce `maxResults`/`maxEntries`.
+- `E_ACCESS_DENIED`: You are trying to access a path outside allowed `roots`.
+- `E_NOT_FOUND`: Re-run `ls` or `find` to verify the path exists.
+- `E_TIMEOUT` / `E_UNKNOWN`: Reduce scope (subdir) or batch size.
+- Resource Links (`fs-context://...`): Content was too large for inline. Read the provided URI to get full content.
