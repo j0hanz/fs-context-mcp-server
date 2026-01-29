@@ -141,7 +141,7 @@ const ReadRangeInputSchema = z.strictObject({
 export const ListDirectoryInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(
     'Directory path to list (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required. ' +
+      'If multiple roots are configured, path is required and must be absolute. ' +
       'Examples: "src", "src/components", "lib/utils"'
   ),
   includeHidden: z
@@ -165,7 +165,7 @@ export const ListAllowedDirectoriesInputSchema = z
 export const SearchFilesInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(
     'Base directory to search from (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required. ' +
+      'If multiple roots are configured, path is required and must be absolute. ' +
       'Examples: "src", "lib", "tests"'
   ),
   pattern: z
@@ -212,7 +212,7 @@ export const SearchFilesInputSchema = z.strictObject({
 export const TreeInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(
     'Base directory to render as a tree (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required. ' +
+      'If multiple roots are configured, path is required and must be absolute. ' +
       'Examples: "src", "lib"'
   ),
   maxDepth: z
@@ -249,7 +249,7 @@ export const TreeInputSchema = z.strictObject({
 export const SearchContentInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(
     'Base directory or file path to search within (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required. ' +
+      'If multiple roots are configured, path is required and must be absolute. ' +
       'Examples: "src", "lib", "tests", "src/index.ts"'
   ),
   pattern: z

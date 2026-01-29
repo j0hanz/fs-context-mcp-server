@@ -33,10 +33,6 @@ import {
 } from '../observability.js';
 import { assertAllowedFileAccess, isSensitivePath } from '../path-policy.js';
 import {
-  getAllowedDirectories,
-  isPathWithinDirectories,
-  normalizePath,
-  toAccessDeniedWithHint,
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
@@ -622,17 +618,6 @@ async function executeSearchSingleFile(
   });
 }
 
-function resolveNonSymlinkPath(
-  entryPath: string,
-  allowedDirs: readonly string[]
-): ResolvedFile {
-  const normalized = normalizePath(entryPath);
-  if (!isPathWithinDirectories(normalized, allowedDirs)) {
-    throw toAccessDeniedWithHint(entryPath, normalized, normalized);
-  }
-  return { resolvedPath: normalized, requestedPath: normalized };
-}
-
 function createScanSummary(): ScanSummary {
   return {
     filesScanned: 0,
@@ -663,13 +648,14 @@ function shouldStopCollecting(
 
 async function resolveEntryPath(
   entry: { path: string; dirent: { isSymbolicLink(): boolean } },
-  allowedDirs: readonly string[],
   signal: AbortSignal
 ): Promise<ResolvedFile | null> {
   try {
-    return entry.dirent.isSymbolicLink()
-      ? await validateExistingPathDetailed(entry.path, signal)
-      : resolveNonSymlinkPath(entry.path, allowedDirs);
+    const details = await validateExistingPathDetailed(entry.path, signal);
+    return {
+      resolvedPath: details.resolvedPath,
+      requestedPath: details.requestedPath,
+    };
   } catch {
     return null;
   }
@@ -681,7 +667,6 @@ async function* collectFromStream(
     dirent: { isFile(): boolean; isSymbolicLink(): boolean };
   }>,
   opts: ResolvedOptions,
-  allowedDirs: readonly string[],
   signal: AbortSignal,
   summary: ScanSummary,
   onProgress?: (progress: { total?: number; current: number }) => void
@@ -692,7 +677,7 @@ async function* collectFromStream(
       break;
     }
 
-    const resolved = await resolveEntryPath(entry, allowedDirs, signal);
+    const resolved = await resolveEntryPath(entry, signal);
     if (!resolved) {
       summary.skippedInaccessible++;
       continue;
@@ -714,7 +699,6 @@ async function* collectFromStream(
 function collectFilesStream(
   root: string,
   opts: ResolvedOptions,
-  allowedDirs: readonly string[],
   signal: AbortSignal,
   onProgress?: (progress: { total?: number; current: number }) => void
 ): { stream: AsyncGenerator<ResolvedFile>; summary: ScanSummary } {
@@ -734,14 +718,7 @@ function collectFilesStream(
   });
 
   return {
-    stream: collectFromStream(
-      stream,
-      opts,
-      allowedDirs,
-      signal,
-      summary,
-      onProgress
-    ),
+    stream: collectFromStream(stream, opts, signal, summary, onProgress),
     summary,
   };
 }
@@ -1636,7 +1613,6 @@ async function executeSearch(
   root: string,
   pattern: string,
   opts: ResolvedOptions,
-  allowedDirs: readonly string[],
   signal: AbortSignal,
   onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<SearchContentResult> {
@@ -1644,7 +1620,6 @@ async function executeSearch(
     const { stream, summary } = collectFilesStream(
       root,
       opts,
-      allowedDirs,
       signal,
       onProgress
     );
@@ -1671,7 +1646,6 @@ export async function searchContent(
     options.signal,
     opts.timeoutMs
   );
-  const allowedDirs = getAllowedDirectories();
 
   try {
     const details = await validateExistingPathDetailed(basePath, signal);
@@ -1686,7 +1660,6 @@ export async function searchContent(
         root,
         pattern,
         opts,
-        allowedDirs,
         signal,
         options.onProgress
       );

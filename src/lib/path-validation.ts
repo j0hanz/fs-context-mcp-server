@@ -264,6 +264,13 @@ function resolveRequestedPath(requestedPath: string): string {
   const expanded = expandHome(requestedPath);
   if (!path.isAbsolute(expanded)) {
     const allowedDirs = getAllowedDirectories();
+    if (allowedDirs.length > 1) {
+      throw new McpError(
+        ErrorCode.E_INVALID_INPUT,
+        'Relative paths are ambiguous when multiple roots are configured. Provide an absolute path or specify the full root path.',
+        requestedPath
+      );
+    }
     const baseDir = allowedDirs[0];
     if (baseDir) {
       return normalizePath(path.resolve(baseDir, expanded));

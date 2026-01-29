@@ -16,6 +16,7 @@ import {
   processInParallel,
   withAbort,
 } from '../fs-helpers.js';
+import { assertAllowedFileAccess } from '../path-policy.js';
 import { validateExistingPathDetailed } from '../path-validation.js';
 
 const PERM_STRINGS = [
@@ -91,6 +92,7 @@ export async function getFileInfo(
   assertNotAborted(signal);
   const { requestedPath, resolvedPath, isSymlink } =
     await validateExistingPathDetailed(filePath, signal);
+  assertAllowedFileAccess(requestedPath, resolvedPath);
 
   const name = path.basename(requestedPath);
   const ext = path.extname(name).toLowerCase();

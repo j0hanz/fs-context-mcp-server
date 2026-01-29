@@ -9,7 +9,10 @@ import {
   getAllowedDirectories,
   setAllowedDirectoriesResolved,
 } from '../../lib/path-validation.js';
-import { registerListDirectoryTool } from '../../tools.js';
+import {
+  registerListDirectoryTool,
+  registerReadFileTool,
+} from '../../tools.js';
 import { createSingleToolCapture } from '../shared/diagnostics-env.js';
 
 const createdDirs: string[] = [];
@@ -40,6 +43,32 @@ await it('ls requires explicit path when multiple roots are configured', async (
   const handler = getHandler();
 
   const result = (await handler({}, {})) as {
+    isError?: boolean;
+    structuredContent?: { ok?: boolean; error?: { code?: string } };
+  };
+
+  assert.strictEqual(result.isError, true);
+  assert.ok(result.structuredContent);
+  assert.strictEqual(result.structuredContent.ok, false);
+  assert.ok(result.structuredContent.error);
+  assert.strictEqual(
+    result.structuredContent.error.code,
+    ErrorCode.E_INVALID_INPUT
+  );
+});
+
+await it('relative paths are rejected when multiple roots are configured', async () => {
+  const dir1 = await createTempDir('mcp-root-1-');
+  const dir2 = await createTempDir('mcp-root-2-');
+  const filePath = path.join(dir1, 'example.txt');
+  await fs.writeFile(filePath, 'hello');
+  await setAllowedDirectoriesResolved([dir1, dir2]);
+
+  const { fakeServer, getHandler } = createSingleToolCapture();
+  registerReadFileTool(fakeServer);
+  const handler = getHandler();
+
+  const result = (await handler({ path: 'example.txt' }, {})) as {
     isError?: boolean;
     structuredContent?: { ok?: boolean; error?: { code?: string } };
   };

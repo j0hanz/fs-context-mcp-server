@@ -7,7 +7,11 @@ import {
   DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../constants.js';
 import { createTimedAbortSignal } from '../fs-helpers.js';
-import { validateExistingDirectory } from '../path-validation.js';
+import { isSensitivePath } from '../path-policy.js';
+import {
+  validateExistingDirectory,
+  validateExistingPathDetailed,
+} from '../path-validation.js';
 import { isIgnoredByGitignore, loadRootGitignore } from './gitignore.js';
 import { globEntries } from './glob-engine.js';
 
@@ -68,6 +72,7 @@ interface CollectState {
   filesScanned: number;
   truncated: boolean;
   stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
+  skippedInaccessible: number;
 }
 
 function resolveEntryType(dirent: SearchEntry['dirent']): SearchEntryType {
@@ -139,6 +144,7 @@ function createCollectState(): CollectState {
     results: [],
     filesScanned: 0,
     truncated: false,
+    skippedInaccessible: 0,
   };
 }
 
@@ -171,11 +177,13 @@ function buildCollectResult(state: CollectState): {
   filesScanned: number;
   truncated: boolean;
   stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
+  skippedInaccessible: number;
 } {
   const baseResult = {
     results: state.results,
     filesScanned: state.filesScanned,
     truncated: state.truncated,
+    skippedInaccessible: state.skippedInaccessible,
   };
   return {
     ...baseResult,
@@ -219,6 +227,17 @@ async function collectFromStream(
       continue;
     }
 
+    try {
+      const validated = await validateExistingPathDetailed(entry.path, signal);
+      if (isSensitivePath(validated.requestedPath, validated.resolvedPath)) {
+        state.skippedInaccessible++;
+        continue;
+      }
+    } catch {
+      state.skippedInaccessible++;
+      continue;
+    }
+
     handleEntry(
       entry,
       resolveEntryType(entry.dirent),
@@ -241,6 +260,7 @@ async function collectSearchResults(
   filesScanned: number;
   truncated: boolean;
   stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
+  skippedInaccessible: number;
 }> {
   const needsStats = needsStatsForSort(normalized.sortBy);
   const stream = buildSearchStream(
@@ -272,12 +292,13 @@ function buildSearchSummary(
   results: SearchResult[],
   filesScanned: number,
   truncated: boolean,
-  stoppedReason: SearchFilesResult['summary']['stoppedReason'] | undefined
+  stoppedReason: SearchFilesResult['summary']['stoppedReason'] | undefined,
+  skippedInaccessible: number
 ): SearchFilesResult['summary'] {
   const baseSummary: SearchFilesResult['summary'] = {
     matched: results.length,
     truncated,
-    skippedInaccessible: 0,
+    skippedInaccessible,
     filesScanned,
   };
   return {
@@ -368,14 +389,19 @@ async function runSearchFiles(
   normalized: NormalizedOptions,
   signal: AbortSignal
 ): Promise<{ results: SearchResult[]; summary: SearchFilesResult['summary'] }> {
-  const { results, filesScanned, truncated, stoppedReason } =
-    await collectSearchResults(
-      root,
-      pattern,
-      excludePatterns,
-      normalized,
-      signal
-    );
+  const {
+    results,
+    filesScanned,
+    truncated,
+    stoppedReason,
+    skippedInaccessible,
+  } = await collectSearchResults(
+    root,
+    pattern,
+    excludePatterns,
+    normalized,
+    signal
+  );
 
   sortSearchResults(results, normalized.sortBy);
 
@@ -385,7 +411,8 @@ async function runSearchFiles(
       results,
       filesScanned,
       truncated,
-      stoppedReason
+      stoppedReason,
+      skippedInaccessible
     ),
   };
 }

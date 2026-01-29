@@ -232,28 +232,6 @@ async function tryValidateFile(
   }
 }
 
-async function validateFilesInParallel(
-  filePaths: readonly string[],
-  signal?: AbortSignal
-): Promise<Map<number, ValidatedFileInfo>> {
-  const tasks = filePaths
-    .map((filePath, index) => ({ filePath, index }))
-    .filter((task) => task.filePath);
-  const { results } = await processInParallel(
-    tasks,
-    async (task) => tryValidateFile(task.filePath, task.index, signal),
-    PARALLEL_CONCURRENCY,
-    signal
-  );
-
-  const validated = new Map<number, ValidatedFileInfo>();
-  for (const info of results) {
-    if (!info) continue;
-    validated.set(info.index, info);
-  }
-  return validated;
-}
-
 async function collectFileBudget(
   filePaths: readonly string[],
   partialRead: boolean,
@@ -265,7 +243,7 @@ async function collectFileBudget(
   validated: Map<number, ValidatedFileInfo>;
 }> {
   const skippedBudget = new Set<number>();
-  const validated = await validateFilesInParallel(filePaths, signal);
+  const validated = new Map<number, ValidatedFileInfo>();
   const estimateSize = partialRead
     ? (stats: Stats) => estimatePartialSize(stats, maxSize)
     : estimateFullSize;
@@ -274,21 +252,55 @@ async function collectFileBudget(
   for (let index = 0; index < filePaths.length; index += 1) {
     const filePath = filePaths[index];
     if (!filePath) continue;
-
-    const info = validated.get(index);
+    const info = await resolveValidatedInfo(filePath, index, validated, signal);
     if (!info) continue;
 
-    const estimatedSize = estimateSize(info.stats);
-    if (totalSize + estimatedSize > maxTotalSize) {
-      skippedBudget.add(index);
-      markRemainingSkipped(index + 1, filePaths.length, skippedBudget);
+    const { exceeded, totalSize: nextTotalSize } = applyBudget(
+      totalSize,
+      estimateSize(info.stats),
+      maxTotalSize,
+      index,
+      filePaths.length,
+      skippedBudget
+    );
+    if (exceeded) {
       return { skippedBudget, validated };
     }
-
-    totalSize += estimatedSize;
+    totalSize = nextTotalSize;
   }
 
   return { skippedBudget, validated };
+}
+
+async function resolveValidatedInfo(
+  filePath: string,
+  index: number,
+  validated: Map<number, ValidatedFileInfo>,
+  signal?: AbortSignal
+): Promise<ValidatedFileInfo | undefined> {
+  if (!validated.has(index)) {
+    const info = await tryValidateFile(filePath, index, signal);
+    if (info) {
+      validated.set(index, info);
+    }
+  }
+  return validated.get(index);
+}
+
+function applyBudget(
+  totalSize: number,
+  estimatedSize: number,
+  maxTotalSize: number,
+  index: number,
+  totalFiles: number,
+  skippedBudget: Set<number>
+): { totalSize: number; exceeded: boolean } {
+  if (totalSize + estimatedSize > maxTotalSize) {
+    skippedBudget.add(index);
+    markRemainingSkipped(index + 1, totalFiles, skippedBudget);
+    return { totalSize, exceeded: true };
+  }
+  return { totalSize: totalSize + estimatedSize, exceeded: false };
 }
 
 function buildOutput(filePaths: readonly string[]): ReadMultipleResult[] {

@@ -5,7 +5,11 @@ import {
   DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../constants.js';
 import { createTimedAbortSignal } from '../fs-helpers.js';
-import { validateExistingDirectory } from '../path-validation.js';
+import { isSensitivePath } from '../path-policy.js';
+import {
+  validateExistingDirectory,
+  validateExistingPathDetailed,
+} from '../path-validation.js';
 import { isIgnoredByGitignore, loadRootGitignore } from './gitignore.js';
 import { globEntries } from './glob-engine.js';
 
@@ -115,6 +119,62 @@ function sortTree(node: TreeEntry): void {
   }
 }
 
+function getStopReason(
+  signal: AbortSignal,
+  totalEntries: number,
+  maxEntries: number
+): 'aborted' | 'maxEntries' | undefined {
+  if (signal.aborted) {
+    return 'aborted';
+  }
+  if (totalEntries >= maxEntries) {
+    return 'maxEntries';
+  }
+  return undefined;
+}
+
+async function resolveTreeEntry(
+  entry: {
+    path: string;
+    dirent: {
+      isDirectory(): boolean;
+      isSymbolicLink(): boolean;
+      isFile(): boolean;
+    };
+  },
+  root: string,
+  gitignoreMatcher: Awaited<ReturnType<typeof loadRootGitignore>>,
+  signal: AbortSignal
+): Promise<{
+  type: TreeEntryType;
+  relativePosix: string;
+  name: string;
+} | null> {
+  try {
+    const validated = await validateExistingPathDetailed(entry.path, signal);
+    if (isSensitivePath(validated.requestedPath, validated.resolvedPath)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  const type = resolveEntryType(entry.dirent);
+  if (
+    gitignoreMatcher &&
+    isIgnoredByGitignore(gitignoreMatcher, root, entry.path, {
+      isDirectory: type === 'directory',
+    })
+  ) {
+    return null;
+  }
+
+  const relative = path.relative(root, entry.path) || path.basename(entry.path);
+  const relativePosix = relative.replace(/\\/gu, '/');
+  const name = path.basename(entry.path);
+  return { type, relativePosix, name };
+}
+
 export function formatTreeAscii(tree: TreeEntry): string {
   const lines: string[] = [];
 
@@ -197,41 +257,42 @@ export async function treeDirectory(
     });
 
     for await (const entry of stream) {
-      if (signal.aborted) {
-        truncated = true;
-        break;
-      }
-      if (totalEntries >= normalized.maxEntries) {
+      const stopReason = getStopReason(
+        signal,
+        totalEntries,
+        normalized.maxEntries
+      );
+      if (stopReason) {
         truncated = true;
         break;
       }
 
-      const type = resolveEntryType(entry.dirent);
-
-      if (
-        gitignoreMatcher &&
-        isIgnoredByGitignore(gitignoreMatcher, root, entry.path, {
-          isDirectory: type === 'directory',
-        })
-      ) {
+      const resolved = await resolveTreeEntry(
+        entry,
+        root,
+        gitignoreMatcher,
+        signal
+      );
+      if (!resolved) {
         continue;
       }
 
-      const relative =
-        path.relative(root, entry.path) || path.basename(entry.path);
-      const relativePosix = relative.replace(/\\/gu, '/');
-      const name = path.basename(entry.path);
-
-      const parent = ensureParentNodes(rootNode, nodeByPath, relativePosix);
+      const parent = ensureParentNodes(
+        rootNode,
+        nodeByPath,
+        resolved.relativePosix
+      );
 
       const node: TreeEntry = {
-        name,
-        type,
-        relativePath: relativePosix,
-        ...(type === 'directory' ? { children: [] as TreeEntry[] } : {}),
+        name: resolved.name,
+        type: resolved.type,
+        relativePath: resolved.relativePosix,
+        ...(resolved.type === 'directory'
+          ? { children: [] as TreeEntry[] }
+          : {}),
       };
 
-      nodeByPath.set(relativePosix, node);
+      nodeByPath.set(resolved.relativePosix, node);
       parent.children ??= [];
       parent.children.push(node);
       totalEntries += 1;

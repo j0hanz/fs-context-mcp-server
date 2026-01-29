@@ -34,6 +34,7 @@ _Do NOT repeat JSON schema. Focus on behavior and pitfalls._
   - **Purpose:** Non-recursive directory listing.
   - **Inputs:** `path` (relative to root). default: root.
   - **Limits:** Not recursive; use `tree` or `find` for depth.
+  - **Multi-root:** When multiple roots are configured, pass an absolute path to disambiguate (relative paths are rejected).
 
 - **`find`**
   - **Purpose:** Recursive file search by globs.

@@ -150,6 +150,7 @@ Notes:
 - Windows drive-relative paths like `C:path` are rejected. Use `C:\path` or `C:/path`.
 - Reserved Windows device names (e.g., `CON`, `NUL`) are blocked.
 - If multiple roots are configured, tools require an explicit `path` to disambiguate.
+- When multiple roots are configured, relative paths are rejected; provide an absolute path within the desired root.
 
 ## Configuration
 
@@ -180,6 +181,8 @@ You can customize with:
 - `FS_CONTEXT_ALLOW_SENSITIVE=true` to disable the default denylist.
 - `FS_CONTEXT_DENYLIST` to add extra deny patterns (comma-separated globs using `*`).
 - `FS_CONTEXT_ALLOWLIST` to allow specific paths even if they match the denylist.
+
+Sensitive denylist patterns also filter `ls`, `find`, `tree`, and `stat` results by default to avoid revealing secret filenames.
 
 ## Resources
 

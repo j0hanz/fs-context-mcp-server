@@ -117,7 +117,7 @@ Notes:
 
 ## Sensitive File Policy
 
-By default, reads and content searches are blocked for common secret filenames to reduce accidental leakage. The default denylist includes patterns like `.env`, `.npmrc`, `.aws/credentials`, `*.pem`, and `.mcpregistry_*_token`.
+By default, reads, content searches, and metadata listings are blocked for common secret filenames to reduce accidental leakage. The default denylist includes patterns like `.env`, `.npmrc`, `.aws/credentials`, `*.pem`, and `.mcpregistry_*_token`.
 
 You can customize with:
 
