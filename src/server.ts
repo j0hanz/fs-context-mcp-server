@@ -133,11 +133,6 @@ interface ServerOptions {
 
 const ROOTS_TIMEOUT_MS = 5000;
 const ROOTS_DEBOUNCE_MS = 100;
-
-let rootsUpdateTimeout: ReturnType<typeof setTimeout> | undefined;
-let rootDirectories: string[] = [];
-let clientInitialized = false;
-let serverOptions: ServerOptions = {};
 const MCP_LOGGER_NAME = 'fs-context';
 
 function logToMcp(
@@ -165,52 +160,125 @@ function logToMcp(
   });
 }
 
-function setServerOptions(options: ServerOptions): void {
-  serverOptions = options;
-}
+class RootsManager {
+  private rootsUpdateTimeout: ReturnType<typeof setTimeout> | undefined;
+  private rootDirectories: string[] = [];
+  private clientInitialized = false;
+  private readonly options: ServerOptions;
 
-function logMissingDirectories(
-  options: ServerOptions,
-  server?: McpServer
-): void {
-  if (options.allowCwd) {
+  constructor(options: ServerOptions) {
+    this.options = options;
+  }
+
+  isInitialized(): boolean {
+    return this.clientInitialized;
+  }
+
+  logMissingDirectoriesIfNeeded(server: McpServer): void {
+    if (getAllowedDirectories().length === 0) {
+      this.logMissingDirectories(server);
+    }
+  }
+
+  registerHandlers(server: McpServer): void {
+    server.server.setNotificationHandler(
+      InitializedNotificationSchema,
+      async () => {
+        this.clientInitialized = true;
+        await this.updateRootsFromClient(server);
+      }
+    );
+
+    server.server.setNotificationHandler(
+      RootsListChangedNotificationSchema,
+      () => {
+        if (!this.clientInitialized) return;
+        if (this.rootsUpdateTimeout) clearTimeout(this.rootsUpdateTimeout);
+        this.rootsUpdateTimeout = setTimeout(() => {
+          void this.updateRootsFromClient(server);
+        }, ROOTS_DEBOUNCE_MS);
+      }
+    );
+  }
+
+  async recomputeAllowedDirectories(): Promise<void> {
+    const cliAllowedDirs = normalizeAllowedDirectories(
+      this.options.cliAllowedDirs ?? []
+    );
+    const allowCwd = this.options.allowCwd === true;
+    const allowCwdDirs = allowCwd ? [normalizePath(process.cwd())] : [];
+    const baseline = [...cliAllowedDirs, ...allowCwdDirs];
+    const { signal, cleanup } = createTimedAbortSignal(
+      undefined,
+      ROOTS_TIMEOUT_MS
+    );
+    try {
+      const rootsToInclude =
+        baseline.length > 0
+          ? await filterRootsWithinBaseline(
+              this.rootDirectories,
+              baseline,
+              signal
+            )
+          : this.rootDirectories;
+
+      const combined = [...baseline, ...rootsToInclude];
+      await setAllowedDirectoriesResolved(combined, signal);
+    } finally {
+      cleanup();
+    }
+  }
+
+  private logMissingDirectories(server?: McpServer): void {
+    if (this.options.allowCwd) {
+      logToMcp(
+        server,
+        'notice',
+        'No directories specified. Using current working directory.'
+      );
+      return;
+    }
+
     logToMcp(
       server,
-      'notice',
-      'No directories specified. Using current working directory.'
+      'warning',
+      'No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol. The server will not be able to access any files until directories are configured.'
     );
-    return;
   }
 
-  logToMcp(
-    server,
-    'warning',
-    'No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol. The server will not be able to access any files until directories are configured.'
-  );
+  private async updateRootsFromClient(server: McpServer): Promise<void> {
+    try {
+      const clientCapabilities = server.server.getClientCapabilities();
+      if (!clientCapabilities?.roots) {
+        this.rootDirectories = [];
+        return;
+      }
+
+      const rootsResult = await server.server.listRoots(undefined, {
+        timeout: ROOTS_TIMEOUT_MS,
+      });
+      const roots = extractRoots(rootsResult);
+      this.rootDirectories = await resolveRootDirectories(roots);
+    } catch (error) {
+      logToMcp(
+        server,
+        'debug',
+        `[DEBUG] MCP Roots protocol unavailable or failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    } finally {
+      await this.recomputeAllowedDirectories();
+    }
+  }
 }
 
-async function recomputeAllowedDirectories(): Promise<void> {
-  const cliAllowedDirs = normalizeAllowedDirectories(
-    serverOptions.cliAllowedDirs ?? []
-  );
-  const allowCwd = serverOptions.allowCwd === true;
-  const allowCwdDirs = allowCwd ? [normalizePath(process.cwd())] : [];
-  const baseline = [...cliAllowedDirs, ...allowCwdDirs];
-  const { signal, cleanup } = createTimedAbortSignal(
-    undefined,
-    ROOTS_TIMEOUT_MS
-  );
-  try {
-    const rootsToInclude =
-      baseline.length > 0
-        ? await filterRootsWithinBaseline(rootDirectories, baseline, signal)
-        : rootDirectories;
+const rootsManagers = new WeakMap<McpServer, RootsManager>();
 
-    const combined = [...baseline, ...rootsToInclude];
-    await setAllowedDirectoriesResolved(combined, signal);
-  } finally {
-    cleanup();
+function getRootsManager(server: McpServer): RootsManager {
+  const manager = rootsManagers.get(server);
+  if (!manager) {
+    throw new Error('Roots manager not initialized for server instance');
   }
+  return manager;
 }
 
 const RootsResponseSchema = z.object({
@@ -235,30 +303,6 @@ async function resolveRootDirectories(roots: Root[]): Promise<string[]> {
     return await getValidRootDirectories(roots, signal);
   } finally {
     cleanup();
-  }
-}
-
-async function updateRootsFromClient(server: McpServer): Promise<void> {
-  try {
-    const clientCapabilities = server.server.getClientCapabilities();
-    if (!clientCapabilities?.roots) {
-      rootDirectories = [];
-      return;
-    }
-
-    const rootsResult = await server.server.listRoots(undefined, {
-      timeout: ROOTS_TIMEOUT_MS,
-    });
-    const roots = extractRoots(rootsResult);
-    rootDirectories = await resolveRootDirectories(roots);
-  } catch (error) {
-    logToMcp(
-      server,
-      'debug',
-      `[DEBUG] MCP Roots protocol unavailable or failed: ${error instanceof Error ? error.message : String(error)}`
-    );
-  } finally {
-    await recomputeAllowedDirectories();
   }
 }
 
@@ -308,33 +352,6 @@ async function isRootWithinBaseline(
     return isPathWithinDirectories(normalizedReal, baseline);
   } catch {
     return false;
-  }
-}
-
-function registerRootHandlers(server: McpServer): void {
-  server.server.setNotificationHandler(
-    InitializedNotificationSchema,
-    async () => {
-      clientInitialized = true;
-      await updateRootsFromClient(server);
-    }
-  );
-
-  server.server.setNotificationHandler(
-    RootsListChangedNotificationSchema,
-    () => {
-      if (!clientInitialized) return;
-      if (rootsUpdateTimeout) clearTimeout(rootsUpdateTimeout);
-      rootsUpdateTimeout = setTimeout(() => {
-        void updateRootsFromClient(server);
-      }, ROOTS_DEBOUNCE_MS);
-    }
-  );
-}
-
-function logMissingDirectoriesIfNeeded(server: McpServer): void {
-  if (getAllowedDirectories().length === 0) {
-    logMissingDirectories(serverOptions, server);
   }
 }
 
@@ -413,8 +430,6 @@ function patchToolErrorHandling(server: McpServer): void {
 }
 
 export function createServer(options: ServerOptions = {}): McpServer {
-  setServerOptions(options);
-
   const resourceStore = createInMemoryResourceStore();
 
   const serverConfig: ConstructorParameters<typeof McpServer>[1] = {
@@ -438,11 +453,14 @@ export function createServer(options: ServerOptions = {}): McpServer {
 
   patchToolErrorHandling(server);
 
+  const rootsManager = new RootsManager(options);
+  rootsManagers.set(server, rootsManager);
+
   registerInstructionResource(server, serverInstructions);
   registerResultResources(server, resourceStore);
   registerAllTools(server, {
     resourceStore,
-    isInitialized: () => clientInitialized,
+    isInitialized: () => rootsManager.isInitialized(),
   });
 
   return server;
@@ -450,12 +468,13 @@ export function createServer(options: ServerOptions = {}): McpServer {
 
 export async function startServer(server: McpServer): Promise<void> {
   const transport = new StdioServerTransport();
+  const rootsManager = getRootsManager(server);
 
-  registerRootHandlers(server);
+  rootsManager.registerHandlers(server);
 
-  await recomputeAllowedDirectories();
+  await rootsManager.recomputeAllowedDirectories();
 
   await server.connect(transport);
 
-  logMissingDirectoriesIfNeeded(server);
+  rootsManager.logMissingDirectoriesIfNeeded(server);
 }
