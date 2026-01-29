@@ -213,12 +213,16 @@ async function recomputeAllowedDirectories(): Promise<void> {
   }
 }
 
+const RootsResponseSchema = z.object({
+  roots: z.array(z.any()).optional(),
+});
+
 function extractRoots(value: unknown): Root[] {
-  const rawRoots =
-    typeof value === 'object' && value !== null && 'roots' in value
-      ? (value as { roots?: unknown }).roots
-      : undefined;
-  return Array.isArray(rawRoots) ? rawRoots.filter(isRoot) : [];
+  const parsed = RootsResponseSchema.safeParse(value);
+  if (!parsed.success || !parsed.data.roots) {
+    return [];
+  }
+  return parsed.data.roots.filter(isRoot);
 }
 
 async function resolveRootDirectories(roots: Root[]): Promise<string[]> {

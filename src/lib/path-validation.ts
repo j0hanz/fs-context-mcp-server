@@ -102,14 +102,21 @@ async function expandAllowedDirectories(
   dirs: readonly string[],
   signal?: AbortSignal
 ): Promise<string[]> {
-  const expanded: string[] = [];
+  const normalizedDirs = dirs
+    .map(normalizeAllowedDirectory)
+    .filter((dir): dir is string => Boolean(dir) && dir.length > 0);
 
-  for (const dir of dirs) {
-    const normalized = normalizeAllowedDirectory(dir);
+  const realPaths = await Promise.all(
+    normalizedDirs.map((dir) => resolveRealPath(dir, signal))
+  );
+
+  const expanded: string[] = [];
+  for (let i = 0; i < normalizedDirs.length; i++) {
+    const normalized = normalizedDirs[i];
     if (!normalized) continue;
     expanded.push(normalized);
 
-    const normalizedReal = await resolveRealPath(normalized, signal);
+    const normalizedReal = realPaths[i];
     if (normalizedReal && !isSamePath(normalizedReal, normalized)) {
       expanded.push(normalizedReal);
     }

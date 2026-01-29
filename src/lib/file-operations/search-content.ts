@@ -364,10 +364,13 @@ function recordLineMatch(
   matches: ContentMatch[],
   ctx: ContextState
 ): void {
-  const contextBefore =
-    options.contextLines > 0 ? snapshotContextBefore(ctx) : undefined;
-  const trimmedLine = updateContext(line, options.contextLines, ctx);
   const count = matcher(line);
+  const contextBefore =
+    count > 0 && options.contextLines > 0
+      ? snapshotContextBefore(ctx)
+      : undefined;
+  const trimmedLine = updateContext(line, options.contextLines, ctx);
+
   if (count > 0) {
     appendMatch(
       matches,
