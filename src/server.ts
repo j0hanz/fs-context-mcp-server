@@ -343,7 +343,7 @@ const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 let serverInstructions = `
-Filesystem Context MCP Server
+FS-Context MCP Server Instructions
 (Detailed instructions failed to load - check logs)
 `;
 try {

@@ -1,4 +1,6 @@
-# fs-context Instructions
+# FS-Context MCP Server Instructions
+
+<!-- path: src/instructions.md -->
 
 > Guidance for the Agent: These instructions are available as a resource (`internal://instructions`) or prompt (`get-help`). Load them when you are unsure about tool usage.
 
@@ -22,7 +24,7 @@ _Describe the standard order of operations using ONLY tools that exist._
 1. Call `find` to locate files by name/glob pattern.
 2. Call `grep` to find code by content/regex.
 3. Call `read` (single) or `read_many` (batch) to inspect specific files.
-   > Constraint: Large readings return incomplete previews with resource URIs (`fs-context://result/...`).
+   > Constraint: Large readings return incomplete previews with resource URIs.
 
 ## 3. Tool Nuances & Gotchas
 
@@ -31,44 +33,30 @@ _Do NOT repeat JSON schema. Focus on behavior and pitfalls._
 - **`ls`**
   - **Purpose:** Non-recursive directory listing.
   - **Inputs:** `path` (relative to root). default: root.
-  - **Multi-root:** If multiple roots are configured, you must provide `path`.
-  - **Default filters:** Excludes common ignored directories (node_modules, dist, .git, etc). Set `includeIgnored=true` to include them.
-  - **Latency:** Fast.
-  - **Common failure modes:** `E_NOT_FOUND` if path incorrect.
+  - **Limits:** Not recursive; use `tree` or `find` for depth.
 
 - **`find`**
   - **Purpose:** Recursive file search by globs.
   - **Inputs:** `pattern` (glob like `**/*.ts`), `path` (base dir).
-  - **Multi-root:** If multiple roots are configured, you must provide `path`.
-  - **Side effects:** None.
   - **Latency:** Scans disk; bounded by `maxResults` (default 100).
-  - **Gitignore scope:** Only the root `.gitignore` is applied (nested `.gitignore` is not parsed).
 
 - **`grep`**
   - **Purpose:** Content search using RE2 regex.
   - **Inputs:** `pattern` (regex), `path` (base).
   - **Limits:** Skips binaries & files >1MB. Truncates results >50 matches.
-  - **Multi-root:** If multiple roots are configured, you must provide `path`.
-  - **Sensitive files:** Access to common secret files is blocked by default. Override with `FS_CONTEXT_ALLOW_SENSITIVE=1` or add `FS_CONTEXT_ALLOWLIST`.
 
 - **`read` / `read_many`**
   - **Purpose:** Read file contents.
   - **Inputs:** `path`/`paths`. Optional: `head` (first N lines) OR `startLine`/`endLine`.
   - **Gotchas:** `head` is mutually exclusive with `startLine`/`endLine`. Large content returns `resourceUri` link.
-  - **Sensitive files:** Access to common secret files (e.g., `.env`, `.npmrc`) is blocked by default. Override with `FS_CONTEXT_ALLOW_SENSITIVE=1` or add `FS_CONTEXT_ALLOWLIST`.
-
-- **`stat` / `stat_many`**
-  - **Purpose:** Metadata (size, modified, type) without content.
-  - **Inputs:** `path`/`paths`.
 
 - **`tree`**
   - **Purpose:** ASCII + JSON tree visualization.
   - **Limits:** Max depth/entries apply. Good for high-level "glance".
-  - **Multi-root:** If multiple roots are configured, you must provide `path`.
 
 ## 4. Error Handling Strategy
 
-- `E_ACCESS_DENIED`: You are trying to access a path outside allowed `roots`.
-- `E_NOT_FOUND`: Re-run `ls` or `find` to verify the path exists.
-- `E_TIMEOUT` / `E_UNKNOWN`: Reduce scope (subdir) or batch size.
-- Resource Links (`fs-context://...`): Content was too large for inline. Read the provided URI to get full content.
+- **`E_ACCESS_DENIED`**: You are trying to access a path outside allowed `roots`.
+- **`E_NOT_FOUND`**: Re-run `ls` or `find` to verify the path exists.
+- **`E_TIMEOUT`**: Reduce scope (subdir) or batch size.
+- **Resource Links**: Content was too large for inline. Read the provided URI to get full content.
