@@ -141,6 +141,7 @@ export interface ToolExtra {
 export interface ToolRegistrationOptions {
   resourceStore?: ResourceStore;
   isInitialized?: () => boolean;
+  serverIcon?: string;
 }
 
 const NOT_INITIALIZED_ERROR = new McpError(

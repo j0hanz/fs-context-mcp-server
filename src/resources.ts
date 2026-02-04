@@ -11,7 +11,8 @@ const RESULT_TEMPLATE = new ResourceTemplate('fs-context://result/{id}', {
 
 export function registerInstructionResource(
   server: McpServer,
-  instructions: string
+  instructions: string,
+  serverIcon?: string
 ): void {
   server.registerResource(
     'fs-context-instructions',
@@ -20,6 +21,13 @@ export function registerInstructionResource(
       title: 'Server Instructions',
       description: 'Guidance for using the fs-context MCP tools effectively.',
       mimeType: 'text/markdown',
+      ...(serverIcon
+        ? {
+            icons: [
+              { src: serverIcon, mimeType: 'image/svg+xml', sizes: ['any'] },
+            ],
+          }
+        : {}),
     },
     (uri): ReadResourceResult => ({
       contents: [
@@ -35,7 +43,8 @@ export function registerInstructionResource(
 
 export function registerResultResources(
   server: McpServer,
-  store: ResourceStore
+  store: ResourceStore,
+  serverIcon?: string
 ): void {
   server.registerResource(
     'fs-context-result',
@@ -45,6 +54,13 @@ export function registerResultResources(
       description:
         'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.',
       mimeType: 'text/plain',
+      ...(serverIcon
+        ? {
+            icons: [
+              { src: serverIcon, mimeType: 'image/svg+xml', sizes: ['any'] },
+            ],
+          }
+        : {}),
     },
     (uri, variables): ReadResourceResult => {
       const { id } = variables;

@@ -169,7 +169,20 @@ export function registerReadMultipleFilesTool(
 
   server.registerTool(
     'read_many',
-    READ_MULTIPLE_FILES_TOOL,
+    {
+      ...READ_MULTIPLE_FILES_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }

@@ -144,7 +144,20 @@ export function registerReadFileTool(
 
   server.registerTool(
     'read',
-    READ_FILE_TOOL,
+    {
+      ...READ_FILE_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }

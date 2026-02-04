@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { readFileSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs as parseNodeArgs } from 'node:util';
@@ -375,6 +376,16 @@ try {
   );
 }
 
+function getLocalIconData(): string | undefined {
+  try {
+    const iconPath = new URL('../assets/logo.svg', import.meta.url);
+    const buffer = readFileSync(iconPath);
+    return `data:image/svg+xml;base64,${buffer.toString('base64')}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function resolveToolErrorCode(message: string): ErrorCode {
   const explicit = extractExplicitErrorCode(message);
   if (explicit) return explicit;
@@ -431,6 +442,7 @@ function patchToolErrorHandling(server: McpServer): void {
 
 export function createServer(options: ServerOptions = {}): McpServer {
   const resourceStore = createInMemoryResourceStore();
+  const localIcon = getLocalIconData();
 
   const serverConfig: ConstructorParameters<typeof McpServer>[1] = {
     capabilities: {
@@ -447,6 +459,13 @@ export function createServer(options: ServerOptions = {}): McpServer {
     {
       name: 'fs-context-mcp',
       version: SERVER_VERSION,
+      ...(localIcon
+        ? {
+            icons: [
+              { src: localIcon, mimeType: 'image/svg+xml', sizes: ['any'] },
+            ],
+          }
+        : {}),
     },
     serverConfig
   );
@@ -456,11 +475,12 @@ export function createServer(options: ServerOptions = {}): McpServer {
   const rootsManager = new RootsManager(options);
   rootsManagers.set(server, rootsManager);
 
-  registerInstructionResource(server, serverInstructions);
-  registerResultResources(server, resourceStore);
+  registerInstructionResource(server, serverInstructions, localIcon);
+  registerResultResources(server, resourceStore, localIcon);
   registerAllTools(server, {
     resourceStore,
     isInitialized: () => rootsManager.isInitialized(),
+    ...(localIcon ? { serverIcon: localIcon } : {}),
   });
 
   return server;

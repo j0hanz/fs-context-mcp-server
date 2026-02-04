@@ -142,7 +142,20 @@ export function registerListDirectoryTool(
 
   server.registerTool(
     'ls',
-    LIST_DIRECTORY_TOOL,
+    {
+      ...LIST_DIRECTORY_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }

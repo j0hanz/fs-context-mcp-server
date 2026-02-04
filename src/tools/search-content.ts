@@ -242,7 +242,20 @@ export function registerSearchContentTool(
 
   server.registerTool(
     'grep',
-    SEARCH_CONTENT_TOOL,
+    {
+      ...SEARCH_CONTENT_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressTool: 'grep',

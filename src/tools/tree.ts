@@ -95,7 +95,20 @@ export function registerTreeTool(
 
   server.registerTool(
     'tree',
-    TREE_TOOL,
+    {
+      ...TREE_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressTool: 'tree',

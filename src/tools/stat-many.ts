@@ -147,7 +147,20 @@ export function registerGetMultipleFileInfoTool(
 
   server.registerTool(
     'stat_many',
-    GET_MULTIPLE_FILE_INFO_TOOL,
+    {
+      ...GET_MULTIPLE_FILE_INFO_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }

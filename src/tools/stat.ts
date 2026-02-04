@@ -132,7 +132,20 @@ export function registerGetFileInfoTool(
 
   server.registerTool(
     'stat',
-    GET_FILE_INFO_TOOL,
+    {
+      ...GET_FILE_INFO_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }

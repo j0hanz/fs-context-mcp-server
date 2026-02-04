@@ -127,7 +127,20 @@ export function registerSearchFilesTool(
 
   server.registerTool(
     'find',
-    SEARCH_FILES_TOOL,
+    {
+      ...SEARCH_FILES_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressTool: 'find',

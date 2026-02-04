@@ -73,7 +73,20 @@ export function registerListAllowedDirectoriesTool(
 
   server.registerTool(
     'roots',
-    LIST_ALLOWED_DIRECTORIES_TOOL,
+    {
+      ...LIST_ALLOWED_DIRECTORIES_TOOL,
+      ...(options.serverIcon
+        ? {
+            icons: [
+              {
+                src: options.serverIcon,
+                mimeType: 'image/svg+xml',
+                sizes: ['any'],
+              },
+            ],
+          }
+        : {}),
+    },
     wrapToolHandler(handler, { guard: options.isInitialized })
   );
 }
