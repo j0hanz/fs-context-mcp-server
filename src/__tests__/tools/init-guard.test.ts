@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
 import { ErrorCode } from '../../lib/errors.js';
-import { registerListDirectoryTool } from '../../tools.js';
+import { registerListDirectoryTool } from '../../tools/list-directory.js';
 import { createSingleToolCapture } from '../shared/diagnostics-env.js';
 
 void it('rejects tool calls before notifications/initialized', async () => {

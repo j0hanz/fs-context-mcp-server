@@ -9,10 +9,8 @@ import {
   getAllowedDirectories,
   setAllowedDirectoriesResolved,
 } from '../../lib/path-validation.js';
-import {
-  registerListDirectoryTool,
-  registerReadFileTool,
-} from '../../tools.js';
+import { registerListDirectoryTool } from '../../tools/list-directory.js';
+import { registerReadFileTool } from '../../tools/read.js';
 import { createSingleToolCapture } from '../shared/diagnostics-env.js';
 
 const createdDirs: string[] = [];

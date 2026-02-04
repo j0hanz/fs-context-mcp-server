@@ -11,7 +11,7 @@ import {
   SearchContentInputSchema,
   SearchFilesInputSchema,
 } from '../../schemas.js';
-import { registerListDirectoryTool } from '../../tools.js';
+import { registerListDirectoryTool } from '../../tools/list-directory.js';
 import { createSingleToolCapture } from '../shared/diagnostics-env.js';
 
 void it('grep includes includeHidden=false by default', () => {

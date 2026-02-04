@@ -9,7 +9,7 @@ import {
   getAllowedDirectories,
   setAllowedDirectoriesResolved,
 } from '../../lib/path-validation.js';
-import { registerSearchFilesTool } from '../../tools.js';
+import { registerSearchFilesTool } from '../../tools/search-files.js';
 import { createSingleToolCapture } from '../shared/diagnostics-env.js';
 
 const createdDirs: string[] = [];

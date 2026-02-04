@@ -2,7 +2,7 @@ import * as diagnosticsChannel from 'node:diagnostics_channel';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
-import { registerListAllowedDirectoriesTool } from '../../tools.js';
+import { registerListAllowedDirectoriesTool } from '../../tools/roots.js';
 import {
   createSingleToolCapture,
   enableDiagnosticsEnv,
