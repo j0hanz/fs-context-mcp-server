@@ -4,89 +4,66 @@
 
 ## 1) Project Context
 
-- **Domain:** Read-only MCP server for secure filesystem exploration (list/search/read/metadata) within explicitly allowed roots.
+- **Domain:** Read-only Model Context Protocol (MCP) server for secure filesystem exploration and analysis.
 - **Tech Stack (Verified):**
-  - **Languages:** TypeScript (see [tsconfig.json](tsconfig.json)); Node.js (see [package.json](package.json) `engines.node`).
-  - **Frameworks/Runtime:** Model Context Protocol (MCP) TypeScript SDK over stdio (see [package.json](package.json) deps; [src/server.ts](src/server.ts) `StdioServerTransport`).
-  - **Key Libraries:**
-    - `@modelcontextprotocol/sdk` (see [package.json](package.json))
-    - `zod` (see [package.json](package.json); schemas in [src/schemas.ts](src/schemas.ts))
-    - `re2` + `safe-regex2` (see [package.json](package.json); used in [src/lib/file-operations/search-content.ts](src/lib/file-operations/search-content.ts))
-    - `ignore` (see [package.json](package.json))
-- **Architecture:** Single Node/TypeScript package; stdio MCP server that registers tools/resources and enforces root-based access control (see [src/index.ts](src/index.ts), [src/server.ts](src/server.ts), [src/tools.ts](src/tools.ts), [src/lib/path-validation.ts](src/lib/path-validation.ts)).
+  - **Languages:** TypeScript 5.9+ (evidence: `package.json`, `tsconfig.json`)
+  - **Runtime:** Node.js >=22.19.8 (evidence: `package.json` engines)
+  - **Frameworks:** Model Context Protocol SDK (evidence: `package.json` dependency `@modelcontextprotocol/sdk`)
+  - **Key Libraries:** `zod` (validation), `re2` (safe regex), `ignore` (file filtering) (evidence: `package.json`)
+- **Architecture:** MCP Server with tool-based architecture; custom build/task system in `scripts/tasks.mjs`. (evidence: `src/server.ts`, `scripts/tasks.mjs`)
 
 ## 2) Repository Map (High-Level)
 
-- [src/](src/): Runtime server implementation.
-  - [src/index.ts](src/index.ts): CLI entrypoint + shutdown handling.
-  - [src/server.ts](src/server.ts): MCP server creation, stdio transport, Roots protocol integration.
-  - [src/tools.ts](src/tools.ts): Tool registration + tool response/error shaping + resource-link behavior.
-  - [src/schemas.ts](src/schemas.ts): Zod input/output schemas and input validation.
-  - [src/lib/](src/lib/): Filesystem ops, security/path validation, errors, observability, resource store.
-- [src/**tests**/](src/__tests__/): Node’s built-in test runner tests (unit/integration).
-- [node-tests/](node-tests/): Node test runner “dist-level” regression tests (executes compiled `dist/`).
-- [scripts/](scripts/): Project scripts (if present).
-- [docs/](docs/): Repo assets (e.g., logo).
-  > Ignore generated/vendor dirs like [dist/](dist/), [node_modules/](node_modules/).
+- `src/`: Core source code (evidence: `tsconfig.json`)
+- `src/tools/`: MCP Tool implementations (evidence: `src/tools`)
+- `src/__tests__/`: Unit tests (evidence: `src/__tests__`, `scripts/tasks.mjs`)
+- `scripts/`: Build and maintenance task scripts (evidence: `package.json` scripts)
+- `node-tests/`: Additional integration/node-specific tests (evidence: `node-tests` folder)
+- `docs/`: Documentation (evidence: `docs` folder)
+  > Ignore generated/vendor dirs like `dist/`, `node_modules/`, `coverage/`.
 
 ## 3) Operational Commands (Verified)
 
-- **Environment:**
-  - **Node version:** `>=22.17.0` (see [package.json](package.json) `engines.node`).
-  - **Package manager:** npm + `package-lock.json` (see [package-lock.json](package-lock.json)).
-- **Install:** `npm ci` (CI uses this in [.github/workflows/publish.yml](.github/workflows/publish.yml)).
-- **Dev:** `npm run dev` (see [package.json](package.json)).
-- **Test:**
-  - `npm test` (see [package.json](package.json); runs `node --test --import tsx/esm "src/__tests__/**/*.test.ts"`).
-  - `npm run test:dist` (see [package.json](package.json); builds then runs [node-tests/search-content-workers-dist.test.ts](node-tests/search-content-workers-dist.test.ts)).
-- **Build:** `npm run build` (see [package.json](package.json)).
-- **Lint/Format/Types:**
-  - `npm run lint` (see [package.json](package.json); config in [eslint.config.mjs](eslint.config.mjs))
-  - `npm run format` (see [package.json](package.json); config in [.prettierrc](.prettierrc))
-  - `npm run type-check` (see [package.json](package.json))
-- **Release pipeline (CI source of truth):** `npm ci` → `npm run lint` → `npm run type-check` → `npm run test` → `npm run build` (see [.github/workflows/publish.yml](.github/workflows/publish.yml)).
+- **Environment:** Node.js (evidence: `package.json`)
+- **Install:** `npm ci` (evidence: `.github/workflows/publish.yml`)
+- **Dev:** `npm run dev` (runs `tsc --watch`) (evidence: `package.json`)
+- **Test:** `npm run test` (runs `node scripts/tasks.mjs test`) (evidence: `package.json`)
+- **Build:** `npm run build` (runs `node scripts/tasks.mjs build`) (evidence: `package.json`)
+- **Lint/Format:** `npm run lint` (ESLint) / `npm run format` (Prettier) (evidence: `package.json`)
+- **Type Check:** `npm run type-check` (evidence: `package.json`)
 
 ## 4) Coding Standards (Style & Patterns)
 
-- **Module system:** ESM (`"type": "module"`) and TypeScript `NodeNext` (see [package.json](package.json), [tsconfig.json](tsconfig.json)).
-- **Imports:** Local imports use `.js` extensions in TS sources (see [src/index.ts](src/index.ts)).
-- **Typing/Strictness:** `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitReturns`, etc. (see [tsconfig.json](tsconfig.json)).
-- **Lint rules (high impact):**
-  - Explicit function return types enforced (see [eslint.config.mjs](eslint.config.mjs) `@typescript-eslint/explicit-function-return-type`).
-  - Type-only imports/exports enforced (see [eslint.config.mjs](eslint.config.mjs) `@typescript-eslint/consistent-type-imports`).
-  - `any` is forbidden (see [eslint.config.mjs](eslint.config.mjs) `@typescript-eslint/no-explicit-any`).
-- **Formatting:** Prettier with import sorting (see [.prettierrc](.prettierrc)).
-- **Patterns observed:**
-  - **Dual output for tools:** tool results include human text plus a JSON content block mirroring `structuredContent` (see [src/tools.ts](src/tools.ts) `buildToolResponse` / `buildToolErrorResponse`; tests in [src/**tests**/tools/tool-response.test.ts](src/__tests__/tools/tool-response.test.ts)).
-  - **Security boundary:** all filesystem access is restricted to allowed roots and normalized paths; Windows-reserved device names and null bytes are rejected (see [src/server.ts](src/server.ts) CLI validation; [src/lib/path-validation.ts](src/lib/path-validation.ts)).
-  - **Regex safety:** content search uses RE2 + safe-regex validation for ReDoS resistance (see [src/lib/file-operations/search-content.ts](src/lib/file-operations/search-content.ts)).
+- **Naming:** CamelCase default; PascalCase for types/classes. Strict naming rules enforced by ESLint. (evidence: `eslint.config.mjs`)
+- **Structure:**
+  - Entry point: `src/index.ts`
+  - Server setup: `src/server.ts`
+  - Tools defined in `src/tools/`
+- **Typing/Strictness:** TypeScript `strict: true`, `noImplicitAny`, and `tseslint.configs.strictTypeChecked` are enforced. (evidence: `tsconfig.json`, `eslint.config.mjs`)
+- **Patterns Observed:**
+  - **Custom Task Runner:** Uses `scripts/tasks.mjs` for orchestration instead of complex npm scripts. (evidence: `package.json`, `scripts/tasks.mjs`)
+  - **Strict Linting:** `no-explicit-any`, `explicit-function-return-type` are errors. (evidence: `eslint.config.mjs`)
 
 ## 5) Agent Behavioral Rules (Do Nots)
 
-- Do not introduce new dependencies without updating [package.json](package.json) and [package-lock.json](package-lock.json) via npm.
-- Do not edit [package-lock.json](package-lock.json) manually.
-- Do not write non-protocol output to stdout in runtime paths (stdio MCP); use stderr/logging instead (see [src/index.ts](src/index.ts) uses `console.error`, and the server uses `StdioServerTransport` in [src/server.ts](src/server.ts)).
-  - Exception: tests may intentionally write JSON to stdout for harnessing (see [node-tests/search-content-workers-dist.test.ts](node-tests/search-content-workers-dist.test.ts)).
-- Do not weaken path/roots security checks (allowed roots, symlink escapes, reserved names) without adding tests in [src/**tests**/security/](src/__tests__/security/).
-- Do not read, print, or commit token/secret files (repo contains files named `.mcpregistry_*_token` in the root).
-- Do not disable or bypass existing ESLint/TypeScript rules without explicit approval.
+- Do not introduce new dependencies without updating `package.json` and `package-lock.json` via npm. (evidence: `package.json`)
+- Do not edit `package-lock.json` manually. (evidence: standard npm practice)
+- Do not commit secrets; never print `.env` values. (evidence: general security practice)
+- Do not disable or bypass existing lint/typecheck rules (e.g., `eslint-disable`) without explicit approval. (evidence: `eslint.config.mjs` strictness)
+- Do not use `any` type; use `unknown` or specific types (enforced by linter). (evidence: `eslint.config.mjs`)
 
 ## 6) Testing Strategy (Verified)
 
-- **Framework:** Node built-in test runner (`node --test`) with TS execution via `tsx/esm` (see [package.json](package.json) scripts).
-- **Where tests live:**
-  - Unit/integration: [src/**tests**/](src/__tests__/)
-  - Dist regression: [node-tests/](node-tests/) (see [package.json](package.json) `test:dist`).
+- **Framework:** Node.js native test runner (`node --test`). (evidence: `scripts/tasks.mjs`)
+- **Where tests live:** `src/__tests__` and `node-tests`. (evidence: `scripts/tasks.mjs` config, filesystem)
 - **Approach:**
-  - Schema defaults and strict input validation (unknown keys rejected) are tested (see [src/**tests**/tools/tool-defaults.test.ts](src/__tests__/tools/tool-defaults.test.ts)).
-  - Error and tool response shapes are tested (see [src/**tests**/tools/tool-response.test.ts](src/__tests__/tools/tool-response.test.ts)).
-  - Worker-path behavior is validated against built `dist/` (see [node-tests/search-content-workers-dist.test.ts](node-tests/search-content-workers-dist.test.ts)).
+  - Unit tests in `src/__tests__/*.test.ts`
+  - Tests run via `scripts/tasks.mjs` wrapper.
 
-## 7) Common Pitfalls (Verified Only)
+## 7) Common Pitfalls (Optional; Verified Only)
 
-- Node runtime version alignment: CI uses Node 22.17.0 to match the package engine `>=22.17.0` (see [.github/workflows/publish.yml](.github/workflows/publish.yml) and [package.json](package.json)). Validate runtime API changes under that engine.
-- Tools may return `E_ACCESS_DENIED` until roots are configured (see [src/**tests**/tools/tool-defaults.test.ts](src/__tests__/tools/tool-defaults.test.ts) and root/roots logic in [src/server.ts](src/server.ts)).
-- `head` cannot be combined with `startLine`/`endLine` for reads (enforced in [src/schemas.ts](src/schemas.ts)).
+- **Test Pattern Matching:** The test runner in `scripts/tasks.mjs` looks for `src/__tests__/**/*.test.ts` and `tests/**/*.test.ts`. If you add tests elsewhere, they may not run. (evidence: `scripts/tasks.mjs`)
+- **Strict TypeScript:** The codebase is very strict. Expect type errors for implicit any or missing return types. (evidence: `eslint.config.mjs`)
 
 ## 8) Evolution Rules
 
