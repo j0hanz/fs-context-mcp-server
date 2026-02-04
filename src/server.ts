@@ -82,7 +82,7 @@ async function validateDirectoryPath(inputPath: string): Promise<string> {
 
 function assertDirectory(stats: Stats, inputPath: string): void {
   if (stats.isDirectory()) return;
-  throw new Error(`Error: '${inputPath}' is not a directory`);
+  throw new Error(`Error: ${inputPath} is not a directory`);
 }
 
 function isCliError(error: unknown): error is Error {
@@ -91,7 +91,7 @@ function isCliError(error: unknown): error is Error {
 
 function normalizeDirectoryError(error: unknown, inputPath: string): Error {
   if (isCliError(error)) return error;
-  return new Error(`Error: Cannot access directory '${inputPath}'`);
+  return new Error(`Error: Cannot access directory ${inputPath}`);
 }
 
 async function normalizeCliDirectories(
@@ -154,7 +154,7 @@ function logToMcp(
 
   void server.sendLoggingMessage(params).catch((error: unknown) => {
     console.error(
-      `Failed to send MCP log (${level}):`,
+      `Failed to send MCP log: ${level} │ ${data}`,
       data,
       error instanceof Error ? error.message : String(error)
     );
@@ -235,7 +235,7 @@ class RootsManager {
       logToMcp(
         server,
         'notice',
-        'No directories specified. Using current working directory.'
+        'No allowed directories specified. Using the current working directory as an allowed directory.'
       );
       return;
     }
@@ -243,7 +243,7 @@ class RootsManager {
     logToMcp(
       server,
       'warning',
-      'No directories configured. Use --allow-cwd flag or specify directories via CLI/roots protocol. The server will not be able to access any files until directories are configured.'
+      'No allowed directories specified. Please provide directories as command-line arguments or enable --allow-cwd to use the current working directory.'
     );
   }
 

@@ -25,9 +25,8 @@ function resolvePrimitiveDiagnosticsMessage(
   error: unknown
 ): string | undefined {
   if (typeof error === 'string') return error;
-  if (typeof error === 'number' || typeof error === 'boolean') {
+  if (typeof error === 'number' || typeof error === 'boolean')
     return String(error);
-  }
   if (typeof error === 'bigint') return error.toString();
   if (typeof error === 'symbol') return error.description ?? 'symbol';
   return undefined;
@@ -83,6 +82,10 @@ function diffEventLoopUtilization(
   return performance.eventLoopUtilization(start);
 }
 
+function elapsedMs(startNs: bigint): number {
+  return Number(process.hrtime.bigint() - startNs) / 1_000_000;
+}
+
 type DiagnosticsDetail = 0 | 1 | 2;
 
 interface ToolDiagnosticsEvent {
@@ -117,11 +120,13 @@ const TOOL_CHANNEL = channel('fs-context:tool');
 const PERF_CHANNEL = channel('fs-context:perf');
 const OPS_TRACE = tracingChannel<unknown, OpsTraceContext>('fs-context:ops');
 
-function parseDiagnosticsEnabled(): boolean {
-  const normalized = process.env['FS_CONTEXT_DIAGNOSTICS']
-    ?.trim()
-    .toLowerCase();
+function parseEnvBoolean(name: string): boolean {
+  const normalized = process.env[name]?.trim().toLowerCase();
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
+function parseDiagnosticsEnabled(): boolean {
+  return parseEnvBoolean('FS_CONTEXT_DIAGNOSTICS');
 }
 
 function parseDiagnosticsDetail(): DiagnosticsDetail {
@@ -132,18 +137,31 @@ function parseDiagnosticsDetail(): DiagnosticsDetail {
 }
 
 function parseToolErrorLogging(): boolean {
-  const normalized = process.env['FS_CONTEXT_TOOL_LOG_ERRORS']
-    ?.trim()
-    .toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+  return parseEnvBoolean('FS_CONTEXT_TOOL_LOG_ERRORS');
+}
+
+interface DiagnosticsConfig {
+  enabled: boolean;
+  detail: DiagnosticsDetail;
+  logToolErrors: boolean;
+}
+
+function readDiagnosticsConfig(): DiagnosticsConfig {
+  return {
+    enabled: parseDiagnosticsEnabled(),
+    detail: parseDiagnosticsDetail(),
+    logToolErrors: parseToolErrorLogging(),
+  };
 }
 
 function hashPath(value: string): string {
   return createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
-function normalizePathForDiagnostics(pathValue: string): string | undefined {
-  const detail = parseDiagnosticsDetail();
+function normalizePathForDiagnostics(
+  pathValue: string,
+  detail: DiagnosticsDetail
+): string | undefined {
   if (detail === 0) return undefined;
   if (detail === 2) return pathValue;
   return hashPath(pathValue);
@@ -151,23 +169,34 @@ function normalizePathForDiagnostics(pathValue: string): string | undefined {
 
 function normalizeOpsTraceContext(context: OpsTraceContext): OpsTraceContext {
   if (!context.path) return context;
-  const normalizedPath = normalizePathForDiagnostics(context.path);
+
+  const detail = parseDiagnosticsDetail();
+  const normalizedPath = normalizePathForDiagnostics(context.path, detail);
+
   if (!normalizedPath) {
     const sanitized: OpsTraceContext = { ...context };
     delete sanitized.path;
     return sanitized;
   }
+
   return { ...context, path: normalizedPath };
 }
 
-function publishStartEvent(tool: string, options?: { path?: string }): void {
+function publishStartEvent(
+  tool: string,
+  options: { path?: string } | undefined,
+  detail: DiagnosticsDetail
+): void {
   const event: ToolDiagnosticsEvent = { phase: 'start', tool };
+
   const normalizedPath = options?.path
-    ? normalizePathForDiagnostics(options.path)
+    ? normalizePathForDiagnostics(options.path, detail)
     : undefined;
+
   if (normalizedPath !== undefined) {
     event.path = normalizedPath;
   }
+
   TOOL_CHANNEL.publish(event);
 }
 
@@ -183,10 +212,12 @@ function publishEndEvent(
     ok,
     durationMs,
   };
+
   const message = resolveDiagnosticsErrorMessage(error);
   if (message !== undefined) {
     event.error = message;
   }
+
   TOOL_CHANNEL.publish(event);
 }
 
@@ -210,6 +241,7 @@ function publishPerfEndEvent(
 function startToolDiagnostics(
   tool: string,
   options: { path?: string } | undefined,
+  config: DiagnosticsConfig,
   shouldPublishTool: boolean,
   shouldPublishPerf: boolean
 ): {
@@ -220,7 +252,11 @@ function startToolDiagnostics(
   const eluStart = shouldPublishPerf
     ? captureEventLoopUtilization()
     : undefined;
-  if (shouldPublishTool) publishStartEvent(tool, options);
+
+  if (shouldPublishTool) {
+    publishStartEvent(tool, options, config.detail);
+  }
+
   return { startNs, eluStart };
 }
 
@@ -235,8 +271,8 @@ function finalizeToolDiagnostics(
     eluStart: ReturnType<typeof captureEventLoopUtilization> | undefined;
   }
 ): void {
-  const endNs = process.hrtime.bigint();
-  const durationMs = Number(endNs - startNs) / 1_000_000;
+  const durationMs = elapsedMs(startNs);
+
   if (options.shouldPublishPerf && options.eluStart) {
     publishPerfEndEvent(
       tool,
@@ -253,16 +289,20 @@ async function runWithDiagnostics<T>(
   tool: string,
   run: () => Promise<T>,
   options: { path?: string } | undefined,
+  config: DiagnosticsConfig,
   shouldPublishTool: boolean,
   shouldPublishPerf: boolean
 ): Promise<T> {
   const { startNs, eluStart } = startToolDiagnostics(
     tool,
     options,
+    config,
     shouldPublishTool,
     shouldPublishPerf
   );
+
   const finalizeOptions = { shouldPublishTool, shouldPublishPerf, eluStart };
+
   try {
     const result = await run();
     finalizeToolDiagnostics(tool, startNs, {
@@ -276,6 +316,31 @@ async function runWithDiagnostics<T>(
       error,
       ...finalizeOptions,
     });
+    throw error;
+  }
+}
+
+async function runWithErrorLogging<T>(
+  tool: string,
+  run: () => Promise<T>
+): Promise<T> {
+  const startNs = process.hrtime.bigint();
+
+  try {
+    const result = await run();
+    const ok = resolveDiagnosticsOk(result);
+
+    if (ok === false) {
+      logToolError(tool, elapsedMs(startNs), resolveResultErrorMessage(result));
+    }
+
+    return result;
+  } catch (error: unknown) {
+    logToolError(
+      tool,
+      elapsedMs(startNs),
+      resolveDiagnosticsErrorMessage(error)
+    );
     throw error;
   }
 }
@@ -307,31 +372,16 @@ export async function withToolDiagnostics<T>(
   run: () => Promise<T>,
   options?: { path?: string }
 ): Promise<T> {
-  const shouldLogErrors = parseToolErrorLogging();
-  if (!parseDiagnosticsEnabled()) {
-    if (!shouldLogErrors) {
-      return await run();
-    }
+  const config = readDiagnosticsConfig();
 
-    const startNs = process.hrtime.bigint();
-    try {
-      const result = await run();
-      const ok = resolveDiagnosticsOk(result);
-      if (ok === false) {
-        const durationMs =
-          Number(process.hrtime.bigint() - startNs) / 1_000_000;
-        logToolError(tool, durationMs, resolveResultErrorMessage(result));
-      }
-      return result;
-    } catch (error: unknown) {
-      const durationMs = Number(process.hrtime.bigint() - startNs) / 1_000_000;
-      logToolError(tool, durationMs, resolveDiagnosticsErrorMessage(error));
-      throw error;
-    }
+  if (!config.enabled) {
+    if (!config.logToolErrors) return await run();
+    return await runWithErrorLogging(tool, run);
   }
 
   const shouldPublishTool = TOOL_CHANNEL.hasSubscribers;
   const shouldPublishPerf = PERF_CHANNEL.hasSubscribers;
+
   if (!shouldPublishTool && !shouldPublishPerf) {
     return await run();
   }
@@ -340,6 +390,7 @@ export async function withToolDiagnostics<T>(
     tool,
     run,
     options,
+    config,
     shouldPublishTool,
     shouldPublishPerf
   );
