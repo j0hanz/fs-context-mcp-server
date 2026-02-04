@@ -25,17 +25,13 @@ function createAbortError(message = 'Operation aborted'): Error {
 export function assertNotAborted(signal?: AbortSignal, message?: string): void {
   if (!signal?.aborted) return;
   const { reason } = signal as { reason?: unknown };
-  if (reason instanceof Error) {
-    throw reason;
-  }
+  if (reason instanceof Error) throw reason;
   throw createAbortError(message);
 }
 
 function getAbortError(signal: AbortSignal, message?: string): Error {
   const { reason } = signal as { reason?: unknown };
-  if (reason instanceof Error) {
-    return reason;
-  }
+  if (reason instanceof Error) return reason;
   return createAbortError(message);
 }
 
@@ -44,9 +40,7 @@ export function withAbort<T>(
   signal?: AbortSignal
 ): Promise<T> {
   if (!signal) return promise;
-  if (signal.aborted) {
-    throw getAbortError(signal);
-  }
+  if (signal.aborted) throw getAbortError(signal);
 
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => {
@@ -79,10 +73,6 @@ export function createTimedAbortSignal(
     return createForwardedSignal(baseSignal);
   }
 
-  if (typeof timeoutMs === 'number' && shouldUseAbortAny(baseSignal)) {
-    return createAnySignal(baseSignal, timeoutMs);
-  }
-
   return createManualSignal(baseSignal, timeoutMs);
 }
 
@@ -98,21 +88,6 @@ function createForwardedSignal(baseSignal: AbortSignal): {
   return { signal: baseSignal, cleanup: () => {} };
 }
 
-function shouldUseAbortAny(
-  baseSignal: AbortSignal | undefined
-): baseSignal is AbortSignal {
-  return typeof AbortSignal.any === 'function' && baseSignal !== undefined;
-}
-
-function createAnySignal(
-  baseSignal: AbortSignal,
-  timeoutMs: number
-): { signal: AbortSignal; cleanup: () => void } {
-  const timeoutSignal = AbortSignal.timeout(timeoutMs);
-  const combined = AbortSignal.any([baseSignal, timeoutSignal]);
-  return { signal: combined, cleanup: () => {} };
-}
-
 function createManualSignal(
   baseSignal: AbortSignal | undefined,
   timeoutMs: number | undefined
@@ -120,9 +95,7 @@ function createManualSignal(
   const controller = new AbortController();
 
   const forwardAbort = (): void => {
-    const reason =
-      baseSignal?.reason instanceof Error ? baseSignal.reason : undefined;
-    controller.abort(reason);
+    controller.abort(baseSignal?.reason);
   };
 
   if (baseSignal) {
@@ -154,10 +127,11 @@ function createTimeout(
   if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs)) {
     return undefined;
   }
-
-  return setTimeout(() => {
+  const timeoutId = setTimeout(() => {
     controller.abort(createAbortError('Operation timed out'));
   }, timeoutMs);
+  (timeoutId as unknown as { unref?: () => void }).unref?.();
+  return timeoutId;
 }
 
 interface ParallelResult<R> {
@@ -215,15 +189,24 @@ function attachAbortListener<T, R>(
   };
 }
 
-function createAbortPromise(signal?: AbortSignal): Promise<void> | undefined {
-  if (!signal) return undefined;
-  if (signal.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
+function createAbortPromise(signal?: AbortSignal): {
+  abortPromise?: Promise<void>;
+  cleanup: () => void;
+} {
+  if (!signal) return { cleanup: () => {} };
+  if (signal.aborted)
+    return { abortPromise: Promise.resolve(), cleanup: () => {} };
+  let cleanup = (): void => {};
+  const abortPromise = new Promise<void>((resolve) => {
     const onAbort = (): void => {
       resolve();
     };
     signal.addEventListener('abort', onAbort, { once: true });
+    cleanup = (): void => {
+      signal.removeEventListener('abort', onAbort);
+    };
   });
+  return { abortPromise, cleanup };
 }
 
 function canStartNext<T, R>(state: ParallelState<T, R>): boolean {
@@ -292,9 +275,11 @@ export async function processInParallel<T, R>(
   signal?: AbortSignal
 ): Promise<ParallelResult<R>> {
   const state = createState(items, processor, concurrency, signal);
-  const abortPromise = createAbortPromise(signal);
+  const { abortPromise, cleanup: cleanupAbortPromise } =
+    createAbortPromise(signal);
 
   if (items.length === 0) {
+    cleanupAbortPromise();
     return { results: state.results, errors: state.errors };
   }
 
@@ -304,6 +289,7 @@ export async function processInParallel<T, R>(
     await drainTasks(state, abortPromise);
   } finally {
     detachAbort();
+    cleanupAbortPromise();
   }
 
   if (state.aborted) {
@@ -713,6 +699,7 @@ async function readRangeContent(
     }
 
     if (lineNumber > stopAt) {
+      hasMoreLines = true;
       stoppedEarly = true;
       break;
     }
