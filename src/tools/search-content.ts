@@ -17,6 +17,7 @@ import {
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
+  canSendProgress,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -200,18 +201,21 @@ async function handleSearchContent(
 function createProgressReporter(
   extra: ToolExtra
 ): (progress: { total?: number; current: number }) => void {
+  if (!canSendProgress(extra)) {
+    return () => {};
+  }
+  const { _meta, sendNotification } = extra;
+  const token = _meta.progressToken;
   return (progress) => {
-    const token = extra._meta?.progressToken;
-    if (token && extra.sendNotification) {
-      void extra.sendNotification({
-        method: 'notifications/progress',
-        params: {
-          progressToken: token,
-          total: progress.total,
-          progress: progress.current,
-        },
-      });
-    }
+    const { current, total } = progress;
+    void sendNotification({
+      method: 'notifications/progress',
+      params: {
+        progressToken: token,
+        total,
+        progress: current,
+      },
+    });
   };
 }
 

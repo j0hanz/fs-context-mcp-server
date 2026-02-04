@@ -138,6 +138,16 @@ export interface ToolExtra {
   }) => Promise<void>;
 }
 
+export function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
+  _meta: { progressToken: ProgressToken };
+  sendNotification: NonNullable<ToolExtra['sendNotification']>;
+} {
+  return (
+    extra._meta?.progressToken !== undefined &&
+    extra.sendNotification !== undefined
+  );
+}
+
 export interface ToolRegistrationOptions {
   resourceStore?: ResourceStore;
   isInitialized?: () => boolean;
@@ -200,7 +210,7 @@ async function sendProgressNotification(
   extra: ToolExtra,
   params: ProgressNotificationParams
 ): Promise<void> {
-  if (!extra.sendNotification) return;
+  if (!canSendProgress(extra)) return;
   try {
     await extra.sendNotification({
       method: 'notifications/progress',
@@ -232,10 +242,10 @@ async function withProgress<T>(
   extra: ToolExtra,
   run: () => Promise<T>
 ): Promise<T> {
-  const token = extra._meta?.progressToken;
-  if (!token) {
+  if (!canSendProgress(extra)) {
     return await run();
   }
+  const token = extra._meta.progressToken;
 
   const total = 1;
   await sendProgressNotification(extra, {

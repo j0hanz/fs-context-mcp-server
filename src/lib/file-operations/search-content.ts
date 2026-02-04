@@ -633,6 +633,24 @@ function createScanSummary(): ScanSummary {
   };
 }
 
+function isTimeoutAbort(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === 'AbortError' &&
+    error.message.toLowerCase().includes('timed out')
+  );
+}
+
+function buildTimeoutSearchResult(
+  root: string,
+  pattern: string,
+  filePattern: string
+): SearchContentResult {
+  const summary = createScanSummary();
+  markTruncated(summary, 'timeout');
+  return buildSearchResult(root, pattern, filePattern, [], summary);
+}
+
 function stopIfAborted(signal: AbortSignal, summary: ScanSummary): boolean {
   if (!signal.aborted) return false;
   markTruncated(summary, 'timeout');
@@ -1691,9 +1709,11 @@ export async function searchContent(
     options.signal,
     opts.timeoutMs
   );
+  let resolvedBasePath: string | undefined;
 
   try {
     const details = await validateExistingPathDetailed(basePath, signal);
+    resolvedBasePath = details.resolvedPath;
     const stats = await withAbort(fsp.stat(details.resolvedPath), signal);
 
     if (stats.isDirectory()) {
@@ -1701,6 +1721,7 @@ export async function searchContent(
         details.resolvedPath,
         signal
       );
+      resolvedBasePath = root;
       return await executeSearch(
         root,
         pattern,
@@ -1712,6 +1733,7 @@ export async function searchContent(
 
     if (stats.isFile()) {
       const baseDir = path.dirname(details.requestedPath);
+      resolvedBasePath = baseDir;
       return await executeSearchSingleFile(
         {
           resolvedPath: details.resolvedPath,
@@ -1729,6 +1751,15 @@ export async function searchContent(
       `Path must be a file or directory: ${basePath}`,
       basePath
     );
+  } catch (error: unknown) {
+    if (isTimeoutAbort(error)) {
+      return buildTimeoutSearchResult(
+        resolvedBasePath ?? basePath,
+        pattern,
+        opts.filePattern
+      );
+    }
+    throw error;
   } finally {
     cleanup();
   }

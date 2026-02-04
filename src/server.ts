@@ -136,12 +136,16 @@ const ROOTS_TIMEOUT_MS = 5000;
 const ROOTS_DEBOUNCE_MS = 100;
 const MCP_LOGGER_NAME = 'fs-context';
 
+function canSendMcpLogs(server: McpServer): boolean {
+  return Boolean(server.server.getClientCapabilities());
+}
+
 function logToMcp(
   server: McpServer | undefined,
   level: LoggingLevel,
   data: string
 ): void {
-  if (!server) {
+  if (!server || !canSendMcpLogs(server)) {
     console.error(data);
     return;
   }
@@ -282,10 +286,12 @@ function getRootsManager(server: McpServer): RootsManager {
   return manager;
 }
 
-const RootSchema = z.looseObject({
-  uri: z.string(),
-  name: z.string().optional(),
-});
+const RootSchema = z
+  .object({
+    uri: z.string(),
+    name: z.string().optional(),
+  })
+  .strict();
 
 const RootsResponseSchema = z.object({
   roots: z.array(RootSchema).optional(),
@@ -296,7 +302,7 @@ function extractRoots(value: unknown): Root[] {
   if (!parsed.success || !parsed.data.roots) {
     return [];
   }
-  return parsed.data.roots.filter(isRoot);
+  return parsed.data.roots.filter(isRoot).map(normalizeRoot);
 }
 
 async function resolveRootDirectories(roots: Root[]): Promise<string[]> {
@@ -319,6 +325,10 @@ function isRoot(value: unknown): value is Root {
     'uri' in value &&
     typeof value.uri === 'string'
   );
+}
+
+function normalizeRoot(root: Root): Root {
+  return root.name ? { uri: root.uri, name: root.name } : { uri: root.uri };
 }
 
 async function filterRootsWithinBaseline(
