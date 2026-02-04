@@ -55,6 +55,7 @@ coverage/
 .jscpd/
 reports/
 metrics/
-scripts/
-
-todos.json
+scripts/*
+!scripts/build.mjs
+!scripts/validate-fetch.mjs
+!scripts/tasks.mjs

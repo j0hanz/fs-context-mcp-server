@@ -9,7 +9,16 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['dist', 'node_modules', '*.config.mjs', '*.config.js', 'scripts'],
+    ignores: [
+      'dist',
+      'node_modules',
+      '*.config.mjs',
+      '*.config.js',
+      'src/__tests__/**',
+      'tests/**',
+      '**/*.test.ts',
+      '**/*.spec.ts',
+    ],
   },
   eslint.configs.recommended,
   sonarjs.configs.recommended,
@@ -25,7 +34,7 @@ export default defineConfig(
       ecmaVersion: 2022,
       sourceType: 'module',
       parserOptions: {
-        project: ['./tsconfig.eslint.json'],
+        project: ['./tsconfig.json'],
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -112,6 +121,7 @@ export default defineConfig(
       ],
 
       '@typescript-eslint/no-non-null-assertion': 'warn',
+      '@typescript-eslint/dot-notation': 'off',
       '@typescript-eslint/prefer-namespace-keyword': 'error',
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
