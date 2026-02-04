@@ -35,9 +35,17 @@ type NormalizedOptions = Required<
   pattern?: string;
 };
 
+type EntryType = DirectoryEntry['type'];
+type StoppedReason = ListDirectoryResult['summary']['stoppedReason'];
+
 interface EntryTotals {
   files: number;
   directories: number;
+}
+
+interface Counters {
+  skippedInaccessible: number;
+  symlinksNotFollowed: number;
 }
 
 interface EntryCandidate {
@@ -50,8 +58,12 @@ interface EntryCandidate {
   stats?: Stats;
 }
 
-interface SymlinkOptions {
+interface AppendContext {
+  basePath: string;
+  needsStats: boolean;
   includeSymlinkTargets: boolean;
+  totals: EntryTotals;
+  entries: DirectoryEntry[];
 }
 
 function normalizePattern(pattern: string | undefined): string | undefined {
@@ -69,10 +81,9 @@ function normalizeOptions(options: ListDirectoryOptions): NormalizedOptions {
     sortBy: options.sortBy ?? 'name',
     includeSymlinkTargets: options.includeSymlinkTargets ?? false,
     timeoutMs: options.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
+    ...(pattern !== undefined ? { pattern } : {}),
   };
-  if (pattern !== undefined) {
-    normalized.pattern = pattern;
-  }
+
   return normalized;
 }
 
@@ -90,6 +101,7 @@ function sortEntries(
     modified: (a: DirectoryEntry, b: DirectoryEntry) =>
       (a.modified?.getTime() ?? 0) - (b.modified?.getTime() ?? 0),
   }[sortBy];
+
   entries.sort(compare);
 }
 
@@ -104,18 +116,14 @@ function resolveMaxDepth(normalized: NormalizedOptions): number {
   return normalized.maxDepth;
 }
 
-function shouldStopScan(
+function getStopReason(
   signal: AbortSignal,
-  entryCount: number,
+  acceptedCount: number,
   maxEntries: number
-): { stop: boolean; reason?: ListDirectoryResult['summary']['stoppedReason'] } {
-  if (signal.aborted) {
-    return { stop: true, reason: 'aborted' };
-  }
-  if (entryCount >= maxEntries) {
-    return { stop: true, reason: 'maxEntries' };
-  }
-  return { stop: false };
+): StoppedReason | undefined {
+  if (signal.aborted) return 'aborted';
+  if (acceptedCount >= maxEntries) return 'maxEntries';
+  return undefined;
 }
 
 async function* readDirectoryEntries(
@@ -136,9 +144,11 @@ async function* readDirectoryEntries(
 
     const entryPath = path.join(basePath, dirent.name);
     let stats: Stats | undefined;
+
     if (needsStats) {
       stats = await withAbort(fsp.lstat(entryPath), signal);
     }
+
     yield {
       path: entryPath,
       dirent,
@@ -158,9 +168,11 @@ function createEntryStream(
     !normalized.pattern &&
     normalized.excludePatterns.length === 0 &&
     maxDepth === 1;
+
   if (canUseFastPath) {
     return readDirectoryEntries(basePath, normalized, needsStats, signal);
   }
+
   return globEntries({
     cwd: basePath,
     pattern: normalized.pattern ?? '*',
@@ -175,9 +187,7 @@ function createEntryStream(
   });
 }
 
-function resolveEntryType(
-  dirent: EntryCandidate['dirent']
-): DirectoryEntry['type'] {
+function resolveEntryType(dirent: EntryCandidate['dirent']): EntryType {
   if (dirent.isDirectory()) return 'directory';
   if (dirent.isSymbolicLink()) return 'symlink';
   if (dirent.isFile()) return 'file';
@@ -189,7 +199,7 @@ function resolveRelativePath(basePath: string, entryPath: string): string {
 }
 
 async function resolveSymlinkTarget(
-  entryType: DirectoryEntry['type'],
+  entryType: EntryType,
   includeSymlinkTargets: boolean,
   entryPath: string
 ): Promise<string | undefined> {
@@ -199,21 +209,22 @@ async function resolveSymlinkTarget(
   return await fsp.readlink(entryPath).catch(() => undefined);
 }
 
-function updateTotals(type: DirectoryEntry['type'], totals: EntryTotals): void {
-  if (type === 'file') totals.files += 1;
-  if (type === 'directory') totals.directories += 1;
+function updateTotals(entryType: EntryType, totals: EntryTotals): void {
+  if (entryType === 'file') totals.files += 1;
+  if (entryType === 'directory') totals.directories += 1;
 }
 
 function buildDirectoryEntry(
   basePath: string,
   entry: { path: string; stats?: Stats },
-  entryType: DirectoryEntry['type'],
+  entryType: EntryType,
   needsStats: boolean,
   symlinkTarget: string | undefined
 ): DirectoryEntry {
   const size =
     needsStats && entry.stats?.isFile() ? entry.stats.size : undefined;
   const modified = needsStats ? entry.stats?.mtime : undefined;
+
   return {
     name: path.basename(entry.path),
     path: entry.path,
@@ -226,9 +237,9 @@ function buildDirectoryEntry(
 }
 
 function trackSymlink(
-  entryType: DirectoryEntry['type'],
+  entryType: EntryType,
   includeSymlinkTargets: boolean,
-  counters: { symlinksNotFollowed: number }
+  counters: Counters
 ): void {
   if (entryType === 'symlink' && !includeSymlinkTargets) {
     counters.symlinksNotFollowed += 1;
@@ -238,7 +249,7 @@ function trackSymlink(
 async function isEntryAccessible(
   entryPath: string,
   signal: AbortSignal,
-  counters: { skippedInaccessible: number }
+  counters: Counters
 ): Promise<boolean> {
   try {
     const validated = await validateExistingPathDetailed(entryPath, signal);
@@ -253,52 +264,53 @@ async function isEntryAccessible(
   }
 }
 
-async function appendEntryWithQueue(
-  basePath: string,
+function appendEntry(
   entry: EntryCandidate,
-  normalized: NormalizedOptions,
-  needsStats: boolean,
-  totals: EntryTotals,
-  entries: DirectoryEntry[],
+  entryType: EntryType,
+  symlinkTarget: string | undefined,
+  ctx: AppendContext
+): void {
+  updateTotals(entryType, ctx.totals);
+
+  ctx.entries.push(
+    buildDirectoryEntry(
+      ctx.basePath,
+      entry,
+      entryType,
+      ctx.needsStats,
+      symlinkTarget
+    )
+  );
+}
+
+async function enqueueAppendEntry(
+  entry: EntryCandidate,
+  entryType: EntryType,
+  ctx: AppendContext,
   pending: Promise<void>[],
   flushPending: () => Promise<void>
 ): Promise<void> {
-  const task = appendEntry(
-    basePath,
-    entry,
-    normalized,
-    needsStats,
-    totals,
-    entries
-  );
-  if (normalized.includeSymlinkTargets) {
-    pending.push(task);
-    if (pending.length >= PARALLEL_CONCURRENCY) {
-      await flushPending();
-    }
+  if (!ctx.includeSymlinkTargets) {
+    appendEntry(entry, entryType, undefined, ctx);
     return;
   }
-  await task;
-}
 
-async function appendEntry(
-  basePath: string,
-  entry: EntryCandidate,
-  options: SymlinkOptions,
-  needsStats: boolean,
-  totals: EntryTotals,
-  entries: DirectoryEntry[]
-): Promise<void> {
-  const entryType = resolveEntryType(entry.dirent);
-  const symlinkTarget = await resolveSymlinkTarget(
-    entryType,
-    options.includeSymlinkTargets,
-    entry.path
-  );
-  updateTotals(entryType, totals);
-  entries.push(
-    buildDirectoryEntry(basePath, entry, entryType, needsStats, symlinkTarget)
-  );
+  // Preserve the original behavior: resolve symlink targets in parallel
+  // when includeSymlinkTargets is enabled (bounded by PARALLEL_CONCURRENCY).
+  const task = (async (): Promise<void> => {
+    const symlinkTarget = await resolveSymlinkTarget(
+      entryType,
+      ctx.includeSymlinkTargets,
+      entry.path
+    );
+    appendEntry(entry, entryType, symlinkTarget, ctx);
+  })();
+
+  pending.push(task);
+
+  if (pending.length >= PARALLEL_CONCURRENCY) {
+    await flushPending();
+  }
 }
 
 function buildSummary(
@@ -306,8 +318,8 @@ function buildSummary(
   totals: EntryTotals,
   maxDepth: number,
   truncated: boolean,
-  stoppedReason: ListDirectoryResult['summary']['stoppedReason'] | undefined,
-  extra: { skippedInaccessible: number; symlinksNotFollowed: number }
+  stoppedReason: StoppedReason | undefined,
+  counters: Counters
 ): ListDirectoryResult['summary'] {
   const baseSummary: ListDirectoryResult['summary'] = {
     totalEntries: entries.length,
@@ -317,9 +329,10 @@ function buildSummary(
     totalDirectories: totals.directories,
     maxDepthReached: maxDepth,
     truncated,
-    skippedInaccessible: extra.skippedInaccessible,
-    symlinksNotFollowed: extra.symlinksNotFollowed,
+    skippedInaccessible: counters.skippedInaccessible,
+    symlinksNotFollowed: counters.symlinksNotFollowed,
   };
+
   return {
     ...baseSummary,
     ...(stoppedReason !== undefined ? { stoppedReason } : {}),
@@ -336,19 +349,18 @@ async function collectEntries(
   entries: DirectoryEntry[];
   totals: EntryTotals;
   truncated: boolean;
-  stoppedReason: ListDirectoryResult['summary']['stoppedReason'] | undefined;
-  skippedInaccessible: number;
-  symlinksNotFollowed: number;
+  stoppedReason: StoppedReason | undefined;
+  counters: Counters;
 }> {
   const entries: DirectoryEntry[] = [];
   const totals: EntryTotals = { files: 0, directories: 0 };
+  const counters: Counters = { skippedInaccessible: 0, symlinksNotFollowed: 0 };
+
   let truncated = false;
-  let stoppedReason:
-    | ListDirectoryResult['summary']['stoppedReason']
-    | undefined;
-  const counters = { skippedInaccessible: 0, symlinksNotFollowed: 0 };
+  let stoppedReason: StoppedReason | undefined;
+
   const pending: Promise<void>[] = [];
-  let scheduledCount = 0;
+  let acceptedCount = 0;
 
   const stream = createEntryStream(
     basePath,
@@ -363,11 +375,23 @@ async function collectEntries(
     await Promise.allSettled(pending.splice(0));
   };
 
+  const appendCtx: AppendContext = {
+    basePath,
+    needsStats,
+    includeSymlinkTargets: normalized.includeSymlinkTargets,
+    totals,
+    entries,
+  };
+
   for await (const entry of stream) {
-    const stop = shouldStopScan(signal, scheduledCount, normalized.maxEntries);
-    if (stop.stop) {
+    const stopReason = getStopReason(
+      signal,
+      acceptedCount,
+      normalized.maxEntries
+    );
+    if (stopReason) {
       truncated = true;
-      stoppedReason = stop.reason;
+      stoppedReason = stopReason;
       break;
     }
 
@@ -379,14 +403,11 @@ async function collectEntries(
       continue;
     }
 
-    scheduledCount += 1;
-    await appendEntryWithQueue(
-      basePath,
+    acceptedCount += 1;
+    await enqueueAppendEntry(
       entry,
-      normalized,
-      needsStats,
-      totals,
-      entries,
+      entryType,
+      appendCtx,
       pending,
       flushPending
     );
@@ -396,14 +417,7 @@ async function collectEntries(
     await flushPending();
   }
 
-  return {
-    entries,
-    totals,
-    truncated,
-    stoppedReason,
-    skippedInaccessible: counters.skippedInaccessible,
-    symlinksNotFollowed: counters.symlinksNotFollowed,
-  };
+  return { entries, totals, truncated, stoppedReason, counters };
 }
 
 async function executeListDirectory(
@@ -416,23 +430,22 @@ async function executeListDirectory(
 }> {
   const needsStats = needsStatsForSort(normalized.sortBy);
   const maxDepth = resolveMaxDepth(normalized);
-  const {
-    entries,
-    totals,
-    truncated,
-    stoppedReason,
-    skippedInaccessible,
-    symlinksNotFollowed,
-  } = await collectEntries(basePath, normalized, signal, needsStats, maxDepth);
+
+  const { entries, totals, truncated, stoppedReason, counters } =
+    await collectEntries(basePath, normalized, signal, needsStats, maxDepth);
 
   sortEntries(entries, normalized.sortBy);
 
   return {
     entries,
-    summary: buildSummary(entries, totals, maxDepth, truncated, stoppedReason, {
-      skippedInaccessible,
-      symlinksNotFollowed,
-    }),
+    summary: buildSummary(
+      entries,
+      totals,
+      maxDepth,
+      truncated,
+      stoppedReason,
+      counters
+    ),
   };
 }
 
