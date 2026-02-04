@@ -41,6 +41,19 @@ export interface GlobEntriesOptions {
   suppressErrors?: boolean;
 }
 
+interface NormalizedGlob {
+  cwd: string;
+  patterns: readonly string[];
+  exclude: readonly string[];
+  useDirents: boolean;
+  suppressErrors: boolean;
+  maxDepth?: number;
+}
+
+function normalizeToPosixPath(filePath: string): string {
+  return filePath.replace(/\\/gu, '/');
+}
+
 function normalizePattern(pattern: string, baseNameMatch: boolean): string {
   const normalized = pattern.replace(/\\/gu, '/');
   if (!baseNameMatch) return normalized;
@@ -92,10 +105,6 @@ function splitPatternPrefix(normalizedPattern: string): {
   };
 }
 
-function normalizeToPosixPath(filePath: string): string {
-  return filePath.replace(/\\/gu, '/');
-}
-
 function buildHiddenPatterns(
   normalizedPattern: string,
   maxDepth: number
@@ -106,6 +115,7 @@ function buildHiddenPatterns(
   const { prefix, remainder } = splitPatternPrefix(normalizedPattern);
   const remainderSegments = remainder.length > 0 ? remainder.split('/') : [];
 
+  // Dotfile candidate handling (e.g. foo/bar -> .foo/bar, foo/.bar)
   const dotfileSegments = [...remainderSegments];
   const firstCandidateIndex = dotfileSegments.findIndex(
     (segment) => segment !== '**' && segment.length > 0
@@ -118,6 +128,7 @@ function buildHiddenPatterns(
     }
   }
 
+  // Globstar handling (e.g. **/foo -> **/.*/**/foo, **/.foo)
   if (remainder.startsWith('**/')) {
     const afterGlobstar = remainder.slice('**/'.length);
 
@@ -135,6 +146,49 @@ function buildHiddenPatterns(
   return [...patterns];
 }
 
+function shouldUseGlobDirents(options: GlobEntriesOptions): boolean {
+  return !options.stats && !options.followSymbolicLinks;
+}
+
+function normalizeOptions(options: GlobEntriesOptions): NormalizedGlob {
+  const normalized = normalizePattern(options.pattern, options.baseNameMatch);
+  const maxHiddenDepth = options.maxDepth ?? 10;
+
+  const patterns = options.includeHidden
+    ? buildHiddenPatterns(normalized, maxHiddenDepth)
+    : [normalized];
+
+  const result: NormalizedGlob = {
+    cwd: options.cwd,
+    patterns,
+    exclude: normalizeIgnorePatterns(options.excludePatterns),
+    useDirents: shouldUseGlobDirents(options),
+    suppressErrors: options.suppressErrors ?? false,
+  };
+
+  if (options.maxDepth !== undefined) {
+    result.maxDepth = options.maxDepth;
+  }
+
+  return result;
+}
+
+function resolveDepth(cwd: string, entryPath: string): number {
+  const relative = path.relative(cwd, entryPath);
+  if (relative.length === 0) return 0;
+  const normalized = normalizeToPosixPath(relative);
+  const parts = normalized.split('/').filter((part) => part.length > 0);
+  return parts.length;
+}
+
+function isWithinDepthLimit(
+  normalized: NormalizedGlob,
+  entryPath: string
+): boolean {
+  if (normalized.maxDepth === undefined) return true;
+  return resolveDepth(normalized.cwd, entryPath) <= normalized.maxDepth;
+}
+
 function toAbsolutePath(cwd: string, match: string): string {
   return path.isAbsolute(match) ? match : path.resolve(cwd, match);
 }
@@ -146,11 +200,14 @@ function toAbsolutePathFromDirent(cwd: string, dirent: GlobDirentLike): string {
 }
 
 function isGlobDirentLike(value: unknown): value is GlobDirentLike {
+  if (typeof value !== 'object' || value === null) return false;
+
+  const v = value as Partial<GlobDirentLike>;
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    'name' in value &&
-    typeof (value as { name: unknown }).name === 'string'
+    typeof v.name === 'string' &&
+    typeof v.isFile === 'function' &&
+    typeof v.isDirectory === 'function' &&
+    typeof v.isSymbolicLink === 'function'
   );
 }
 
@@ -163,35 +220,11 @@ function resolveAbsolutePathFromGlobMatch(
     : toAbsolutePathFromDirent(cwd, match);
 }
 
-function isWithinDepthLimit(
-  options: GlobEntriesOptions,
-  entryPath: string
+function passesOnlyFilesFilter(
+  dirent: DirentLike,
+  onlyFiles: boolean
 ): boolean {
-  if (options.maxDepth === undefined) return true;
-  return resolveDepth(options.cwd, entryPath) <= options.maxDepth;
-}
-
-function createGlobIterator(
-  pattern: string,
-  cwd: string,
-  exclude: readonly string[],
-  withFileTypes: boolean,
-  suppressErrors: boolean
-): NodeJS.AsyncIterator<string | GlobDirentLike> | null {
-  try {
-    return fsGlob(pattern, {
-      cwd,
-      exclude,
-      withFileTypes,
-    });
-  } catch (error) {
-    if (suppressErrors) return null;
-    throw error;
-  }
-}
-
-function shouldUseGlobDirents(options: GlobEntriesOptions): boolean {
-  return !options.stats && !options.followSymbolicLinks;
+  return !onlyFiles || dirent.isFile();
 }
 
 function buildEntryFromGlobDirent(
@@ -199,63 +232,8 @@ function buildEntryFromGlobDirent(
   dirent: GlobDirentLike,
   options: GlobEntriesOptions
 ): GlobEntry | null {
-  if (options.onlyFiles && !dirent.isFile()) return null;
+  if (!passesOnlyFilesFilter(dirent, options.onlyFiles)) return null;
   return { path: absolutePath, dirent };
-}
-
-async function processGlobMatch(
-  match: string | GlobDirentLike,
-  options: GlobEntriesOptions,
-  seen: Set<string>,
-  useDirents: boolean
-): Promise<GlobEntry | null> {
-  const absolutePath = resolveAbsolutePathFromGlobMatch(options.cwd, match);
-  if (seen.has(absolutePath)) return null;
-  seen.add(absolutePath);
-  if (!isWithinDepthLimit(options, absolutePath)) return null;
-
-  const entry =
-    useDirents && isGlobDirentLike(match)
-      ? buildEntryFromGlobDirent(absolutePath, match, options)
-      : await buildEntry(absolutePath, options);
-  if (!entry) return null;
-  if (options.onlyFiles && !entry.dirent.isFile()) return null;
-  return entry;
-}
-
-async function* scanPattern(
-  pattern: string,
-  options: GlobEntriesOptions,
-  exclude: readonly string[],
-  seen: Set<string>
-): AsyncGenerator<GlobEntry> {
-  const useDirents = shouldUseGlobDirents(options);
-  const iterator = createGlobIterator(
-    pattern,
-    options.cwd,
-    exclude,
-    useDirents,
-    options.suppressErrors ?? false
-  );
-  if (!iterator) return;
-
-  try {
-    for await (const match of iterator) {
-      const entry = await processGlobMatch(match, options, seen, useDirents);
-      if (entry) yield entry;
-    }
-  } catch (error) {
-    if (options.suppressErrors) return;
-    throw error;
-  }
-}
-
-function resolveDepth(cwd: string, entryPath: string): number {
-  const relative = path.relative(cwd, entryPath);
-  if (relative.length === 0) return 0;
-  const normalized = normalizeToPosixPath(relative);
-  const parts = normalized.split('/').filter((part) => part.length > 0);
-  return parts.length;
 }
 
 async function buildEntry(
@@ -266,16 +244,82 @@ async function buildEntry(
     const stats = options.followSymbolicLinks
       ? await fs.stat(entryPath)
       : await fs.lstat(entryPath);
-    const result: GlobEntry = {
-      path: entryPath,
-      dirent: stats,
-    };
+
+    if (!passesOnlyFilesFilter(stats, options.onlyFiles)) {
+      return null;
+    }
+
+    const result: GlobEntry = { path: entryPath, dirent: stats };
     if (options.stats) result.stats = stats;
     return result;
   } catch (error) {
-    if (options.suppressErrors) {
-      return null;
+    if (options.suppressErrors) return null;
+    throw error;
+  }
+}
+
+function tryCreateGlobIterable(
+  pattern: string,
+  normalized: NormalizedGlob
+): AsyncIterable<string | GlobDirentLike> | null {
+  try {
+    return fsGlob(pattern, {
+      cwd: normalized.cwd,
+      exclude: normalized.exclude,
+      withFileTypes: normalized.useDirents,
+    });
+  } catch (error) {
+    if (normalized.suppressErrors) return null;
+    throw error;
+  }
+}
+
+function shouldYieldEntry(
+  absolutePath: string,
+  normalized: NormalizedGlob,
+  seen: Set<string>
+): boolean {
+  if (seen.has(absolutePath)) return false;
+  seen.add(absolutePath);
+  if (!isWithinDepthLimit(normalized, absolutePath)) return false;
+  return true;
+}
+
+async function buildEntryFromMatch(
+  match: string | GlobDirentLike,
+  options: GlobEntriesOptions,
+  normalized: NormalizedGlob,
+  seen: Set<string>
+): Promise<GlobEntry | null> {
+  const absolutePath = resolveAbsolutePathFromGlobMatch(normalized.cwd, match);
+
+  if (!shouldYieldEntry(absolutePath, normalized, seen)) {
+    return null;
+  }
+
+  if (normalized.useDirents && isGlobDirentLike(match)) {
+    return buildEntryFromGlobDirent(absolutePath, match, options);
+  }
+
+  return await buildEntry(absolutePath, options);
+}
+
+async function* scanPattern(
+  pattern: string,
+  options: GlobEntriesOptions,
+  normalized: NormalizedGlob,
+  seen: Set<string>
+): AsyncGenerator<GlobEntry> {
+  const iterable = tryCreateGlobIterable(pattern, normalized);
+  if (!iterable) return;
+
+  try {
+    for await (const match of iterable) {
+      const entry = await buildEntryFromMatch(match, options, normalized, seen);
+      if (entry) yield entry;
     }
+  } catch (error) {
+    if (normalized.suppressErrors) return;
     throw error;
   }
 }
@@ -283,17 +327,11 @@ async function buildEntry(
 async function* nativeGlobEntries(
   options: GlobEntriesOptions
 ): AsyncGenerator<GlobEntry> {
-  const normalized = normalizePattern(options.pattern, options.baseNameMatch);
-  const maxHiddenDepth = options.maxDepth ?? 10;
-  const patterns = options.includeHidden
-    ? buildHiddenPatterns(normalized, maxHiddenDepth)
-    : [normalized];
-
-  const exclude = normalizeIgnorePatterns(options.excludePatterns);
+  const normalized = normalizeOptions(options);
   const seen = new Set<string>();
 
-  for (const pattern of patterns) {
-    yield* scanPattern(pattern, options, exclude, seen);
+  for (const pattern of normalized.patterns) {
+    yield* scanPattern(pattern, options, normalized, seen);
   }
 }
 
@@ -303,11 +341,9 @@ export async function* globEntries(
   const engine = 'node:fs/promises.glob';
 
   const traceContext = shouldPublishOpsTrace()
-    ? {
-        op: 'globEntries',
-        engine,
-      }
+    ? { op: 'globEntries', engine }
     : undefined;
+
   if (traceContext) publishOpsTraceStart(traceContext);
 
   try {
