@@ -98,6 +98,10 @@ function createManualSignal(
     controller.abort(baseSignal?.reason);
   };
 
+  const forwardTimeout = (): void => {
+    controller.abort(createAbortError('Operation timed out'));
+  };
+
   if (baseSignal) {
     if (baseSignal.aborted) {
       forwardAbort();
@@ -106,32 +110,22 @@ function createManualSignal(
     }
   }
 
-  const timeoutId = createTimeout(controller, timeoutMs);
+  let timeoutSignal: AbortSignal | undefined;
+  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)) {
+    timeoutSignal = AbortSignal.timeout(timeoutMs);
+    timeoutSignal.addEventListener('abort', forwardTimeout, { once: true });
+  }
 
   const cleanup = (): void => {
     if (baseSignal) {
       baseSignal.removeEventListener('abort', forwardAbort);
     }
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+    if (timeoutSignal) {
+      timeoutSignal.removeEventListener('abort', forwardTimeout);
     }
   };
 
   return { signal: controller.signal, cleanup };
-}
-
-function createTimeout(
-  controller: AbortController,
-  timeoutMs: number | undefined
-): ReturnType<typeof setTimeout> | undefined {
-  if (typeof timeoutMs !== 'number' || !Number.isFinite(timeoutMs)) {
-    return undefined;
-  }
-  const timeoutId = setTimeout(() => {
-    controller.abort(createAbortError('Operation timed out'));
-  }, timeoutMs);
-  (timeoutId as unknown as { unref?: () => void }).unref?.();
-  return timeoutId;
 }
 
 interface ParallelResult<R> {
