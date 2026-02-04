@@ -259,11 +259,11 @@ async function buildEntry(
 }
 
 function tryCreateGlobIterable(
-  pattern: string,
+  pattern: string | readonly string[],
   normalized: NormalizedGlob
 ): AsyncIterable<string | GlobDirentLike> | null {
   try {
-    return fsGlob(pattern, {
+    return fsGlob(pattern as string | string[], {
       cwd: normalized.cwd,
       exclude: normalized.exclude,
       withFileTypes: normalized.useDirents,
@@ -305,7 +305,7 @@ async function buildEntryFromMatch(
 }
 
 async function* scanPattern(
-  pattern: string,
+  pattern: string | readonly string[],
   options: GlobEntriesOptions,
   normalized: NormalizedGlob,
   seen: Set<string>
@@ -330,9 +330,7 @@ async function* nativeGlobEntries(
   const normalized = normalizeOptions(options);
   const seen = new Set<string>();
 
-  for (const pattern of normalized.patterns) {
-    yield* scanPattern(pattern, options, normalized, seen);
-  }
+  yield* scanPattern(normalized.patterns, options, normalized, seen);
 }
 
 export async function* globEntries(
