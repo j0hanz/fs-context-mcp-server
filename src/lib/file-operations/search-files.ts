@@ -9,6 +9,8 @@ import {
 import { createTimedAbortSignal } from '../fs-helpers.js';
 import { isSensitivePath } from '../path-policy.js';
 import {
+  isPathWithinDirectories,
+  normalizePath,
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
@@ -227,26 +229,43 @@ async function collectFromStream(
       continue;
     }
 
-    try {
-      const validated = await validateExistingPathDetailed(entry.path, signal);
-      if (isSensitivePath(validated.requestedPath, validated.resolvedPath)) {
-        state.skippedInaccessible++;
-        continue;
-      }
-    } catch {
+    const entryType = resolveEntryType(entry.dirent);
+    const isAccessible = await isEntryAccessible(
+      entry,
+      entryType,
+      root,
+      signal
+    );
+    if (!isAccessible) {
       state.skippedInaccessible++;
       continue;
     }
 
-    handleEntry(
-      entry,
-      resolveEntryType(entry.dirent),
-      needsStats,
-      normalized,
-      state
-    );
+    handleEntry(entry, entryType, needsStats, normalized, state);
     if (state.truncated) break;
   }
+}
+
+async function isEntryAccessible(
+  entry: SearchEntry,
+  entryType: SearchEntryType,
+  root: string,
+  signal: AbortSignal
+): Promise<boolean> {
+  if (entryType === 'symlink') {
+    try {
+      const validated = await validateExistingPathDetailed(entry.path, signal);
+      return !isSensitivePath(validated.requestedPath, validated.resolvedPath);
+    } catch {
+      return false;
+    }
+  }
+
+  const normalized = normalizePath(entry.path);
+  if (!isPathWithinDirectories(normalized, [root])) {
+    return false;
+  }
+  return !isSensitivePath(entry.path, normalized);
 }
 
 async function collectSearchResults(

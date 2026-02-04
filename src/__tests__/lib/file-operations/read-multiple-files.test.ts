@@ -65,12 +65,14 @@ function registerReadMultipleLimits(getTestDir: () => string): void {
   void it('readMultipleFiles supports head parameter', async () => {
     const filePath = path.join(getTestDir(), 'multiline.txt');
     const results = await readMultipleFiles([filePath], { head: 5 });
+    const [result] = results;
+    assert.ok(result);
 
-    const content = results[0].content ?? '';
+    const content = result.content ?? '';
     assert.ok(content.includes('Line 1'));
     assert.ok(content.includes('Line 5'));
-    assert.strictEqual(results[0].truncated, true);
-    assert.strictEqual(results[0].readMode, 'head');
+    assert.strictEqual(result.truncated, true);
+    assert.strictEqual(result.readMode, 'head');
   });
 
   void it('readMultipleFiles supports inclusive line ranges', async () => {
@@ -79,14 +81,16 @@ function registerReadMultipleLimits(getTestDir: () => string): void {
       startLine: 2,
       endLine: 3,
     });
+    const [result] = results;
+    assert.ok(result);
 
-    const content = results[0].content ?? '';
+    const content = result.content ?? '';
     assert.ok(content.includes('Line 2'));
     assert.ok(content.includes('Line 3'));
     assert.ok(!content.includes('Line 1'));
-    assert.strictEqual(results[0].readMode, 'range');
-    assert.strictEqual(results[0].startLine, 2);
-    assert.strictEqual(results[0].endLine, 3);
+    assert.strictEqual(result.readMode, 'range');
+    assert.strictEqual(result.startLine, 2);
+    assert.strictEqual(result.endLine, 3);
   });
 }
 

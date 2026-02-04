@@ -9,9 +9,15 @@ import {
   DEFAULT_SEARCH_TIMEOUT_MS,
   PARALLEL_CONCURRENCY,
 } from '../constants.js';
-import { createTimedAbortSignal, withAbort } from '../fs-helpers.js';
+import {
+  createTimedAbortSignal,
+  processInParallel,
+  withAbort,
+} from '../fs-helpers.js';
 import { isSensitivePath } from '../path-policy.js';
 import {
+  isPathWithinDirectories,
+  normalizePath,
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
@@ -137,23 +143,52 @@ async function* readDirectoryEntries(
     signal
   );
 
+  const entries: { dirent: (typeof dirents)[number]; entryPath: string }[] = [];
   for (const dirent of dirents) {
     if (!normalized.includeHidden && dirent.name.startsWith('.')) {
       continue;
     }
+    entries.push({ dirent, entryPath: path.join(basePath, dirent.name) });
+  }
 
-    const entryPath = path.join(basePath, dirent.name);
-    let stats: Stats | undefined;
-
-    if (needsStats) {
-      stats = await withAbort(fsp.lstat(entryPath), signal);
+  if (!needsStats) {
+    for (const entry of entries) {
+      yield {
+        path: entry.entryPath,
+        dirent: entry.dirent,
+      };
     }
+    return;
+  }
 
+  const { results, errors } = await processInParallel(
+    entries.map((entry, index) => ({ entry, index })),
+    async ({ entry, index }) => ({
+      index,
+      stats: await withAbort(fsp.lstat(entry.entryPath), signal),
+    }),
+    PARALLEL_CONCURRENCY,
+    signal
+  );
+
+  if (errors.length > 0) {
+    throw errors[0]?.error ?? new Error('Failed to read entry stats');
+  }
+
+  const statsByIndex = new Map<number, Stats>();
+  for (const result of results) {
+    statsByIndex.set(result.index, result.stats);
+  }
+
+  let index = 0;
+  for (const entry of entries) {
+    const stats = statsByIndex.get(index);
     yield {
-      path: entryPath,
-      dirent,
+      path: entry.entryPath,
+      dirent: entry.dirent,
       ...(stats ? { stats } : {}),
     };
+    index += 1;
   }
 }
 
@@ -248,9 +283,24 @@ function trackSymlink(
 
 async function isEntryAccessible(
   entryPath: string,
+  entryType: EntryType,
+  basePath: string,
   signal: AbortSignal,
   counters: Counters
 ): Promise<boolean> {
+  if (entryType !== 'symlink') {
+    const normalized = normalizePath(entryPath);
+    if (!isPathWithinDirectories(normalized, [basePath])) {
+      counters.skippedInaccessible += 1;
+      return false;
+    }
+    if (isSensitivePath(entryPath, normalized)) {
+      counters.skippedInaccessible += 1;
+      return false;
+    }
+    return true;
+  }
+
   try {
     const validated = await validateExistingPathDetailed(entryPath, signal);
     if (isSensitivePath(validated.requestedPath, validated.resolvedPath)) {
@@ -398,7 +448,13 @@ async function collectEntries(
     const entryType = resolveEntryType(entry.dirent);
     trackSymlink(entryType, normalized.includeSymlinkTargets, counters);
 
-    const accessible = await isEntryAccessible(entry.path, signal, counters);
+    const accessible = await isEntryAccessible(
+      entry.path,
+      entryType,
+      basePath,
+      signal,
+      counters
+    );
     if (!accessible) {
       continue;
     }

@@ -23,10 +23,14 @@ export function enableDiagnosticsEnv(): DiagnosticsEnvSnapshot {
   const previousDetail = process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL;
   process.env.FS_CONTEXT_DIAGNOSTICS = '1';
   process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL = '0';
-  return {
-    diagnostics: previousEnabled,
-    diagnosticsDetail: previousDetail,
-  };
+  const snapshot: DiagnosticsEnvSnapshot = {};
+  if (previousEnabled !== undefined) {
+    snapshot.diagnostics = previousEnabled;
+  }
+  if (previousDetail !== undefined) {
+    snapshot.diagnosticsDetail = previousDetail;
+  }
+  return snapshot;
 }
 
 export function restoreDiagnosticsEnv(snapshot: DiagnosticsEnvSnapshot): void {

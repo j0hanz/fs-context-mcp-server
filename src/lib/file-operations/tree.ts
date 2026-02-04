@@ -7,6 +7,8 @@ import {
 import { createTimedAbortSignal } from '../fs-helpers.js';
 import { isSensitivePath } from '../path-policy.js';
 import {
+  isPathWithinDirectories,
+  normalizePath,
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
@@ -150,16 +152,26 @@ async function resolveTreeEntry(
   relativePosix: string;
   name: string;
 } | null> {
-  try {
-    const validated = await validateExistingPathDetailed(entry.path, signal);
-    if (isSensitivePath(validated.requestedPath, validated.resolvedPath)) {
+  const type = resolveEntryType(entry.dirent);
+  if (type !== 'symlink') {
+    const normalized = normalizePath(entry.path);
+    if (!isPathWithinDirectories(normalized, [root])) {
       return null;
     }
-  } catch {
-    return null;
+    if (isSensitivePath(entry.path, normalized)) {
+      return null;
+    }
+  } else {
+    try {
+      const validated = await validateExistingPathDetailed(entry.path, signal);
+      if (isSensitivePath(validated.requestedPath, validated.resolvedPath)) {
+        return null;
+      }
+    } catch {
+      return null;
+    }
   }
 
-  const type = resolveEntryType(entry.dirent);
   if (
     gitignoreMatcher &&
     isIgnoredByGitignore(gitignoreMatcher, root, entry.path, {

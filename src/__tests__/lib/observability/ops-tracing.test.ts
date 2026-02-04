@@ -47,11 +47,9 @@ function createGlobOptions(testDir: string): GlobEntriesOptions {
     includeHidden: false,
     baseNameMatch: false,
     caseSensitiveMatch: true,
-    maxDepth: undefined,
     followSymbolicLinks: false,
     onlyFiles: false,
     stats: false,
-    suppressErrors: undefined,
   };
 }
 

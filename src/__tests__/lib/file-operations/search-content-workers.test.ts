@@ -127,7 +127,7 @@ function spawnSearchProcess(
       ...process.env,
       FS_CONTEXT_SEARCH_WORKERS: String(workers),
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
 }
 

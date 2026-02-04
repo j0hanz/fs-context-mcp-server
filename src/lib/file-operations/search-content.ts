@@ -33,6 +33,8 @@ import {
 } from '../observability.js';
 import { assertAllowedFileAccess, isSensitivePath } from '../path-policy.js';
 import {
+  isPathWithinDirectories,
+  normalizePath,
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
@@ -650,10 +652,27 @@ function shouldStopCollecting(
   return false;
 }
 
+function resolveNonSymlinkEntryPath(
+  root: string,
+  entryPath: string
+): ResolvedFile | null {
+  const normalized = normalizePath(entryPath);
+  if (!isPathWithinDirectories(normalized, [root])) return null;
+  return {
+    resolvedPath: normalized,
+    requestedPath: entryPath,
+  };
+}
+
 async function resolveEntryPath(
   entry: { path: string; dirent: { isSymbolicLink(): boolean } },
+  root: string,
   signal: AbortSignal
 ): Promise<ResolvedFile | null> {
+  if (!entry.dirent.isSymbolicLink()) {
+    return resolveNonSymlinkEntryPath(root, entry.path);
+  }
+
   try {
     const details = await validateExistingPathDetailed(entry.path, signal);
     return {
@@ -670,6 +689,7 @@ async function* collectFromStream(
     path: string;
     dirent: { isFile(): boolean; isSymbolicLink(): boolean };
   }>,
+  root: string,
   opts: ResolvedOptions,
   signal: AbortSignal,
   summary: ScanSummary,
@@ -681,7 +701,7 @@ async function* collectFromStream(
       break;
     }
 
-    const resolved = await resolveEntryPath(entry, signal);
+    const resolved = await resolveEntryPath(entry, root, signal);
     if (!resolved) {
       summary.skippedInaccessible++;
       continue;
@@ -722,7 +742,7 @@ function collectFilesStream(
   });
 
   return {
-    stream: collectFromStream(stream, opts, signal, summary, onProgress),
+    stream: collectFromStream(stream, root, opts, signal, summary, onProgress),
     summary,
   };
 }
@@ -1189,19 +1209,28 @@ class SearchWorkerPool {
     const promise = this.createScanPromise(slot, worker, scanRequest);
     const cancel = this.createCancel(slot, worker, id);
 
+    let resolveOutcome: (value: WorkerOutcome) => void = () => {};
+    const outcome = new Promise<WorkerOutcome>((resolve) => {
+      resolveOutcome = resolve;
+    });
+
     const task: ScanTask = {
       id,
       promise,
       cancel,
-      outcome: Promise.resolve({ task: undefined as unknown as ScanTask }),
+      outcome,
     };
 
-    task.outcome = promise.then(
-      (result) => ({ task, result }),
-      (error: unknown) => ({
-        task,
-        error: error instanceof Error ? error : new Error(String(error)),
-      })
+    void promise.then(
+      (result) => {
+        resolveOutcome({ task, result });
+      },
+      (error: unknown) => {
+        resolveOutcome({
+          task,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      }
     );
 
     return task;

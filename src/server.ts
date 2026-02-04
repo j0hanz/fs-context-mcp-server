@@ -282,8 +282,13 @@ function getRootsManager(server: McpServer): RootsManager {
   return manager;
 }
 
+const RootSchema = z.looseObject({
+  uri: z.string(),
+  name: z.string().optional(),
+});
+
 const RootsResponseSchema = z.object({
-  roots: z.array(z.any()).optional(),
+  roots: z.array(RootSchema).optional(),
 });
 
 function extractRoots(value: unknown): Root[] {
