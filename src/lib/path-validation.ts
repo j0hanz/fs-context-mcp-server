@@ -8,6 +8,9 @@ import type { Root } from '@modelcontextprotocol/sdk/types.js';
 import { ErrorCode, isNodeError, McpError } from './errors.js';
 import { assertNotAborted, withAbort } from './fs-helpers.js';
 
+const IS_WINDOWS = process.platform === 'win32';
+const PATH_SEPARATOR = path.sep;
+
 function expandHome(filepath: string): string {
   if (filepath.startsWith('~/') || filepath === '~') {
     return path.join(os.homedir(), filepath.slice(1));
@@ -19,19 +22,27 @@ export function normalizePath(p: string): string {
   const expanded = expandHome(p);
   const resolved = path.resolve(expanded);
 
-  if (process.platform === 'win32' && /^[A-Z]:/.test(resolved)) {
+  if (IS_WINDOWS && /^[A-Z]:/.test(resolved)) {
     return resolved.charAt(0).toLowerCase() + resolved.slice(1);
   }
 
   return resolved;
 }
 
+function isEscapingRoot(relative: string): boolean {
+  if (relative === '') return false;
+  if (relative === '..') return true;
+  const parentPrefix = `..${PATH_SEPARATOR}`;
+  return relative.startsWith(parentPrefix);
+}
+
 function resolveWithinRoot(root: string, input: string): string | null {
   const resolved = path.resolve(root, input);
   const relative = path.relative(root, resolved);
+
   if (
     relative === '' ||
-    (!relative.startsWith('..') && !path.isAbsolute(relative))
+    (!isEscapingRoot(relative) && !path.isAbsolute(relative))
   ) {
     return resolved;
   }
@@ -48,10 +59,8 @@ function rethrowIfAborted(error: unknown): void {
   }
 }
 
-const PATH_SEPARATOR = process.platform === 'win32' ? '\\' : '/';
-
 function normalizeForComparison(value: string): string {
-  return process.platform === 'win32' ? value.toLowerCase() : value;
+  return IS_WINDOWS ? value.toLowerCase() : value;
 }
 
 function isSamePath(left: string, right: string): boolean {
@@ -75,17 +84,33 @@ function normalizeAllowedDirectory(dir: string): string {
   return stripTrailingSeparator(normalized);
 }
 
-let allowedDirectories: string[] = [];
-
-function setAllowedDirectories(dirs: readonly string[]): void {
+function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
   const normalized = dirs
     .map(normalizeAllowedDirectory)
     .filter((dir) => dir.length > 0);
-  allowedDirectories = [...new Set(normalized)];
+
+  return [...new Set(normalized)];
+}
+
+let allowedDirectoriesExpanded: string[] = [];
+let allowedDirectoriesPrimary: string[] = [];
+
+function setAllowedDirectoriesState(
+  primary: readonly string[],
+  expanded: readonly string[]
+): void {
+  allowedDirectoriesPrimary = [...new Set(primary)];
+  allowedDirectoriesExpanded = [...new Set(expanded)];
 }
 
 export function getAllowedDirectories(): string[] {
-  return [...allowedDirectories];
+  return [...allowedDirectoriesExpanded];
+}
+
+function getAllowedDirectoriesForRelativeResolution(): string[] {
+  return allowedDirectoriesPrimary.length > 0
+    ? [...allowedDirectoriesPrimary]
+    : [...allowedDirectoriesExpanded];
 }
 
 export function isPathWithinDirectories(
@@ -98,33 +123,6 @@ export function isPathWithinDirectories(
   );
 }
 
-async function expandAllowedDirectories(
-  dirs: readonly string[],
-  signal?: AbortSignal
-): Promise<string[]> {
-  const normalizedDirs = dirs
-    .map(normalizeAllowedDirectory)
-    .filter((dir): dir is string => Boolean(dir) && dir.length > 0);
-
-  const realPaths = await Promise.all(
-    normalizedDirs.map((dir) => resolveRealPath(dir, signal))
-  );
-
-  const expanded: string[] = [];
-  for (let i = 0; i < normalizedDirs.length; i++) {
-    const normalized = normalizedDirs[i];
-    if (!normalized) continue;
-    expanded.push(normalized);
-
-    const normalizedReal = realPaths[i];
-    if (normalizedReal && !isSamePath(normalizedReal, normalized)) {
-      expanded.push(normalizedReal);
-    }
-  }
-
-  return [...new Set(expanded)];
-}
-
 async function resolveRealPath(
   normalized: string,
   signal?: AbortSignal
@@ -133,17 +131,43 @@ async function resolveRealPath(
     assertNotAborted(signal);
     const realPath = await withAbort(fs.realpath(normalized), signal);
     return normalizeAllowedDirectory(realPath);
-  } catch {
+  } catch (error) {
+    rethrowIfAborted(error);
     return null;
   }
+}
+
+async function expandAllowedDirectories(
+  primaryDirs: readonly string[],
+  signal?: AbortSignal
+): Promise<string[]> {
+  const realPaths = await Promise.all(
+    primaryDirs.map((dir) => resolveRealPath(dir, signal))
+  );
+
+  const expanded: string[] = [];
+  for (let i = 0; i < primaryDirs.length; i++) {
+    const primary = primaryDirs[i];
+    if (!primary) continue;
+
+    expanded.push(primary);
+
+    const real = realPaths[i];
+    if (real && !isSamePath(real, primary)) {
+      expanded.push(real);
+    }
+  }
+
+  return [...new Set(expanded)];
 }
 
 export async function setAllowedDirectoriesResolved(
   dirs: readonly string[],
   signal?: AbortSignal
 ): Promise<void> {
-  const expanded = await expandAllowedDirectories(dirs, signal);
-  setAllowedDirectories(expanded);
+  const primary = normalizeAllowedDirectories(dirs);
+  const expanded = await expandAllowedDirectories(primary, signal);
+  setAllowedDirectoriesState(primary, expanded);
 }
 
 export const RESERVED_DEVICE_NAMES = new Set([
@@ -215,7 +239,7 @@ function getReservedDeviceName(segment: string): string | undefined {
 export function getReservedDeviceNameForPath(
   requestedPath: string
 ): string | undefined {
-  if (process.platform !== 'win32') return undefined;
+  if (!IS_WINDOWS) return undefined;
   const segments = requestedPath.split(/[\\/]/);
   for (const segment of segments) {
     const reserved = getReservedDeviceName(segment);
@@ -225,7 +249,7 @@ export function getReservedDeviceNameForPath(
 }
 
 function ensureNoReservedWindowsNames(requestedPath: string): void {
-  if (process.platform !== 'win32') return;
+  if (!IS_WINDOWS) return;
 
   const segments = requestedPath.split(/[\\/]/);
   for (const segment of segments) {
@@ -241,18 +265,22 @@ function ensureNoReservedWindowsNames(requestedPath: string): void {
 }
 
 export function isWindowsDriveRelativePath(requestedPath: string): boolean {
-  if (process.platform !== 'win32') return false;
+  if (!IS_WINDOWS) return false;
+
   const driveLetter = requestedPath.charCodeAt(0);
   const isAsciiLetter =
     (driveLetter >= 65 && driveLetter <= 90) ||
     (driveLetter >= 97 && driveLetter <= 122);
+
   if (!isAsciiLetter || requestedPath[1] !== ':') return false;
+
   const next = requestedPath[2];
   return next !== '\\' && next !== '/';
 }
 
 function ensureNoWindowsDriveRelativePath(requestedPath: string): void {
   if (!isWindowsDriveRelativePath(requestedPath)) return;
+
   throw new McpError(
     ErrorCode.E_INVALID_INPUT,
     'Windows drive-relative paths are not allowed. Use C:\\path or C:/path instead of C:path.',
@@ -262,20 +290,24 @@ function ensureNoWindowsDriveRelativePath(requestedPath: string): void {
 
 function resolveRequestedPath(requestedPath: string): string {
   const expanded = expandHome(requestedPath);
+
   if (!path.isAbsolute(expanded)) {
-    const allowedDirs = getAllowedDirectories();
-    if (allowedDirs.length > 1) {
+    const roots = getAllowedDirectoriesForRelativeResolution();
+
+    if (roots.length > 1) {
       throw new McpError(
         ErrorCode.E_INVALID_INPUT,
         'Relative paths are ambiguous when multiple roots are configured. Provide an absolute path or specify the full root path.',
         requestedPath
       );
     }
-    const baseDir = allowedDirs[0];
+
+    const baseDir = roots[0];
     if (baseDir) {
       return normalizePath(path.resolve(baseDir, expanded));
     }
   }
+
   return normalizePath(expanded);
 }
 
@@ -328,6 +360,7 @@ function buildAllowedDirectoriesHint(): string {
 function toMcpError(requestedPath: string, error: unknown): McpError {
   const code = isNodeError(error) ? error.code : undefined;
   const mapping = code ? NODE_ERROR_MAP[code] : undefined;
+
   if (mapping) {
     return new McpError(
       mapping.code,
@@ -337,13 +370,14 @@ function toMcpError(requestedPath: string, error: unknown): McpError {
       error
     );
   }
+
   let message = '';
   if (error instanceof Error) {
-    const { message: errorMessage } = error;
-    message = errorMessage;
+    ({ message } = error);
   } else if (typeof error === 'string') {
     message = error;
   }
+
   return new McpError(
     ErrorCode.E_NOT_FOUND,
     `Path is not accessible: ${requestedPath}`,
@@ -380,6 +414,7 @@ function ensureWithinAllowedDirectories(options: {
   details?: Record<string, unknown>;
 }): void {
   const { normalizedPath, requestedPath, allowedDirs, details } = options;
+
   if (allowedDirs.length === 0) {
     throw new McpError(
       ErrorCode.E_ACCESS_DENIED,
@@ -388,6 +423,7 @@ function ensureWithinAllowedDirectories(options: {
       details
     );
   }
+
   if (isPathWithinDirectories(normalizedPath, allowedDirs)) return;
 
   throw new McpError(
@@ -419,6 +455,7 @@ async function validateExistingPathDetailsInternal(
 ): Promise<ValidatedPathDetails> {
   const normalizedRequested = validateRequestedPath(requestedPath);
   const allowedDirs = getAllowedDirectories();
+
   ensureWithinAllowedDirectories({
     normalizedPath: normalizedRequested,
     requestedPath,
@@ -431,6 +468,7 @@ async function validateExistingPathDetailsInternal(
     normalizedRequested,
     ...(signal ? { signal } : {}),
   });
+
   const normalizedReal = normalizePath(realPath);
 
   if (!isPathWithinDirectories(normalizedReal, allowedDirs)) {
@@ -470,8 +508,10 @@ export async function validateExistingDirectory(
     requestedPath,
     signal
   );
+
   assertNotAborted(signal);
   const stats = await withAbort(fs.stat(details.resolvedPath), signal);
+
   if (!stats.isDirectory()) {
     throw new McpError(
       ErrorCode.E_NOT_DIRECTORY,
@@ -479,6 +519,7 @@ export async function validateExistingDirectory(
       requestedPath
     );
   }
+
   return details.resolvedPath;
 }
 
@@ -510,8 +551,10 @@ async function resolveRootDirectory(
   try {
     const dirPath = fileURLToPath(root.uri);
     const normalizedPath = normalizePath(dirPath);
+
     assertNotAborted(signal);
     const stats = await withAbort(fs.stat(normalizedPath), signal);
+
     if (!stats.isDirectory()) return null;
     return normalizedPath;
   } catch (error) {

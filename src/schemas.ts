@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 function isSafeGlobPattern(value: string): boolean {
   if (value.length === 0) return false;
+  if (value.includes('**/**/**')) return false;
 
   const absolutePattern = /^([/\\]|[A-Za-z]:[/\\]|\\\\)/u;
   if (absolutePattern.test(value)) {
@@ -16,15 +17,25 @@ function isSafeGlobPattern(value: string): boolean {
 }
 
 const MAX_PATH_LENGTH = 4096;
-const OptionalPathSchema = z
-  .string()
-  .max(MAX_PATH_LENGTH, `Path is too long (max ${MAX_PATH_LENGTH} characters)`)
-  .optional();
 
-const RequiredPathSchema = z
+const DESC_PATH_ROOT =
+  'Base directory for the operation (leave empty for workspace root). ' +
+  'If multiple roots are configured, path is required and must be absolute. ' +
+  'Examples: "src", "src/components"';
+
+const DESC_PATH_REQUIRED =
+  'Absolute path to file or directory. Examples: "src/index.ts", "README.md"';
+
+const PathSchemaBase = z
   .string()
-  .min(1, 'Path cannot be empty')
-  .max(MAX_PATH_LENGTH, `Path is too long (max ${MAX_PATH_LENGTH} characters)`);
+  .max(
+    MAX_PATH_LENGTH,
+    `Path exceeds maximum length of ${MAX_PATH_LENGTH} characters`
+  );
+
+const OptionalPathSchema = PathSchemaBase.optional();
+
+const RequiredPathSchema = PathSchemaBase.min(1, 'Path is required');
 
 const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 
@@ -139,16 +150,12 @@ const ReadRangeInputSchema = z.strictObject({
 });
 
 export const ListDirectoryInputSchema = z.strictObject({
-  path: OptionalPathSchema.describe(
-    'Directory path to list (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required and must be absolute. ' +
-      'Examples: "src", "src/components", "lib/utils"'
-  ),
+  path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   includeHidden: z
     .boolean()
     .optional()
     .default(false)
-    .describe('Include hidden files and directories'),
+    .describe('Include hidden files and directories (starting with .)'),
   includeIgnored: z
     .boolean()
     .optional()
@@ -163,33 +170,17 @@ export const ListAllowedDirectoriesInputSchema = z
   .describe('No input parameters.');
 
 export const SearchFilesInputSchema = z.strictObject({
-  path: OptionalPathSchema.describe(
-    'Base directory to search from (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required and must be absolute. ' +
-      'Examples: "src", "lib", "tests"'
-  ),
+  path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   pattern: z
     .string()
-    .min(1, 'Pattern cannot be empty')
-    .max(1000, 'Pattern is too long (max 1000 characters)')
-    .refine(
-      (val) => {
-        try {
-          if (val.includes('**/**/**')) {
-            return false;
-          }
-          return isSafeGlobPattern(val);
-        } catch {
-          return false;
-        }
-      },
-      {
-        error:
-          'Invalid glob pattern syntax or unsafe path (absolute/.. segments not allowed)',
-      }
-    )
+    .min(1, 'Pattern is required')
+    .max(1000, 'Pattern exceeds 1000 characters')
+    .refine((val) => isSafeGlobPattern(val), {
+      error:
+        'Invalid glob pattern syntax or unsafe path (absolute/.. segments not allowed)',
+    })
     .describe(
-      'Glob pattern to match files. Examples: "**/*.ts" (all TypeScript files), "src/**/*.js" (JS files in src), "*.json" (JSON files in current dir)'
+      'Glob pattern to match files. Examples: "**/*.ts", "src/**/*.js", "*.json"'
     ),
   maxResults: z
     .number()
@@ -210,11 +201,7 @@ export const SearchFilesInputSchema = z.strictObject({
 });
 
 export const TreeInputSchema = z.strictObject({
-  path: OptionalPathSchema.describe(
-    'Base directory to render as a tree (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required and must be absolute. ' +
-      'Examples: "src", "lib"'
-  ),
+  path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   maxDepth: z
     .number()
     .int({ error: 'maxDepth must be an integer' })
@@ -235,7 +222,7 @@ export const TreeInputSchema = z.strictObject({
     .boolean()
     .optional()
     .default(false)
-    .describe('Include hidden files and directories'),
+    .describe('Include hidden files and directories (starting with .)'),
   includeIgnored: z
     .boolean()
     .optional()
@@ -247,40 +234,35 @@ export const TreeInputSchema = z.strictObject({
 });
 
 export const SearchContentInputSchema = z.strictObject({
-  path: OptionalPathSchema.describe(
-    'Base directory or file path to search within (leave empty for workspace root). ' +
-      'If multiple roots are configured, path is required and must be absolute. ' +
-      'Examples: "src", "lib", "tests", "src/index.ts"'
-  ),
+  path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   pattern: z
     .string()
-    .min(1, 'Pattern cannot be empty')
-    .max(1000, 'Pattern is too long (max 1000 characters)')
+    .min(1, 'Pattern is required')
+    .max(1000, 'Pattern exceeds 1000 characters')
     .describe(
-      'Text to search for. Examples: "console.log", "import React", "className"'
+      'Text to search for (regex). Examples: "console\\.log", "class User"'
     ),
   includeHidden: z
     .boolean()
     .optional()
     .default(false)
-    .describe('Include hidden files and directories'),
+    .describe('Include hidden files and directories (starting with .)'),
 });
 
 export const ReadFileInputSchema = ReadRangeInputSchema.extend({
-  path: RequiredPathSchema.describe(
-    'Path to the file to read. ' +
-      'Examples: "README.md", "src/index.ts", "package.json"'
-  ),
+  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
   head: HeadLinesSchema.describe(
     'Read only the first N lines of the file (useful for previewing large files)'
   ),
   startLine: LineNumberSchema.optional().describe(
-    '1-based line number to start reading from (inclusive). Useful for reading context around a match.'
+    '1-based line number to start reading from (inclusive).'
   ),
   endLine: LineNumberSchema.optional().describe(
     '1-based line number to stop reading at (inclusive). Requires startLine.'
   ),
-}).superRefine(validateReadRange);
+})
+  .strict()
+  .superRefine(validateReadRange);
 
 export const ReadMultipleFilesInputSchema = ReadRangeInputSchema.extend({
   paths: z
@@ -288,8 +270,7 @@ export const ReadMultipleFilesInputSchema = ReadRangeInputSchema.extend({
     .min(1, 'At least one path is required')
     .max(100, 'Cannot read more than 100 files at once')
     .describe(
-      'Array of file paths to read. ' +
-        'Examples: ["README.md", "package.json"], ["src/index.ts", "src/server.ts"]'
+      'Array of file paths to read. Examples: ["README.md", "src/index.ts"]'
     ),
   head: HeadLinesSchema.describe('Read only the first N lines of each file'),
   startLine: LineNumberSchema.optional().describe(
@@ -298,13 +279,12 @@ export const ReadMultipleFilesInputSchema = ReadRangeInputSchema.extend({
   endLine: LineNumberSchema.optional().describe(
     '1-based line number to stop reading at (inclusive), applied to each file. Requires startLine.'
   ),
-}).superRefine(validateReadRange);
+})
+  .strict()
+  .superRefine(validateReadRange);
 
 export const GetFileInfoInputSchema = z.strictObject({
-  path: RequiredPathSchema.describe(
-    'Path to file or directory. ' +
-      'Examples: "src", "README.md", "src/index.ts"'
-  ),
+  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
 });
 
 export const GetMultipleFileInfoInputSchema = z.strictObject({
@@ -312,10 +292,7 @@ export const GetMultipleFileInfoInputSchema = z.strictObject({
     .array(RequiredPathSchema)
     .min(1, 'At least one path is required')
     .max(100, 'Cannot get info for more than 100 files at once')
-    .describe(
-      'Array of file or directory paths. ' +
-        'Examples: ["src", "lib"], ["package.json", "tsconfig.json"]'
-    ),
+    .describe('Array of file or directory paths. Examples: ["src", "lib"]'),
 });
 
 export const ListAllowedDirectoriesOutputSchema = z.object({
