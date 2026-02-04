@@ -81,10 +81,11 @@ const DEFAULTS: SearchOptions = {
   caseSensitiveFileMatch: true,
 };
 
-function mergeOptions(partial: SearchContentOptions): ResolvedOptions {
-  const rest = { ...partial };
-  delete rest.signal;
-  return { ...DEFAULTS, ...rest };
+function mergeOptions(options: SearchContentOptions): ResolvedOptions {
+  const optionsCopy = { ...options };
+  delete optionsCopy.signal;
+  delete optionsCopy.onProgress;
+  return { ...DEFAULTS, ...optionsCopy };
 }
 
 export interface MatcherOptions {
@@ -630,15 +631,18 @@ function createScanSummary(): ScanSummary {
   };
 }
 
+function stopIfAborted(signal: AbortSignal, summary: ScanSummary): boolean {
+  if (!signal.aborted) return false;
+  markTruncated(summary, 'timeout');
+  return true;
+}
+
 function shouldStopCollecting(
   summary: ScanSummary,
   maxFilesScanned: number,
   signal: AbortSignal
 ): boolean {
-  if (signal.aborted) {
-    markTruncated(summary, 'timeout');
-    return true;
-  }
+  if (stopIfAborted(signal, summary)) return true;
   if (summary.filesScanned >= maxFilesScanned) {
     markTruncated(summary, 'maxFiles');
     return true;
@@ -736,10 +740,7 @@ function shouldStopOnSignalOrLimit(
   maxResults: number,
   summary: ScanSummary
 ): boolean {
-  if (signal.aborted) {
-    markTruncated(summary, 'timeout');
-    return true;
-  }
+  if (stopIfAborted(signal, summary)) return true;
   if (matchesCount >= maxResults) {
     markTruncated(summary, 'maxResults');
     return true;
@@ -916,6 +917,10 @@ const WORKER_SCRIPT_URL = pathToFileURL(WORKER_SCRIPT_PATH);
 const MAX_RESPAWNS = 3;
 
 type LogFn = (message: string) => void;
+
+type WorkerControlMessage =
+  | { type: 'cancel'; id: number }
+  | { type: 'shutdown' };
 
 function rejectPendingTasks(slot: WorkerSlot, error: Error): void {
   for (const [, pending] of slot.pending) {
@@ -1164,7 +1169,7 @@ class SearchWorkerPool {
       if (!pending) return;
       slot.pending.delete(id);
       try {
-        worker.postMessage({ type: 'cancel', id });
+        worker.postMessage({ type: 'cancel', id } as WorkerControlMessage);
       } catch {
         // Ignore: cancellation should still reject the local pending promise.
       }
@@ -1174,20 +1179,31 @@ class SearchWorkerPool {
 
   scan(request: WorkerScanRequest): ScanTask {
     this.ensureOpen();
+
     const slot = this.selectAvailableSlot();
     const worker = this.getWorker(slot);
+
     const id = this.nextRequestId++;
     const scanRequest = this.buildScanRequest(id, request);
+
     const promise = this.createScanPromise(slot, worker, scanRequest);
     const cancel = this.createCancel(slot, worker, id);
-    const outcome = promise.then(
+
+    const task: ScanTask = {
+      id,
+      promise,
+      cancel,
+      outcome: Promise.resolve({ task: undefined as unknown as ScanTask }),
+    };
+
+    task.outcome = promise.then(
       (result) => ({ task, result }),
       (error: unknown) => ({
         task,
         error: error instanceof Error ? error : new Error(String(error)),
       })
     );
-    const task: ScanTask = { id, promise, cancel, outcome };
+
     return task;
   }
 
@@ -1205,7 +1221,7 @@ class SearchWorkerPool {
     for (const slot of this.slots) {
       if (!slot.worker) continue;
       try {
-        slot.worker.postMessage({ type: 'shutdown' });
+        slot.worker.postMessage({ type: 'shutdown' } as WorkerControlMessage);
       } catch {
         // Ignore: worker may already be terminating.
       }
