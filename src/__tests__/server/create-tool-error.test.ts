@@ -30,15 +30,15 @@ void it('createToolError preserves explicit ErrorCode tokens in the message', as
   assert.strictEqual(getErrorCode(result), ErrorCode.E_ACCESS_DENIED);
 });
 
-void it('createToolError maps validation-ish messages to E_INVALID_INPUT', async () => {
+void it('createToolError falls back to E_UNKNOWN for validation-ish messages', async () => {
   const server = await createServer();
   const createToolError = getCreateToolError(server);
 
   const result = createToolError('Input validation failed: unknown field');
-  assert.strictEqual(getErrorCode(result), ErrorCode.E_INVALID_INPUT);
+  assert.strictEqual(getErrorCode(result), ErrorCode.E_UNKNOWN);
 });
 
-void it('createToolError maps timeouts to E_TIMEOUT', async () => {
+void it('createToolError maps timeout messages to E_TIMEOUT', async () => {
   const server = await createServer();
   const createToolError = getCreateToolError(server);
 

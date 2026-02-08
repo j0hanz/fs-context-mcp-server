@@ -137,7 +137,10 @@ const ROOTS_DEBOUNCE_MS = 100;
 const MCP_LOGGER_NAME = 'fs-context';
 
 function canSendMcpLogs(server: McpServer): boolean {
-  return Boolean(server.server.getClientCapabilities());
+  const capabilities = server.server.getClientCapabilities();
+  if (!capabilities || typeof capabilities !== 'object') return false;
+  if (!('logging' in capabilities)) return false;
+  return Boolean((capabilities as { logging?: unknown }).logging);
 }
 
 function logToMcp(
@@ -414,28 +417,8 @@ async function getLocalIconInfo(): Promise<IconInfo | undefined> {
   return undefined;
 }
 
-function resolveToolErrorCode(message: string): ErrorCode {
-  const explicit = extractExplicitErrorCode(message);
-  if (explicit) return explicit;
-
-  const lower = message.toLowerCase();
-  if (lower.includes('timeout') || lower.includes('timed out')) {
-    return ErrorCode.E_TIMEOUT;
-  }
-  if (lower.includes('tool') && lower.includes('not found')) {
-    return ErrorCode.E_INVALID_INPUT;
-  }
-  if (
-    lower.includes('invalid arguments') ||
-    lower.includes('input validation')
-  ) {
-    return ErrorCode.E_INVALID_INPUT;
-  }
-  if (lower.includes('disabled')) return ErrorCode.E_INVALID_INPUT;
-  if (lower.includes('requires task augmentation')) {
-    return ErrorCode.E_INVALID_INPUT;
-  }
-  return ErrorCode.E_UNKNOWN;
+function resolveToolErrorCode(message: string): ErrorCode | undefined {
+  return extractExplicitErrorCode(message);
 }
 
 function extractExplicitErrorCode(message: string): ErrorCode | undefined {
@@ -458,8 +441,11 @@ type ToolErrorBuilder = (errorMessage: string) => {
 function patchToolErrorHandling(server: McpServer): void {
   const createToolError: ToolErrorBuilder = (errorMessage: string) => {
     const code = resolveToolErrorCode(errorMessage);
-    const error = new McpError(code, errorMessage);
-    return buildToolErrorResponse(error, code);
+    if (code) {
+      const error = new McpError(code, errorMessage);
+      return buildToolErrorResponse(error, code);
+    }
+    return buildToolErrorResponse(new Error(errorMessage), ErrorCode.E_UNKNOWN);
   };
   Object.defineProperty(server, 'createToolError', {
     value: createToolError,
