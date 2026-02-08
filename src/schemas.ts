@@ -424,3 +424,83 @@ export const GetMultipleFileInfoOutputSchema = z.object({
   summary: OperationSummarySchema.optional(),
   error: ErrorSchema.optional(),
 });
+
+export const CreateDirectoryInputSchema = z.strictObject({
+  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
+});
+
+export const CreateDirectoryOutputSchema = z.object({
+  ok: z.boolean(),
+  path: z.string().optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const WriteFileInputSchema = z.strictObject({
+  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
+  content: z.string().describe('The content to write to the file'),
+});
+
+export const WriteFileOutputSchema = z.object({
+  ok: z.boolean(),
+  path: z.string().optional(),
+  bytesWritten: z.number().optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const EditFileInputSchema = z.strictObject({
+  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
+  edits: z
+    .array(
+      z.object({
+        oldText: z.string().describe('The exact string to be replaced'),
+        newText: z.string().describe('The new string to replace with'),
+      })
+    )
+    .min(1, 'At least one edit is required'),
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('If true, only checks if edits would succeed'),
+});
+
+export const EditFileOutputSchema = z.object({
+  ok: z.boolean(),
+  path: z.string().optional(),
+  appliedEdits: z.number().optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const MoveFileInputSchema = z.strictObject({
+  source: RequiredPathSchema.describe('The path of the file/directory to move'),
+  destination: RequiredPathSchema.describe(
+    'The new path for the file/directory'
+  ),
+});
+
+export const MoveFileOutputSchema = z.object({
+  ok: z.boolean(),
+  source: z.string().optional(),
+  destination: z.string().optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const DeleteFileInputSchema = z.strictObject({
+  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
+  recursive: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('If true, allows deleting non-empty directories'),
+  ignoreIfNotExists: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('If true, does not fail if the path does not exist'),
+});
+
+export const DeleteFileOutputSchema = z.object({
+  ok: z.boolean(),
+  path: z.string().optional(),
+  error: ErrorSchema.optional(),
+});

@@ -548,6 +548,50 @@ export async function validateExistingDirectory(
   return details.resolvedPath;
 }
 
+export async function validatePathForWrite(
+  requestedPath: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const normalizedRequested = validateRequestedPath(requestedPath);
+  const allowedDirs = getAllowedDirectories();
+
+  ensureWithinAllowedDirectories({
+    normalizedPath: normalizedRequested,
+    requestedPath,
+    allowedDirs,
+    details: { normalizedPath: normalizedRequested },
+  });
+
+  /* eslint-disable @typescript-eslint/no-unnecessary-condition */
+  let current = normalizedRequested;
+  while (true) {
+    try {
+      assertNotAborted(signal);
+      const realPath = await withAbort(fs.realpath(current), signal);
+      const normalizedReal = normalizePath(realPath);
+
+      if (!isPathWithinDirectories(normalizedReal, allowedDirs)) {
+        throw toAccessDeniedWithHint(requestedPath, realPath, normalizedReal);
+      }
+
+      return normalizedRequested;
+    } catch (error) {
+      rethrowIfAborted(error);
+      const code = isNodeError(error) ? error.code : undefined;
+      if (code === 'ENOENT') {
+        const parent = path.dirname(current);
+        if (parent === current) {
+          throw toMcpError(requestedPath, error);
+        }
+        current = parent;
+        continue;
+      }
+      throw toMcpError(requestedPath, error);
+    }
+  }
+  /* eslint-enable @typescript-eslint/no-unnecessary-condition */
+}
+
 function isFileRoot(root: Root): boolean {
   return root.uri.startsWith('file://');
 }
