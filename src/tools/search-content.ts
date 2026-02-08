@@ -17,7 +17,7 @@ import {
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
-  canSendProgress,
+  createProgressReporter,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -196,27 +196,6 @@ async function handleSearchContent(
       description: 'Full grep results as JSON (structuredContent)',
     }),
   ]);
-}
-
-function createProgressReporter(
-  extra: ToolExtra
-): (progress: { total?: number; current: number }) => void {
-  if (!canSendProgress(extra)) {
-    return () => {};
-  }
-  const { _meta, sendNotification } = extra;
-  const token = _meta.progressToken;
-  return (progress) => {
-    const { current, total } = progress;
-    void sendNotification({
-      method: 'notifications/progress',
-      params: {
-        progressToken: token,
-        total,
-        progress: current,
-      },
-    });
-  };
 }
 
 export function registerSearchContentTool(

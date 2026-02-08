@@ -221,6 +221,23 @@ async function sendProgressNotification(
   }
 }
 
+export function createProgressReporter(
+  extra: ToolExtra
+): (progress: { total?: number; current: number }) => void {
+  if (!canSendProgress(extra)) {
+    return () => {};
+  }
+  const token = extra._meta.progressToken;
+  return (progress) => {
+    const { current, total } = progress;
+    void sendProgressNotification(extra, {
+      progressToken: token,
+      total,
+      progress: current,
+    });
+  };
+}
+
 function resolveToolOk(result: unknown): boolean {
   if (!result || typeof result !== 'object') return true;
   const typed = result as { isError?: unknown; structuredContent?: unknown };
