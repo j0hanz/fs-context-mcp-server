@@ -55,16 +55,13 @@ describe('createTimedAbortSignal', () => {
       });
 
       assert.equal(signal.aborted, true);
-      assert.match(
-        signal.reason?.message ?? '',
-        /timed out/i,
-        'Reason should mention timeout'
-      );
+      const reason = signal.reason as { name?: string } | undefined;
+      assert.equal(reason?.name, 'TimeoutError');
 
       cleanup();
     });
 
-    it('prevents abort if cleanup called before timeout', async () => {
+    it('does not cancel timeout when cleanup called before timeout', async () => {
       const { signal, cleanup } = createTimedAbortSignal(undefined, 100);
 
       assert.equal(signal.aborted, false);
@@ -75,7 +72,9 @@ describe('createTimedAbortSignal', () => {
       // Wait longer than timeout
       await new Promise((resolve) => setTimeout(resolve, 150));
 
-      assert.equal(signal.aborted, false, 'Should not abort after cleanup');
+      assert.equal(signal.aborted, true, 'Should still abort after cleanup');
+      const reason = signal.reason as { name?: string } | undefined;
+      assert.equal(reason?.name, 'TimeoutError');
     });
 
     it('handles invalid timeout gracefully', () => {
@@ -104,7 +103,8 @@ describe('createTimedAbortSignal', () => {
       });
 
       assert.equal(signal.aborted, true);
-      assert.match(signal.reason?.message ?? '', /timed out/i);
+      const reason = signal.reason as { name?: string } | undefined;
+      assert.equal(reason?.name, 'TimeoutError');
 
       cleanup();
     });
@@ -145,7 +145,7 @@ describe('createTimedAbortSignal', () => {
       cleanup();
     });
 
-    it('cleanup prevents both timeout and baseSignal from aborting', async () => {
+    it('cleanup does not prevent baseSignal from aborting', async () => {
       const controller = new AbortController();
       const { signal, cleanup } = createTimedAbortSignal(
         controller.signal,
@@ -158,16 +158,10 @@ describe('createTimedAbortSignal', () => {
       cleanup();
 
       // Try to abort baseSignal
-      controller.abort();
+      controller.abort(new Error('Base aborted'));
 
-      // Wait longer than timeout
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
-      assert.equal(
-        signal.aborted,
-        false,
-        'Signal should not abort after cleanup'
-      );
+      assert.equal(signal.aborted, true, 'Signal should abort after cleanup');
+      assert.match(signal.reason?.message ?? '', /Base aborted/);
     });
 
     it('handles already-aborted baseSignal with timeout', () => {
@@ -196,7 +190,7 @@ describe('createTimedAbortSignal', () => {
       cleanup(); // Should not throw
     });
 
-    it('cleanup removes event listener from baseSignal', async () => {
+    it('cleanup is a no-op for baseSignal abort forwarding', async () => {
       const controller = new AbortController();
       const { signal, cleanup } = createTimedAbortSignal(
         controller.signal,
@@ -208,7 +202,7 @@ describe('createTimedAbortSignal', () => {
       // After cleanup, aborting base should not affect our signal
       controller.abort();
 
-      assert.equal(signal.aborted, false);
+      assert.equal(signal.aborted, true);
     });
   });
 

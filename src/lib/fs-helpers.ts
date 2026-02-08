@@ -90,15 +90,27 @@ export function createTimedAbortSignal(
   baseSignal: AbortSignal | undefined,
   timeoutMs?: number
 ): { signal: AbortSignal; cleanup: () => void } {
-  if (!baseSignal && !timeoutMs) {
-    return createNoopSignal();
+  const timeoutSignal =
+    typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)
+      ? AbortSignal.timeout(timeoutMs)
+      : undefined;
+
+  if (baseSignal && timeoutSignal) {
+    return {
+      signal: AbortSignal.any([baseSignal, timeoutSignal]),
+      cleanup: () => {},
+    };
   }
 
-  if (!timeoutMs && baseSignal) {
+  if (baseSignal) {
     return createForwardedSignal(baseSignal);
   }
 
-  return createManualSignal(baseSignal, timeoutMs);
+  if (timeoutSignal) {
+    return { signal: timeoutSignal, cleanup: () => {} };
+  }
+
+  return createNoopSignal();
 }
 
 function createNoopSignal(): { signal: AbortSignal; cleanup: () => void } {
@@ -113,45 +125,7 @@ function createForwardedSignal(baseSignal: AbortSignal): {
   return { signal: baseSignal, cleanup: () => {} };
 }
 
-function createManualSignal(
-  baseSignal: AbortSignal | undefined,
-  timeoutMs: number | undefined
-): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
-
-  const forwardAbort = (): void => {
-    controller.abort(baseSignal?.reason);
-  };
-
-  const forwardTimeout = (): void => {
-    controller.abort(createAbortError('Operation timed out'));
-  };
-
-  if (baseSignal) {
-    if (baseSignal.aborted) {
-      forwardAbort();
-    } else {
-      baseSignal.addEventListener('abort', forwardAbort, { once: true });
-    }
-  }
-
-  let timeoutSignal: AbortSignal | undefined;
-  if (typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)) {
-    timeoutSignal = AbortSignal.timeout(timeoutMs);
-    timeoutSignal.addEventListener('abort', forwardTimeout, { once: true });
-  }
-
-  const cleanup = (): void => {
-    if (baseSignal) {
-      baseSignal.removeEventListener('abort', forwardAbort);
-    }
-    if (timeoutSignal) {
-      timeoutSignal.removeEventListener('abort', forwardTimeout);
-    }
-  };
-
-  return { signal: controller.signal, cleanup };
-}
+// Manual abort forwarding removed in favor of AbortSignal.any/timeout.
 
 interface ParallelResult<R> {
   results: R[];
