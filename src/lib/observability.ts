@@ -373,11 +373,11 @@ export async function withToolDiagnostics<T>(
   options?: { path?: string }
 ): Promise<T> {
   const config = readConfig();
-  const normPath = normalizePath(options?.path);
+  const normalizedPath = normalizePath(options?.path);
 
   const context: ToolAsyncContext = {
     tool,
-    ...(normPath ? { path: normPath } : {}),
+    ...(options?.path ? { path: options.path } : {}),
   };
 
   return await toolContext.run(context, async () => {
@@ -406,7 +406,7 @@ export async function withToolDiagnostics<T>(
       pubTool,
       pubPerf,
       config.logToolErrors,
-      normPath
+      normalizedPath
     );
   });
 }

@@ -992,7 +992,16 @@ export async function searchContent(
 
     return buildSearchResult(root, pattern, opts.filePattern, matches, summary);
   } catch (error: unknown) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    const isTimeoutError = (err: Error): boolean =>
+      err.name === 'AbortError' || err.name === 'TimeoutError';
+
+    if (
+      error instanceof Error &&
+      (isTimeoutError(error) ||
+        (error instanceof McpError &&
+          error.cause instanceof Error &&
+          isTimeoutError(error.cause)))
+    ) {
       const timeoutSummary = createScanSummary();
       timeoutSummary.truncated = true;
       timeoutSummary.stoppedReason = 'timeout';
