@@ -321,7 +321,11 @@ async function readMatches(
       lineNumber++;
     }
   } finally {
-    // Ensure we drain the async iterator to release file handle and resources
+    try {
+      lines.close();
+    } catch {
+      // Ignore close errors; handle cleanup is still managed by the caller.
+    }
   }
 
   return matches;

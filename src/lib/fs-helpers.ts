@@ -724,39 +724,44 @@ async function readRangeContent(
   let stoppedEarly = false;
   let next = await iterator.next();
 
-  while (!next.done) {
-    const line = next.value;
-    lineNumber++;
+  try {
+    while (!next.done) {
+      const line = next.value;
+      lineNumber++;
 
-    if (lineNumber < startLine) {
+      if (lineNumber < startLine) {
+        next = await iterator.next();
+        continue;
+      }
+
+      if (lineNumber > stopAt) {
+        hasMoreLines = true;
+        stoppedEarly = true;
+        break;
+      }
+
+      lines.push(line);
+
+      estimatedBytes +=
+        Buffer.byteLength(line, options.encoding) + newlineBytes;
+      if (estimatedBytes >= options.maxSize) {
+        stoppedByLimit = true;
+        stoppedEarly = true;
+        break;
+      }
+
+      if (hasEndLine && lineNumber === stopAt) {
+        const peek = await iterator.next();
+        hasMoreLines = !peek.done;
+        reachedEof = peek.done === true;
+        stoppedEarly = true;
+        break;
+      }
+
       next = await iterator.next();
-      continue;
     }
-
-    if (lineNumber > stopAt) {
-      hasMoreLines = true;
-      stoppedEarly = true;
-      break;
-    }
-
-    lines.push(line);
-
-    estimatedBytes += Buffer.byteLength(line, options.encoding) + newlineBytes;
-    if (estimatedBytes >= options.maxSize) {
-      stoppedByLimit = true;
-      stoppedEarly = true;
-      break;
-    }
-
-    if (hasEndLine && lineNumber === stopAt) {
-      const peek = await iterator.next();
-      hasMoreLines = !peek.done;
-      reachedEof = peek.done === true;
-      stoppedEarly = true;
-      break;
-    }
-
-    next = await iterator.next();
+  } finally {
+    await iterator.return?.();
   }
 
   if (!stoppedEarly) {
@@ -1062,7 +1067,11 @@ export async function atomicWriteFile(
   const tempPath = `${filePath}.${randomUUID()}.tmp`;
 
   try {
-    await withAbort(fsp.writeFile(tempPath, content, { encoding }), signal);
+    assertNotAborted(signal);
+    await withAbort(
+      fsp.writeFile(tempPath, content, { encoding, signal }),
+      signal
+    );
     await withAbort(fsp.rename(tempPath, filePath), signal);
   } catch (error) {
     // Attempt cleanup on error, but don't overwrite the original error
