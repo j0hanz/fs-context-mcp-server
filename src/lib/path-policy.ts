@@ -1,4 +1,5 @@
 import * as path from 'node:path';
+import { platform } from 'node:os';
 
 import {
   SENSITIVE_FILE_ALLOWLIST,
@@ -26,7 +27,7 @@ function compilePatterns(patterns: readonly string[]): CompiledPattern[] {
       .map((pattern) => pattern.trim())
       .filter((pattern) => pattern.length > 0)
   );
-  const flags = process.platform === 'win32' ? 'i' : '';
+  const flags = platform() === 'win32' ? 'i' : '';
   return [...unique].map((pattern) => {
     const normalized = normalizePathForMatch(pattern);
     const matchesPath = normalized.includes('/');

@@ -8,7 +8,7 @@ import type { Root } from '@modelcontextprotocol/sdk/types.js';
 import { ErrorCode, isNodeError, McpError } from './errors.js';
 import { assertNotAborted, withAbort } from './fs-helpers.js';
 
-const IS_WINDOWS = process.platform === 'win32';
+const IS_WINDOWS = os.platform() === 'win32';
 const PATH_SEPARATOR = path.sep;
 
 function expandHome(filepath: string): string {
