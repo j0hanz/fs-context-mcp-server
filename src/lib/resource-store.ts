@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { ErrorCode, McpError } from './errors.js';
 
@@ -7,6 +7,7 @@ export interface TextResourceEntry {
   name: string;
   mimeType: string;
   text: string;
+  hash: string;
 }
 
 export interface ResourceStore {
@@ -33,6 +34,10 @@ const DEFAULT_RESOURCE_STORE_OPTIONS: ResourceStoreOptions = {
 
 function estimateBytes(text: string): number {
   return Buffer.byteLength(text, 'utf8');
+}
+
+function computeSha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
 export function createInMemoryResourceStore(
@@ -80,12 +85,14 @@ export function createInMemoryResourceStore(
 
     const id = randomUUID();
     const uri = `fs-context://result/${id}`;
+    const hash = computeSha256(params.text);
 
     const entry: TextResourceEntry = {
       uri,
       name: params.name,
       mimeType,
       text: params.text,
+      hash,
     };
 
     byUri.set(uri, entry);
