@@ -100,7 +100,9 @@ function ensureParentNodes(
 
   for (const segment of segments.slice(0, Math.max(0, segments.length - 1))) {
     currentPath =
-      currentPath.length === 0 ? segment : `${currentPath}/${segment}`;
+      currentPath.length === 0
+        ? segment
+        : path.posix.join(currentPath, segment);
 
     let child = nodeByPath.get(currentPath);
     if (!child) {
