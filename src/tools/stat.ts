@@ -138,7 +138,7 @@ export function registerGetFileInfoTool(
     withDefaultIcons({ ...GET_FILE_INFO_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `stat | ${path.basename(args.path)}`,
+      progressMessage: (args) => `stat: ${path.basename(args.path)}`,
     })
   );
 }

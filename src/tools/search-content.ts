@@ -241,7 +241,7 @@ export function registerSearchContentTool(
         >;
         const suffix =
           sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
-        return `grep | ${args.pattern} | ${suffix}`;
+        return `grep: ${args.pattern} → ${suffix}`;
       },
     })
   );

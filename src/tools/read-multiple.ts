@@ -173,7 +173,7 @@ export function registerReadMultipleFilesTool(
     withDefaultIcons({ ...READ_MULTIPLE_FILES_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `read_many | ${args.paths.length} files`,
+      progressMessage: (args) => `read_many: ${args.paths.length} files`,
     })
   );
 }

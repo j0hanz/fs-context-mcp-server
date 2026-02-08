@@ -151,7 +151,7 @@ export function registerGetMultipleFileInfoTool(
     withDefaultIcons({ ...GET_MULTIPLE_FILE_INFO_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `stat_many ${args.paths.length} paths`,
+      progressMessage: (args) => `stat_many: ${args.paths.length} paths`,
     })
   );
 }

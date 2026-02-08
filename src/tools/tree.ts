@@ -103,7 +103,7 @@ export function registerTreeTool(
       guard: options.isInitialized,
       progressMessage: (args) => {
         if (args.path) {
-          return `tree | ${path.basename(args.path)}`;
+          return `tree: ${path.basename(args.path)}`;
         }
         return 'tree';
       },

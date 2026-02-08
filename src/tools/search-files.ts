@@ -131,7 +131,7 @@ export function registerSearchFilesTool(
     withDefaultIcons({ ...SEARCH_FILES_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `find | ${args.pattern}`,
+      progressMessage: (args) => `find: ${args.pattern}`,
     })
   );
 }
