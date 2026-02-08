@@ -18,7 +18,7 @@
 ### Search & Retrieval
 
 1. `find` — locate files by glob.
-2. `grep` — search contents by regex.
+2. `grep` — search contents (literal by default; set `isRegex=true` for regex).
 3. `read` / `read_many` — inspect files.
    > Large results return `resourceUri`; read it for full content.
 
@@ -32,7 +32,7 @@
 - **`ls`** — Non-recursive. Multiple roots require absolute `path`.
 - **`find`** — Glob (e.g. `**/*.ts`). `maxResults` default 100. Respects `.gitignore`; `includeIgnored=true` overrides.
 - **`tree`** — ASCII+JSON tree. Default depth 5, max 1000 entries.
-- **`grep`** — RE2 regex. Skips binaries and files >1MB. Max 50 inline matches; excess via `resourceUri`.
+- **`grep`** — Literal search by default; supports RE2 regex when `isRegex=true`. RE2 does not support backreferences or lookahead. Skips binaries and files >1MB. Max 50 inline matches; excess via `resourceUri`.
 - **`read`/`read_many`** — `head` is exclusive with `startLine`/`endLine`. Large content via `resourceUri`. Batch max 100.
 - **`stat`/`stat_many`** — Includes `tokenEstimate ≈ ceil(size/4)`. Batch max 100.
 

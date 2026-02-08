@@ -401,13 +401,16 @@ Returns:
 
 #### `grep`
 
-Search for text within file contents (regex, powered by RE2). Returns matching lines with context. Skips binary files and files larger than `MAX_SEARCH_SIZE`.
+Search for text within file contents. By default this is a literal substring match; set `isRegex=true` to use RE2 regular expressions. Returns matching lines with context. Skips binary files and files larger than `MAX_SEARCH_SIZE`.
 
-| Parameter       | Type    | Required | Default        | Description                                                                          |
-| --------------- | ------- | -------- | -------------- | ------------------------------------------------------------------------------------ |
-| `path`          | string  | no       | workspace root | Base directory or single file to search                                              |
-| `pattern`       | string  | **yes**  | —              | Regex pattern to search for (max 1000 chars). Examples: `console\.log`, `class User` |
-| `includeHidden` | boolean | no       | `false`        | Include hidden files and directories                                                 |
+| Parameter       | Type    | Required | Default        | Description                                                                                              |
+| --------------- | ------- | -------- | -------------- | -------------------------------------------------------------------------------------------------------- |
+| `path`          | string  | no       | workspace root | Base directory or single file to search                                                                  |
+| `pattern`       | string  | **yes**  | —              | Text (or regex if `isRegex=true`) to search for (max 1000 chars). Examples: `console\.log`, `class User` |
+| `isRegex`       | boolean | no       | `false`        | Treat `pattern` as a regular expression (RE2)                                                            |
+| `includeHidden` | boolean | no       | `false`        | Include hidden files and directories                                                                     |
+
+Notes: RE2 does not support backreferences or lookahead assertions. If your pattern uses those features, `grep` will reject it.
 
 Returns:
 
