@@ -8,6 +8,7 @@ import {
   publishOpsTraceError,
   publishOpsTraceStart,
   shouldPublishOpsTrace,
+  startPerfMeasure,
 } from '../observability.js';
 
 interface DirentLike {
@@ -338,18 +339,22 @@ export async function* globEntries(
 ): AsyncGenerator<GlobEntry> {
   const engine = 'node:fs/promises.glob';
 
+  const endMeasure = startPerfMeasure('globEntries', { engine });
   const traceContext = shouldPublishOpsTrace()
     ? { op: 'globEntries', engine }
     : undefined;
 
   if (traceContext) publishOpsTraceStart(traceContext);
 
+  let ok = false;
   try {
     yield* nativeGlobEntries(options);
+    ok = true;
   } catch (error: unknown) {
     if (traceContext) publishOpsTraceError(traceContext, error);
     throw error;
   } finally {
     if (traceContext) publishOpsTraceEnd(traceContext);
+    endMeasure?.(ok);
   }
 }

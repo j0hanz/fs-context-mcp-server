@@ -1,6 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 
 import { isProbablyBinary } from '../fs-helpers.js';
+import { startPerfMeasure } from '../observability.js';
 import { buildMatcher, scanFileInWorker } from './search-content.js';
 import type {
   Matcher,
@@ -98,6 +99,11 @@ async function handleScanRequest(request: ScanRequest): Promise<void> {
   if (consumeCancelled(id)) return;
   activeRequests.add(id);
 
+  const endMeasure = startPerfMeasure('searchWorker.scan', {
+    maxMatches,
+  });
+  let ok = false;
+
   try {
     const matcher = getCachedMatcher(pattern, matcherOptions);
 
@@ -115,12 +121,14 @@ async function handleScanRequest(request: ScanRequest): Promise<void> {
 
     if (consumeCancelled(id)) return;
     parentPort?.postMessage(buildScanResponse(id, result));
+    ok = true;
   } catch (err) {
     if (consumeCancelled(id)) return;
     parentPort?.postMessage(buildErrorResponse(id, err));
   } finally {
     activeRequests.delete(id);
     cancelledRequests.delete(id);
+    endMeasure?.(ok);
   }
 }
 

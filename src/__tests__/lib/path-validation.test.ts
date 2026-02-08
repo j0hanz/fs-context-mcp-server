@@ -7,6 +7,7 @@ import { after, before, describe, it } from 'node:test';
 import { normalizePath } from '../../lib/path-validation.js';
 import {
   getAllowedDirectories,
+  isWindowsDriveRelativePath,
   setAllowedDirectoriesResolved,
   validateExistingPath,
 } from '../../lib/path-validation.js';
@@ -163,6 +164,17 @@ function registerInvalidInputTests(getFixture: () => TestFixture): void {
   void it('validateExistingPath rejects path with null bytes', async () => {
     const pathWithNull = path.join(getFixture().testDir, 'file\0name.txt');
     await assert.rejects(validateExistingPath(pathWithNull));
+  });
+
+  void it('detects Windows drive-relative paths', () => {
+    if (process.platform === 'win32') {
+      assert.strictEqual(isWindowsDriveRelativePath('C:temp'), true);
+      assert.strictEqual(isWindowsDriveRelativePath('C:'), true);
+      assert.strictEqual(isWindowsDriveRelativePath('C:/temp'), false);
+      assert.strictEqual(isWindowsDriveRelativePath('C:\\temp'), false);
+    } else {
+      assert.strictEqual(isWindowsDriveRelativePath('C:temp'), false);
+    }
   });
 }
 

@@ -267,15 +267,9 @@ function ensureNoReservedWindowsNames(requestedPath: string): void {
 export function isWindowsDriveRelativePath(requestedPath: string): boolean {
   if (!IS_WINDOWS) return false;
 
-  const driveLetter = requestedPath.charCodeAt(0);
-  const isAsciiLetter =
-    (driveLetter >= 65 && driveLetter <= 90) ||
-    (driveLetter >= 97 && driveLetter <= 122);
-
-  if (!isAsciiLetter || requestedPath[1] !== ':') return false;
-
-  const next = requestedPath[2];
-  return next !== '\\' && next !== '/';
+  const parsed = path.win32.parse(requestedPath);
+  if (!/^[A-Za-z]:$/u.test(parsed.root)) return false;
+  return !path.win32.isAbsolute(requestedPath);
 }
 
 function ensureNoWindowsDriveRelativePath(requestedPath: string): void {

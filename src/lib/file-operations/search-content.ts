@@ -28,6 +28,7 @@ import {
   publishOpsTraceError,
   publishOpsTraceStart,
   shouldPublishOpsTrace,
+  startPerfMeasure,
 } from '../observability.js';
 import { assertAllowedFileAccess, isSensitivePath } from '../path-policy.js';
 import {
@@ -570,35 +571,52 @@ async function executeSearchSingleFile(
   opts: ResolvedOptions,
   signal: AbortSignal
 ): Promise<SearchContentResult> {
-  return await withSearchExecution(pattern, opts, async (context) => {
-    const summary = createScanSummary();
-    const matches: ContentMatch[] = [];
-
-    summary.filesScanned = 1;
-
-    assertAllowedFileAccess(file.requestedPath, file.resolvedPath);
-
-    const matcher = buildMatcher(pattern, context.matcherOptions);
-    await scanSequentialFile(
-      file,
-      matcher,
-      context.scanOptions,
-      signal,
-      opts.maxResults,
-      matches,
-      summary
-    );
-
-    shouldStopOnSignalOrLimit(signal, matches.length, opts.maxResults, summary);
-
-    return buildSearchResult(
-      baseDir,
-      pattern,
-      path.basename(file.requestedPath),
-      matches,
-      summary
-    );
+  const endMeasure = startPerfMeasure('searchContent', {
+    mode: 'file',
+    engine: 'single',
   });
+  let ok = false;
+
+  try {
+    const result = await withSearchExecution(pattern, opts, async (context) => {
+      const summary = createScanSummary();
+      const matches: ContentMatch[] = [];
+
+      summary.filesScanned = 1;
+
+      assertAllowedFileAccess(file.requestedPath, file.resolvedPath);
+
+      const matcher = buildMatcher(pattern, context.matcherOptions);
+      await scanSequentialFile(
+        file,
+        matcher,
+        context.scanOptions,
+        signal,
+        opts.maxResults,
+        matches,
+        summary
+      );
+
+      shouldStopOnSignalOrLimit(
+        signal,
+        matches.length,
+        opts.maxResults,
+        summary
+      );
+
+      return buildSearchResult(
+        baseDir,
+        pattern,
+        path.basename(file.requestedPath),
+        matches,
+        summary
+      );
+    });
+    ok = true;
+    return result;
+  } finally {
+    endMeasure?.(ok);
+  }
 }
 
 function createScanSummary(): ScanSummary {
@@ -1659,24 +1677,42 @@ async function executeSearch(
   signal: AbortSignal,
   onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<SearchContentResult> {
-  return await withSearchExecution(pattern, opts, async (context) => {
-    const { stream, summary } = collectFilesStream(
-      root,
-      opts,
-      signal,
-      onProgress
-    );
-    const matches = await scanMatches(
-      stream,
-      pattern,
-      context.matcherOptions,
-      context.scanOptions,
-      opts.maxResults,
-      signal,
-      summary
-    );
-    return buildSearchResult(root, pattern, opts.filePattern, matches, summary);
+  const endMeasure = startPerfMeasure('searchContent', {
+    mode: 'directory',
+    engine: shouldUseWorkers() ? 'workers' : 'sequential',
   });
+  let ok = false;
+
+  try {
+    const result = await withSearchExecution(pattern, opts, async (context) => {
+      const { stream, summary } = collectFilesStream(
+        root,
+        opts,
+        signal,
+        onProgress
+      );
+      const matches = await scanMatches(
+        stream,
+        pattern,
+        context.matcherOptions,
+        context.scanOptions,
+        opts.maxResults,
+        signal,
+        summary
+      );
+      return buildSearchResult(
+        root,
+        pattern,
+        opts.filePattern,
+        matches,
+        summary
+      );
+    });
+    ok = true;
+    return result;
+  } finally {
+    endMeasure?.(ok);
+  }
 }
 
 export async function searchContent(

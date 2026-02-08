@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 import { channel, tracingChannel } from 'node:diagnostics_channel';
-import { type EventLoopUtilization, performance } from 'node:perf_hooks';
+import {
+  type EventLoopUtilization,
+  monitorEventLoopDelay,
+  performance,
+  PerformanceObserver,
+} from 'node:perf_hooks';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -82,8 +87,12 @@ function diffEventLoopUtilization(
   return performance.eventLoopUtilization(start);
 }
 
-function elapsedMs(startNs: bigint): number {
-  return Number(process.hrtime.bigint() - startNs) / 1_000_000;
+function elapsedMs(startMs: number): number {
+  return performance.now() - startMs;
+}
+
+function toMs(nanos: number): number {
+  return nanos / 1_000_000;
 }
 
 type DiagnosticsDetail = 0 | 1 | 2;
@@ -97,7 +106,17 @@ interface ToolDiagnosticsEvent {
   path?: string;
 }
 
-interface PerfDiagnosticsEvent {
+interface EventLoopDelayStats {
+  min: number;
+  max: number;
+  mean: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  exceeds: number;
+}
+
+interface PerfToolDiagnosticsEvent {
   phase: 'end';
   tool: string;
   durationMs: number;
@@ -106,7 +125,17 @@ interface PerfDiagnosticsEvent {
     active: number;
     utilization: number;
   };
+  eventLoopDelay?: EventLoopDelayStats;
 }
+
+interface PerfMeasureEvent {
+  phase: 'measure';
+  name: string;
+  durationMs: number;
+  detail?: unknown;
+}
+
+type PerfDiagnosticsEvent = PerfToolDiagnosticsEvent | PerfMeasureEvent;
 
 export interface OpsTraceContext {
   op: string;
@@ -119,6 +148,23 @@ export interface OpsTraceContext {
 const TOOL_CHANNEL = channel('fs-context:tool');
 const PERF_CHANNEL = channel('fs-context:perf');
 const OPS_TRACE = tracingChannel<unknown, OpsTraceContext>('fs-context:ops');
+let perfObserver: PerformanceObserver | undefined;
+let perfMeasureCounter = 0;
+
+function buildEventLoopDelayStats(
+  histogram: ReturnType<typeof monitorEventLoopDelay>
+): EventLoopDelayStats | undefined {
+  if (histogram.count === 0) return undefined;
+  return {
+    min: toMs(histogram.min),
+    max: toMs(histogram.max),
+    mean: toMs(histogram.mean),
+    p50: toMs(histogram.percentile(50)),
+    p95: toMs(histogram.percentile(95)),
+    p99: toMs(histogram.percentile(99)),
+    exceeds: histogram.exceeds,
+  };
+}
 
 function parseEnvBoolean(name: string): boolean {
   const normalized = process.env[name]?.trim().toLowerCase();
@@ -224,7 +270,8 @@ function publishEndEvent(
 function publishPerfEndEvent(
   tool: string,
   durationMs: number,
-  elu: ReturnType<typeof diffEventLoopUtilization>
+  elu: ReturnType<typeof diffEventLoopUtilization>,
+  eventLoopDelay?: EventLoopDelayStats
 ): void {
   PERF_CHANNEL.publish({
     phase: 'end',
@@ -235,7 +282,28 @@ function publishPerfEndEvent(
       active: elu.active,
       utilization: elu.utilization,
     },
+    ...(eventLoopDelay ? { eventLoopDelay } : {}),
   } satisfies PerfDiagnosticsEvent);
+}
+
+function ensurePerfObserver(): void {
+  if (perfObserver) return;
+
+  perfObserver = new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      const { detail } = entry as { detail?: unknown };
+      PERF_CHANNEL.publish({
+        phase: 'measure',
+        name: entry.name,
+        durationMs: entry.duration,
+        ...(detail !== undefined ? { detail } : {}),
+      } satisfies PerfDiagnosticsEvent);
+
+      performance.clearMeasures(entry.name);
+    }
+  });
+
+  perfObserver.observe({ entryTypes: ['measure'] });
 }
 
 function startToolDiagnostics(
@@ -245,39 +313,55 @@ function startToolDiagnostics(
   shouldPublishTool: boolean,
   shouldPublishPerf: boolean
 ): {
-  startNs: bigint;
+  startMs: number;
   eluStart: ReturnType<typeof captureEventLoopUtilization> | undefined;
+  eventLoopDelay: ReturnType<typeof monitorEventLoopDelay> | undefined;
 } {
-  const startNs = process.hrtime.bigint();
+  const startMs = performance.now();
   const eluStart = shouldPublishPerf
     ? captureEventLoopUtilization()
     : undefined;
+  const eventLoopDelay = shouldPublishPerf
+    ? monitorEventLoopDelay()
+    : undefined;
+
+  if (eventLoopDelay) {
+    eventLoopDelay.enable();
+  }
 
   if (shouldPublishTool) {
     publishStartEvent(tool, options, config.detail);
   }
 
-  return { startNs, eluStart };
+  return { startMs, eluStart, eventLoopDelay };
 }
 
 function finalizeToolDiagnostics(
   tool: string,
-  startNs: bigint,
+  startMs: number,
   options: {
     ok: boolean;
     error?: unknown;
     shouldPublishTool: boolean;
     shouldPublishPerf: boolean;
     eluStart: ReturnType<typeof captureEventLoopUtilization> | undefined;
+    eventLoopDelay: ReturnType<typeof monitorEventLoopDelay> | undefined;
   }
 ): void {
-  const durationMs = elapsedMs(startNs);
+  const durationMs = elapsedMs(startMs);
+  let eventLoopDelay: EventLoopDelayStats | undefined;
+
+  if (options.eventLoopDelay) {
+    options.eventLoopDelay.disable();
+    eventLoopDelay = buildEventLoopDelayStats(options.eventLoopDelay);
+  }
 
   if (options.shouldPublishPerf && options.eluStart) {
     publishPerfEndEvent(
       tool,
       durationMs,
-      diffEventLoopUtilization(options.eluStart)
+      diffEventLoopUtilization(options.eluStart),
+      eventLoopDelay
     );
   }
   if (options.shouldPublishTool) {
@@ -293,7 +377,7 @@ async function runWithDiagnostics<T>(
   shouldPublishTool: boolean,
   shouldPublishPerf: boolean
 ): Promise<T> {
-  const { startNs, eluStart } = startToolDiagnostics(
+  const { startMs, eluStart, eventLoopDelay } = startToolDiagnostics(
     tool,
     options,
     config,
@@ -301,17 +385,22 @@ async function runWithDiagnostics<T>(
     shouldPublishPerf
   );
 
-  const finalizeOptions = { shouldPublishTool, shouldPublishPerf, eluStart };
+  const finalizeOptions = {
+    shouldPublishTool,
+    shouldPublishPerf,
+    eluStart,
+    eventLoopDelay,
+  };
 
   try {
     const result = await run();
-    finalizeToolDiagnostics(tool, startNs, {
+    finalizeToolDiagnostics(tool, startMs, {
       ok: resolveDiagnosticsOk(result) ?? true,
       ...finalizeOptions,
     });
     return result;
   } catch (error: unknown) {
-    finalizeToolDiagnostics(tool, startNs, {
+    finalizeToolDiagnostics(tool, startMs, {
       ok: false,
       error,
       ...finalizeOptions,
@@ -324,21 +413,21 @@ async function runWithErrorLogging<T>(
   tool: string,
   run: () => Promise<T>
 ): Promise<T> {
-  const startNs = process.hrtime.bigint();
+  const startMs = performance.now();
 
   try {
     const result = await run();
     const ok = resolveDiagnosticsOk(result);
 
     if (ok === false) {
-      logToolError(tool, elapsedMs(startNs), resolveResultErrorMessage(result));
+      logToolError(tool, elapsedMs(startMs), resolveResultErrorMessage(result));
     }
 
     return result;
   } catch (error: unknown) {
     logToolError(
       tool,
-      elapsedMs(startNs),
+      elapsedMs(startMs),
       resolveDiagnosticsErrorMessage(error)
     );
     throw error;
@@ -365,6 +454,58 @@ export function publishOpsTraceError(
     ...normalizeOpsTraceContext(context),
     error,
   });
+}
+
+export function startPerfMeasure(
+  name: string,
+  detail?: Record<string, unknown>
+): ((ok?: boolean) => void) | undefined {
+  const config = readDiagnosticsConfig();
+  if (!config.enabled || !PERF_CHANNEL.hasSubscribers) return undefined;
+
+  ensurePerfObserver();
+  const id = (perfMeasureCounter += 1);
+  const startMark = `${name}:start:${id}`;
+  const endMark = `${name}:end:${id}`;
+  performance.mark(startMark);
+
+  return (ok?: boolean): void => {
+    performance.mark(endMark);
+    const finalDetail =
+      ok === undefined
+        ? detail
+        : ({ ...(detail ?? {}), ok } satisfies Record<string, unknown>);
+
+    if (finalDetail) {
+      performance.measure(name, {
+        start: startMark,
+        end: endMark,
+        detail: finalDetail,
+      });
+    } else {
+      performance.measure(name, startMark, endMark);
+    }
+
+    performance.clearMarks(startMark);
+    performance.clearMarks(endMark);
+  };
+}
+
+export async function withPerfMeasure<T>(
+  name: string,
+  detail: Record<string, unknown> | undefined,
+  run: () => Promise<T>
+): Promise<T> {
+  const endMeasure = startPerfMeasure(name, detail);
+  let ok = false;
+
+  try {
+    const result = await run();
+    ok = true;
+    return result;
+  } finally {
+    endMeasure?.(ok);
+  }
 }
 
 export async function withToolDiagnostics<T>(
