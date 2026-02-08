@@ -268,6 +268,7 @@ async function withProgress<T>(
       progressToken: token,
       progress: total,
       total,
+      message,
     });
     return result;
   } catch (error) {
@@ -275,6 +276,7 @@ async function withProgress<T>(
       progressToken: token,
       progress: total,
       total,
+      message,
     });
     throw error;
   }
