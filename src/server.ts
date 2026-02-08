@@ -41,6 +41,7 @@ import {
 } from './resources.js';
 import { registerAllTools } from './tools.js';
 import { buildToolErrorResponse } from './tools.js';
+import type { IconInfo } from './tools/shared.js';
 
 export interface ParseArgsResult {
   allowedDirs: string[];
@@ -390,14 +391,27 @@ try {
   );
 }
 
-async function getLocalIconData(): Promise<string | undefined> {
-  try {
-    const iconPath = new URL('../assets/logo.svg', import.meta.url);
-    const buffer = await fs.readFile(iconPath);
-    return `data:image/svg+xml;base64,${buffer.toString('base64')}`;
-  } catch {
-    return undefined;
+async function getLocalIconInfo(): Promise<IconInfo | undefined> {
+  const candidates = [
+    { name: 'logo.svg', mime: 'image/svg+xml' },
+    { name: 'logo.png', mime: 'image/png' },
+    { name: 'logo.jpg', mime: 'image/jpeg' },
+    { name: 'logo.jpeg', mime: 'image/jpeg' },
+  ];
+
+  for (const { name, mime } of candidates) {
+    try {
+      const iconPath = new URL(`../assets/${name}`, import.meta.url);
+      const buffer = await fs.readFile(iconPath);
+      return {
+        src: `data:${mime};base64,${buffer.toString('base64')}`,
+        mimeType: mime,
+      };
+    } catch {
+      continue;
+    }
   }
+  return undefined;
 }
 
 function resolveToolErrorCode(message: string): ErrorCode {
@@ -458,7 +472,7 @@ export async function createServer(
   options: ServerOptions = {}
 ): Promise<McpServer> {
   const resourceStore = createInMemoryResourceStore();
-  const localIcon = await getLocalIconData();
+  const localIcon = await getLocalIconInfo();
 
   const serverConfig: ConstructorParameters<typeof McpServer>[1] = {
     capabilities: {
@@ -478,7 +492,13 @@ export async function createServer(
       ...(localIcon
         ? {
             icons: [
-              { src: localIcon, mimeType: 'image/svg+xml', sizes: ['any'] },
+              {
+                src: localIcon.src,
+                mimeType: localIcon.mimeType,
+                ...(localIcon.mimeType === 'image/svg+xml'
+                  ? { sizes: ['any'] }
+                  : {}),
+              },
             ],
           }
         : {}),
@@ -496,7 +516,7 @@ export async function createServer(
   registerAllTools(server, {
     resourceStore,
     isInitialized: () => rootsManager.isInitialized(),
-    ...(localIcon ? { serverIcon: localIcon } : {}),
+    ...(localIcon ? { iconInfo: localIcon } : {}),
   });
 
   return server;

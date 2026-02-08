@@ -148,10 +148,15 @@ export function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
   );
 }
 
+export interface IconInfo {
+  src: string;
+  mimeType: string;
+}
+
 export interface ToolRegistrationOptions {
   resourceStore?: ResourceStore;
   isInitialized?: () => boolean;
-  serverIcon?: string;
+  iconInfo?: IconInfo;
 }
 
 const NOT_INITIALIZED_ERROR = new McpError(

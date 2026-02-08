@@ -1,6 +1,15 @@
 /* eslint-disable */
 import { spawn } from 'node:child_process';
-import { access, chmod, cp, glob, mkdir, rm, stat } from 'node:fs/promises';
+import {
+  access,
+  chmod,
+  cp,
+  glob,
+  mkdir,
+  readdir,
+  rm,
+  stat,
+} from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -211,6 +220,22 @@ const BuildTasks = {
     await System.copy(CONFIG.paths.instructions, CONFIG.paths.distInstructions);
 
     if (await System.isDirectory(CONFIG.paths.assets)) {
+      try {
+        const files = await readdir(CONFIG.paths.assets);
+        for (const file of files) {
+          if (/^logo\.(svg|png|jpe?g)$/i.test(file)) {
+            const stats = await stat(join(CONFIG.paths.assets, file));
+            if (stats.size >= 2 * 1024 * 1024) {
+              Logger.info(
+                `[WARNING] Icon ${file} is size ${stats.size} bytes (>= 2MB). Large icons may be rejected by clients.`
+              );
+            }
+          }
+        }
+      } catch {
+        // ignore errors during check
+      }
+
       await System.copy(CONFIG.paths.assets, CONFIG.paths.distAssets, {
         recursive: true,
       });

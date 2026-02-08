@@ -9,10 +9,15 @@ const RESULT_TEMPLATE = new ResourceTemplate('fs-context://result/{id}', {
   list: undefined,
 });
 
+export interface IconInfo {
+  src: string;
+  mimeType: string;
+}
+
 export function registerInstructionResource(
   server: McpServer,
   instructions: string,
-  serverIcon?: string
+  iconInfo?: IconInfo
 ): void {
   server.registerResource(
     'fs-context-instructions',
@@ -21,10 +26,16 @@ export function registerInstructionResource(
       title: 'Server Instructions',
       description: 'Guidance for using the fs-context MCP tools effectively.',
       mimeType: 'text/markdown',
-      ...(serverIcon
+      ...(iconInfo
         ? {
             icons: [
-              { src: serverIcon, mimeType: 'image/svg+xml', sizes: ['any'] },
+              {
+                src: iconInfo.src,
+                mimeType: iconInfo.mimeType,
+                ...(iconInfo.mimeType === 'image/svg+xml'
+                  ? { sizes: ['any'] }
+                  : {}),
+              },
             ],
           }
         : {}),
@@ -44,7 +55,7 @@ export function registerInstructionResource(
 export function registerResultResources(
   server: McpServer,
   store: ResourceStore,
-  serverIcon?: string
+  iconInfo?: IconInfo
 ): void {
   server.registerResource(
     'fs-context-result',
@@ -54,10 +65,16 @@ export function registerResultResources(
       description:
         'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.',
       mimeType: 'text/plain',
-      ...(serverIcon
+      ...(iconInfo
         ? {
             icons: [
-              { src: serverIcon, mimeType: 'image/svg+xml', sizes: ['any'] },
+              {
+                src: iconInfo.src,
+                mimeType: iconInfo.mimeType,
+                ...(iconInfo.mimeType === 'image/svg+xml'
+                  ? { sizes: ['any'] }
+                  : {}),
+              },
             ],
           }
         : {}),

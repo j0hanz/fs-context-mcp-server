@@ -134,13 +134,15 @@ export function registerGetFileInfoTool(
     'stat',
     {
       ...GET_FILE_INFO_TOOL,
-      ...(options.serverIcon
+      ...(options.iconInfo
         ? {
             icons: [
               {
-                src: options.serverIcon,
-                mimeType: 'image/svg+xml',
-                sizes: ['any'],
+                src: options.iconInfo.src,
+                mimeType: options.iconInfo.mimeType,
+                ...(options.iconInfo.mimeType === 'image/svg+xml'
+                  ? { sizes: ['any'] }
+                  : {}),
               },
             ],
           }
