@@ -53,7 +53,10 @@ async function main(): Promise<void> {
     );
   }
 
-  const server = createServer({ allowCwd, cliAllowedDirs: allowedDirs });
+  const server = await createServer({
+    allowCwd,
+    cliAllowedDirs: allowedDirs,
+  });
   activeServer = server;
   await startServer(server);
 }

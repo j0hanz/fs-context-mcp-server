@@ -1,7 +1,5 @@
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
-import type { ReadStream } from 'node:fs';
-import readline from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
@@ -293,23 +291,6 @@ interface ScanLoopOptions {
   signal?: AbortSignal;
 }
 
-function buildReadline(
-  handle: fsp.FileHandle,
-  signal?: AbortSignal
-): { rl: readline.Interface; input: ReadStream } {
-  const input = handle.createReadStream({
-    encoding: 'utf-8',
-    autoClose: false,
-  });
-  const baseOptions = {
-    input,
-    crlfDelay: Infinity,
-  };
-  const options = signal ? { ...baseOptions, signal } : baseOptions;
-  const rl = readline.createInterface(options);
-  return { rl, input };
-}
-
 function updateContext(
   line: string,
   contextLines: number,
@@ -386,7 +367,7 @@ function recordLineMatch(
 }
 
 async function readLoop(
-  rl: readline.Interface,
+  lines: AsyncIterable<string>,
   matcher: Matcher,
   options: ScanFileOptions,
   requestedPath: string,
@@ -396,7 +377,7 @@ async function readLoop(
   ctx: ContextState
 ): Promise<void> {
   let lineNo = 0;
-  for await (const line of rl) {
+  for await (const line of lines) {
     if (isCancelled()) break;
     lineNo++;
     recordLineMatch(
@@ -454,12 +435,12 @@ async function readMatches(
   isCancelled: () => boolean,
   signal?: AbortSignal
 ): Promise<ContentMatch[]> {
-  const { rl, input } = buildReadline(handle, signal);
+  const lines = handle.readLines({ encoding: 'utf-8', signal });
   const ctx = makeContext();
   const matches: ContentMatch[] = [];
   try {
     await readLoop(
-      rl,
+      lines,
       matcher,
       options,
       requestedPath,
@@ -470,8 +451,7 @@ async function readMatches(
     );
     return matches;
   } finally {
-    rl.close();
-    input.destroy();
+    lines.close();
   }
 }
 

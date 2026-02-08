@@ -20,8 +20,8 @@ function getErrorCode(result: unknown): string | undefined {
   return structured?.error?.code;
 }
 
-void it('createToolError preserves explicit ErrorCode tokens in the message', () => {
-  const server = createServer();
+void it('createToolError preserves explicit ErrorCode tokens in the message', async () => {
+  const server = await createServer();
   const createToolError = getCreateToolError(server);
 
   const result = createToolError(
@@ -30,16 +30,16 @@ void it('createToolError preserves explicit ErrorCode tokens in the message', ()
   assert.strictEqual(getErrorCode(result), ErrorCode.E_ACCESS_DENIED);
 });
 
-void it('createToolError maps validation-ish messages to E_INVALID_INPUT', () => {
-  const server = createServer();
+void it('createToolError maps validation-ish messages to E_INVALID_INPUT', async () => {
+  const server = await createServer();
   const createToolError = getCreateToolError(server);
 
   const result = createToolError('Input validation failed: unknown field');
   assert.strictEqual(getErrorCode(result), ErrorCode.E_INVALID_INPUT);
 });
 
-void it('createToolError maps timeouts to E_TIMEOUT', () => {
-  const server = createServer();
+void it('createToolError maps timeouts to E_TIMEOUT', async () => {
+  const server = await createServer();
   const createToolError = getCreateToolError(server);
 
   const result = createToolError('Operation timed out');

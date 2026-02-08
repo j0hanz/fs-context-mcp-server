@@ -1,6 +1,5 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { readFileSync } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs as parseNodeArgs } from 'node:util';
@@ -391,10 +390,10 @@ try {
   );
 }
 
-function getLocalIconData(): string | undefined {
+async function getLocalIconData(): Promise<string | undefined> {
   try {
     const iconPath = new URL('../assets/logo.svg', import.meta.url);
-    const buffer = readFileSync(iconPath);
+    const buffer = await fs.readFile(iconPath);
     return `data:image/svg+xml;base64,${buffer.toString('base64')}`;
   } catch {
     return undefined;
@@ -455,9 +454,11 @@ function patchToolErrorHandling(server: McpServer): void {
   });
 }
 
-export function createServer(options: ServerOptions = {}): McpServer {
+export async function createServer(
+  options: ServerOptions = {}
+): Promise<McpServer> {
   const resourceStore = createInMemoryResourceStore();
-  const localIcon = getLocalIconData();
+  const localIcon = await getLocalIconData();
 
   const serverConfig: ConstructorParameters<typeof McpServer>[1] = {
     capabilities: {
