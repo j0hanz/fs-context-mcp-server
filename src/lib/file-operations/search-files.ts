@@ -329,8 +329,10 @@ interface Sortable {
   path?: string;
 }
 
+const collator = new Intl.Collator(undefined, { numeric: true });
+
 function compareString(a?: string, b?: string): number {
-  return (a ?? '').localeCompare(b ?? '');
+  return collator.compare(a ?? '', b ?? '');
 }
 
 function compareNameThenPath(a: Sortable, b: Sortable): number {
