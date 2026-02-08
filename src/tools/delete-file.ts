@@ -5,7 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode, isNodeError } from '../lib/errors.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import { DeleteFileInputSchema, DeleteFileOutputSchema } from '../schemas.js';
@@ -34,10 +34,13 @@ async function handleDeleteFile(
 ): Promise<ToolResponse<z.infer<typeof DeleteFileOutputSchema>>> {
   const validPath = await validatePathForWrite(args.path, signal);
 
-  await fs.rm(validPath, {
-    recursive: args.recursive,
-    force: args.ignoreIfNotExists,
-  });
+  await withAbort(
+    fs.rm(validPath, {
+      recursive: args.recursive,
+      force: args.ignoreIfNotExists,
+    }),
+    signal
+  );
 
   return buildToolResponse(`Successfully deleted: ${args.path}`, {
     ok: true,
@@ -66,12 +69,30 @@ export function registerDeleteFileTool(
             }
           },
           (error) => {
-            if (isNodeError(error) && error.code === 'ENOENT') {
-              return buildToolErrorResponse(
-                error,
-                ErrorCode.E_NOT_FOUND,
-                args.path
-              );
+            if (isNodeError(error)) {
+              if (error.code === 'ENOENT') {
+                return buildToolErrorResponse(
+                  error,
+                  ErrorCode.E_NOT_FOUND,
+                  args.path
+                );
+              }
+              if (error.code === 'ENOTEMPTY') {
+                return buildToolErrorResponse(
+                  new Error(
+                    `Directory is not empty: ${args.path}. Use recursive: true to delete non-empty directories.`
+                  ),
+                  ErrorCode.E_INVALID_INPUT,
+                  args.path
+                );
+              }
+              if (error.code === 'EPERM' || error.code === 'EACCES') {
+                return buildToolErrorResponse(
+                  error,
+                  ErrorCode.E_PERMISSION_DENIED,
+                  args.path
+                );
+              }
             }
             return buildToolErrorResponse(
               error,

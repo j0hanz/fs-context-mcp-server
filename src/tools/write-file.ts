@@ -6,7 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import { WriteFileInputSchema, WriteFileOutputSchema } from '../schemas.js';
@@ -37,11 +37,14 @@ async function handleWriteFile(
   const validPath = await validatePathForWrite(args.path, signal);
 
   // Ensure parent directory exists
-  await fs.mkdir(path.dirname(validPath), { recursive: true });
+  await withAbort(
+    fs.mkdir(path.dirname(validPath), { recursive: true }),
+    signal
+  );
 
   await fs.writeFile(validPath, args.content, { encoding: 'utf-8', signal });
 
-  const stats = await fs.stat(validPath);
+  const stats = await withAbort(fs.stat(validPath), signal);
 
   return buildToolResponse(`Successfully wrote to file: ${args.path}`, {
     ok: true,

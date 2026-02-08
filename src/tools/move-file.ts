@@ -5,8 +5,8 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
-import { ErrorCode } from '../lib/errors.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import { ErrorCode, isNodeError } from '../lib/errors.js';
+import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import {
   validateExistingPath,
@@ -40,20 +40,24 @@ async function handleMoveFile(
   const validDest = await validatePathForWrite(args.destination, signal);
 
   // Ensure destination parent directory exists
-  await fs.mkdir(path.dirname(validDest), { recursive: true });
+  await withAbort(
+    fs.mkdir(path.dirname(validDest), { recursive: true }),
+    signal
+  );
 
   try {
-    await fs.rename(validSource, validDest);
+    await withAbort(fs.rename(validSource, validDest), signal);
   } catch (error: unknown) {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      error.code === 'EXDEV'
-    ) {
+    if (isNodeError(error) && error.code === 'EXDEV') {
       // Cross-device link, fallback to copy + delete
-      await fs.cp(validSource, validDest, { recursive: true });
-      await fs.rm(validSource, { recursive: true, force: true });
+      await withAbort(
+        fs.cp(validSource, validDest, { recursive: true }),
+        signal
+      );
+      await withAbort(
+        fs.rm(validSource, { recursive: true, force: true }),
+        signal
+      );
     } else {
       throw error;
     }

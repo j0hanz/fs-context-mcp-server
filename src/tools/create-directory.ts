@@ -5,7 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import {
@@ -37,7 +37,7 @@ async function handleCreateDirectory(
 ): Promise<ToolResponse<z.infer<typeof CreateDirectoryOutputSchema>>> {
   const validPath = await validatePathForWrite(args.path, signal);
 
-  await fs.mkdir(validPath, { recursive: true });
+  await withAbort(fs.mkdir(validPath, { recursive: true }), signal);
 
   return buildToolResponse(`Successfully created directory: ${args.path}`, {
     ok: true,

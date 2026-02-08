@@ -35,11 +35,13 @@ function applyEdits(
   edits: z.infer<typeof EditFileInputSchema>['edits']
 ): string {
   let newContent = content;
-  for (const edit of edits) {
+  for (let i = 0; i < edits.length; i++) {
+    const edit = edits[i];
+    if (!edit) continue;
     if (!newContent.includes(edit.oldText)) {
       throw new McpError(
         ErrorCode.E_INVALID_INPUT,
-        `Could not find text to replace: "${edit.oldText}"`
+        `Edit ${i + 1}/${edits.length}: could not find text to replace: "${edit.oldText}"`
       );
     }
     newContent = newContent.replace(edit.oldText, edit.newText);
@@ -52,7 +54,7 @@ async function handleEditFile(
   signal?: AbortSignal
 ): Promise<ToolResponse<z.infer<typeof EditFileOutputSchema>>> {
   const validPath = await validateExistingPath(args.path, signal);
-  const content = await fs.readFile(validPath, 'utf-8');
+  const content = await fs.readFile(validPath, { encoding: 'utf-8', signal });
 
   const newContent = applyEdits(content, args.edits);
 
@@ -64,7 +66,7 @@ async function handleEditFile(
     });
   }
 
-  await fs.writeFile(validPath, newContent, 'utf-8');
+  await fs.writeFile(validPath, newContent, { encoding: 'utf-8', signal });
 
   return buildToolResponse(
     `Successfully applied ${args.edits.length} edits to ${args.path}`,
