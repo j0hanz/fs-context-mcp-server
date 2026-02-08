@@ -109,8 +109,18 @@ function getDirectErrorCode(error: unknown): ErrorCode | undefined {
 
 function classifyMessageError(error: unknown): ErrorCode | undefined {
   const message = error instanceof Error ? error.message : String(error);
-  if (message.toLowerCase().includes('enoent')) {
+  const lower = message.toLowerCase();
+  if (lower.includes('enoent') || lower.includes('no such file or directory')) {
     return ErrorCode.E_NOT_FOUND;
+  }
+  if (lower.includes('permission denied') || lower.includes('not permitted')) {
+    return ErrorCode.E_PERMISSION_DENIED;
+  }
+  if (lower.includes('not a directory')) {
+    return ErrorCode.E_NOT_DIRECTORY;
+  }
+  if (lower.includes('is a directory')) {
+    return ErrorCode.E_NOT_FILE;
   }
   return undefined;
 }

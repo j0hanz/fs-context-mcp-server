@@ -20,6 +20,7 @@ async function writeFixtureFiles(dir: string): Promise<void> {
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDir, '..');
+const DIST_WORKER_TEST_TIMEOUT_MS = 15_000;
 
 const testScript = `
 (async () => {
@@ -78,12 +79,15 @@ function spawnSearchProcess(
   });
 }
 
-async function runSearchInChild(testDir: string): Promise<{
+async function runSearchInChild(
+  testDir: string,
+  timeoutMs: number = DIST_WORKER_TEST_TIMEOUT_MS
+): Promise<{
   stdout: string;
   stderr: string;
   exitCode: number | null;
 }> {
-  const timeoutSignal = AbortSignal.timeout(15_000);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const child = spawnSearchProcess(testDir, timeoutSignal);
 
   let stdout = '';

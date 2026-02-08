@@ -25,6 +25,21 @@ void it('createDetailedError classifies non-Error objects as unknown', () => {
   assert.strictEqual(detailed.code, ErrorCode.E_UNKNOWN);
 });
 
+void it('createDetailedError classifies permission denied messages', () => {
+  const detailed = createDetailedError(new Error('Permission denied'));
+  assert.strictEqual(detailed.code, ErrorCode.E_PERMISSION_DENIED);
+});
+
+void it('createDetailedError classifies not-a-directory messages', () => {
+  const detailed = createDetailedError(new Error('Not a directory'));
+  assert.strictEqual(detailed.code, ErrorCode.E_NOT_DIRECTORY);
+});
+
+void it('createDetailedError classifies is-a-directory messages', () => {
+  const detailed = createDetailedError(new Error('Is a directory'));
+  assert.strictEqual(detailed.code, ErrorCode.E_NOT_FILE);
+});
+
 void it('createDetailedError classifies EACCES as permission denied', () => {
   const detailed = createDetailedError(
     Object.assign(new Error('permission denied'), { code: 'EACCES' })

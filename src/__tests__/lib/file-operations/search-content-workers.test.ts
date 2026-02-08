@@ -96,9 +96,15 @@ async function cleanupWorkerFixtures(testDir: string): Promise<void> {
 
 async function expectHelloMatches(
   testDir: string,
-  workers: number
+  workers: number,
+  timeoutMs?: number
 ): Promise<void> {
-  const result = await runSearchWithWorkers(testDir, 'hello', workers);
+  const result = await runSearchWithWorkers(
+    testDir,
+    'hello',
+    workers,
+    timeoutMs
+  );
 
   assert.strictEqual(
     result.success,
@@ -189,10 +195,11 @@ function collectProcessOutput(
 async function runSearchWithWorkers(
   testDir: string,
   pattern: string,
-  workers: number
+  workers: number,
+  timeoutMs: number = WORKER_TEST_TIMEOUT_MS
 ): Promise<TestResult> {
   const projectRoot = path.resolve(currentDir, '..', '..', '..', '..');
-  const timeoutSignal = AbortSignal.timeout(WORKER_TEST_TIMEOUT_MS);
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const child = spawnSearchProcess(
     projectRoot,
     testDir,
