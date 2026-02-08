@@ -230,7 +230,7 @@ export function registerSearchContentTool(
     withDefaultIcons({ ...SEARCH_CONTENT_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `grep | ${args.pattern}`,
+      progressMessage: (args) => `grep: ${args.pattern}`,
       completionMessage: (
         args: z.infer<typeof SearchContentInputSchema>,
         result: ToolResult<z.infer<typeof SearchContentOutputSchema>>
