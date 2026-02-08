@@ -270,7 +270,8 @@ export function createProgressReporter(
 async function withProgress<T>(
   message: string,
   extra: ToolExtra,
-  run: () => Promise<T>
+  run: () => Promise<T>,
+  getCompletionMessage?: (result: T) => string | undefined
 ): Promise<T> {
   if (!canSendProgress(extra)) {
     return await run();
@@ -287,11 +288,12 @@ async function withProgress<T>(
 
   try {
     const result = await run();
+    const endMessage = getCompletionMessage?.(result) ?? message;
     await sendProgressNotification(extra, {
       progressToken: token,
       progress: total,
       total,
-      message,
+      message: endMessage,
     });
     return result;
   } catch (error) {
@@ -310,6 +312,10 @@ export function wrapToolHandler<Args, Result>(
   options: {
     guard?: (() => boolean) | undefined;
     progressMessage?: (args: Args) => string;
+    completionMessage?: (
+      args: Args,
+      result: ToolResult<Result>
+    ) => string | undefined;
   }
 ): (args: Args, extra?: ToolExtra) => Promise<ToolResult<Result>> {
   return async (args: Args, extra?: ToolExtra) => {
@@ -320,8 +326,15 @@ export function wrapToolHandler<Args, Result>(
 
     if (options.progressMessage) {
       const message = options.progressMessage(args);
-      return await withProgress(message, resolvedExtra, () =>
-        handler(args, resolvedExtra)
+      const { completionMessage } = options;
+      const completionFn = completionMessage
+        ? (result: ToolResult<Result>) => completionMessage(args, result)
+        : undefined;
+      return await withProgress(
+        message,
+        resolvedExtra,
+        () => handler(args, resolvedExtra),
+        completionFn
       );
     }
 

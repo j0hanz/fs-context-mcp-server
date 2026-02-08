@@ -231,6 +231,18 @@ export function registerSearchContentTool(
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: (args) => `grep | ${args.pattern}`,
+      completionMessage: (
+        args: z.infer<typeof SearchContentInputSchema>,
+        result: ToolResult<z.infer<typeof SearchContentOutputSchema>>
+      ) => {
+        if ('isError' in result && result.isError) return undefined;
+        const { structuredContent: sc } = result as ToolResponse<
+          z.infer<typeof SearchContentOutputSchema>
+        >;
+        const suffix =
+          sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
+        return `grep | ${args.pattern} | ${suffix}`;
+      },
     })
   );
 }

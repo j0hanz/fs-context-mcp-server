@@ -148,8 +148,12 @@ export function registerListDirectoryTool(
     withDefaultIcons({ ...LIST_DIRECTORY_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) =>
-        `ls | ${args.path ? path.basename(args.path) : '.'}`,
+      progressMessage: (args) => {
+        if (args.path) {
+          return `ls | ${path.basename(args.path)}`;
+        }
+        return 'ls';
+      },
     })
   );
 }

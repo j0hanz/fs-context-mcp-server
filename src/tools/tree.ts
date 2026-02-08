@@ -101,8 +101,12 @@ export function registerTreeTool(
     withDefaultIcons({ ...TREE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) =>
-        `tree | ${args.path ? path.basename(args.path) : '.'}`,
+      progressMessage: (args) => {
+        if (args.path) {
+          return `tree | ${path.basename(args.path)}`;
+        }
+        return 'tree';
+      },
     })
   );
 }

@@ -148,7 +148,14 @@ export function registerReadFileTool(
     withDefaultIcons({ ...READ_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `read | ${path.basename(args.path)}`,
+      progressMessage: (args) => {
+        const name = path.basename(args.path);
+        if (args.startLine !== undefined) {
+          const end = args.endLine ?? '…';
+          return `read | ${name} | ${args.startLine}-${end}`;
+        }
+        return `read | ${name}`;
+      },
     })
   );
 }
