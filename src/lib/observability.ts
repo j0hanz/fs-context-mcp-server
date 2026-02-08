@@ -1,102 +1,49 @@
 import { createHash } from 'node:crypto';
 import { channel, tracingChannel } from 'node:diagnostics_channel';
 import {
-  type EventLoopUtilization,
   monitorEventLoopDelay,
   performance,
   PerformanceObserver,
 } from 'node:perf_hooks';
-import { inspect } from 'node:util';
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+// --- Configuration ---
+
+const ENV = process.env;
+
+interface Config {
+  enabled: boolean;
+  detail: 0 | 1 | 2;
+  logToolErrors: boolean;
 }
 
-function hasBooleanOk(value: unknown): value is { ok: boolean } {
-  return isObject(value) && typeof value['ok'] === 'boolean';
+function readConfig(): Config {
+  return {
+    enabled: isTrue(ENV['FS_CONTEXT_DIAGNOSTICS']),
+    detail: parseDetail(ENV['FS_CONTEXT_DIAGNOSTICS_DETAIL']),
+    logToolErrors: isTrue(ENV['FS_CONTEXT_TOOL_LOG_ERRORS']),
+  };
 }
 
-function resolveDiagnosticsOk(result: unknown): boolean | undefined {
-  if (!isObject(result)) return undefined;
-  if (result['isError'] === true) return false;
-  if (hasBooleanOk(result)) return result.ok;
-
-  const structured = result['structuredContent'];
-  if (hasBooleanOk(structured)) return structured.ok;
-
-  return undefined;
+function isTrue(val?: string): boolean {
+  const norm = val?.trim().toLowerCase();
+  return norm === '1' || norm === 'true' || norm === 'yes';
 }
 
-function resolvePrimitiveDiagnosticsMessage(
-  error: unknown
-): string | undefined {
-  if (typeof error === 'string') return error;
-  if (typeof error === 'number' || typeof error === 'boolean')
-    return String(error);
-  if (typeof error === 'bigint') return error.toString();
-  if (typeof error === 'symbol') return error.description ?? 'symbol';
-  return undefined;
+function parseDetail(val?: string): 0 | 1 | 2 {
+  if (val === '2') return 2;
+  if (val === '1') return 1;
+  return 0;
 }
 
-function resolveObjectDiagnosticsMessage(error: unknown): string | undefined {
-  if (error instanceof Error) return error.message;
-  if (isObject(error) && typeof error['message'] === 'string') {
-    return error['message'];
-  }
-  try {
-    return inspect(error, { depth: 3, maxArrayLength: 50 });
-  } catch {
-    return undefined;
-  }
-}
+// --- Domain Types ---
 
-function resolveDiagnosticsErrorMessage(error?: unknown): string | undefined {
-  if (error === undefined || error === null) return undefined;
-  return (
-    resolvePrimitiveDiagnosticsMessage(error) ??
-    resolveObjectDiagnosticsMessage(error)
-  );
+export interface OpsTraceContext {
+  op: string;
+  engine?: string;
+  tool?: string;
+  path?: string;
+  [key: string]: unknown;
 }
-
-function resolveResultErrorMessage(result: unknown): string | undefined {
-  if (!isObject(result)) return undefined;
-  const { structuredContent } = result;
-  if (!isObject(structuredContent)) return undefined;
-  const { error } = structuredContent;
-  if (!isObject(error)) return undefined;
-  const { message } = error;
-  return typeof message === 'string' ? message : undefined;
-}
-
-function logToolError(
-  tool: string,
-  durationMs: number,
-  message?: string
-): void {
-  const rounded = durationMs.toFixed(1);
-  const suffix = message ? `: ${message}` : '';
-  console.error(`[ToolError] ${tool} failed in ${rounded}ms${suffix}`);
-}
-
-function captureEventLoopUtilization(): EventLoopUtilization {
-  return performance.eventLoopUtilization();
-}
-
-function diffEventLoopUtilization(
-  start: EventLoopUtilization
-): EventLoopUtilization {
-  return performance.eventLoopUtilization(start);
-}
-
-function elapsedMs(startMs: number): number {
-  return performance.now() - startMs;
-}
-
-function toMs(nanos: number): number {
-  return nanos / 1_000_000;
-}
-
-type DiagnosticsDetail = 0 | 1 | 2;
 
 interface ToolDiagnosticsEvent {
   phase: 'start' | 'end';
@@ -107,385 +54,201 @@ interface ToolDiagnosticsEvent {
   path?: string;
 }
 
-interface EventLoopDelayStats {
-  min: number;
-  max: number;
-  mean: number;
-  p50: number;
-  p95: number;
-  p99: number;
-  exceeds: number;
-}
-
-interface PerfToolDiagnosticsEvent {
-  phase: 'end';
-  tool: string;
+interface PerfDiagnosticsEvent {
+  phase: 'end' | 'measure';
+  tool?: string;
+  name?: string;
   durationMs: number;
-  elu: {
-    idle: number;
-    active: number;
-    utilization: number;
+  elu?: { idle: number; active: number; utilization: number };
+  eventLoopDelay?: {
+    min: number;
+    max: number;
+    mean: number;
+    p50: number;
+    p95: number;
+    p99: number;
+    exceeds: number;
   };
-  eventLoopDelay?: EventLoopDelayStats;
-}
-
-interface PerfMeasureEvent {
-  phase: 'measure';
-  name: string;
-  durationMs: number;
   detail?: unknown;
 }
 
-type PerfDiagnosticsEvent = PerfToolDiagnosticsEvent | PerfMeasureEvent;
+// --- Channels & Observability State ---
 
-export interface OpsTraceContext {
-  op: string;
-  engine?: string;
-  tool?: string;
-  path?: string;
-  [key: string]: unknown;
-}
+const CHANNELS = {
+  tool: channel('fs-context:tool'),
+  perf: channel('fs-context:perf'),
+  ops: tracingChannel<unknown, OpsTraceContext>('fs-context:ops'),
+};
 
-const TOOL_CHANNEL = channel('fs-context:tool');
-const PERF_CHANNEL = channel('fs-context:perf');
-const OPS_TRACE = tracingChannel<unknown, OpsTraceContext>('fs-context:ops');
 let perfObserver: PerformanceObserver | undefined;
-let perfMeasureCounter = 0;
+let traceCounter = 0;
 
-function buildEventLoopDelayStats(
-  histogram: ReturnType<typeof monitorEventLoopDelay>
-): EventLoopDelayStats | undefined {
-  if (histogram.count === 0) return undefined;
-  return {
-    min: toMs(histogram.min),
-    max: toMs(histogram.max),
-    mean: toMs(histogram.mean),
-    p50: toMs(histogram.percentile(50)),
-    p95: toMs(histogram.percentile(95)),
-    p99: toMs(histogram.percentile(99)),
-    exceeds: histogram.exceeds,
-  };
+// --- Helpers: Result Analysis ---
+
+function isObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
 }
 
-function parseEnvBoolean(name: string): boolean {
-  const normalized = process.env[name]?.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+function extractOutcome(result: unknown): { ok: boolean; error?: string } {
+  if (!isObject(result)) {
+    return { ok: true };
+  }
+
+  if (result['isError'] === true) {
+    const err = extractErrorMessage(result);
+    return { ok: false, error: err };
+  }
+
+  if (typeof result['ok'] === 'boolean') {
+    if (result['ok']) return { ok: true };
+    return { ok: false, error: extractErrorMessage(result) };
+  }
+
+  const content = result['structuredContent'];
+  if (isObject(content) && typeof content['ok'] === 'boolean') {
+    if (content['ok']) return { ok: true };
+    const err = extractResultError(content);
+    return err ? { ok: false, error: err } : { ok: false };
+  }
+
+  return { ok: true };
 }
 
-function parseDiagnosticsEnabled(): boolean {
-  return parseEnvBoolean('FS_CONTEXT_DIAGNOSTICS');
+function extractErrorMessage(source: unknown): string {
+  if (typeof source === 'string') return source;
+  if (source instanceof Error) return source.message;
+  if (isObject(source)) {
+    const struct = source['structuredContent'];
+    if (isObject(struct)) {
+      const err = struct['error'];
+      if (isObject(err) && typeof err['message'] === 'string')
+        return err['message'];
+    }
+    if (typeof source['message'] === 'string') return source['message'];
+    const errObj = source['error'];
+    if (isObject(errObj) && typeof errObj['message'] === 'string') {
+      return errObj['message'];
+    }
+  }
+  try {
+    return String(source);
+  } catch {
+    return 'Unknown error';
+  }
 }
 
-function parseDiagnosticsDetail(): DiagnosticsDetail {
-  const normalized = process.env['FS_CONTEXT_DIAGNOSTICS_DETAIL']?.trim();
-  if (normalized === '2') return 2;
-  if (normalized === '1') return 1;
-  return 0;
-}
-
-function parseToolErrorLogging(): boolean {
-  return parseEnvBoolean('FS_CONTEXT_TOOL_LOG_ERRORS');
-}
-
-interface DiagnosticsConfig {
-  enabled: boolean;
-  detail: DiagnosticsDetail;
-  logToolErrors: boolean;
-}
-
-function readDiagnosticsConfig(): DiagnosticsConfig {
-  return {
-    enabled: parseDiagnosticsEnabled(),
-    detail: parseDiagnosticsDetail(),
-    logToolErrors: parseToolErrorLogging(),
-  };
-}
-
-function hashPath(value: string): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, 16);
-}
-
-function normalizePathForDiagnostics(
-  pathValue: string,
-  detail: DiagnosticsDetail
+function extractResultError(
+  structured: Record<string, unknown>
 ): string | undefined {
-  if (detail === 0) return undefined;
-  if (detail === 2) return pathValue;
-  return hashPath(pathValue);
-}
-
-function normalizeOpsTraceContext(context: OpsTraceContext): OpsTraceContext {
-  if (!context.path) return context;
-
-  const detail = parseDiagnosticsDetail();
-  const normalizedPath = normalizePathForDiagnostics(context.path, detail);
-
-  if (!normalizedPath) {
-    const sanitized: OpsTraceContext = { ...context };
-    delete sanitized.path;
-    return sanitized;
-  }
-
-  return { ...context, path: normalizedPath };
-}
-
-function publishStartEvent(
-  tool: string,
-  options: { path?: string } | undefined,
-  detail: DiagnosticsDetail
-): void {
-  const event: ToolDiagnosticsEvent = { phase: 'start', tool };
-
-  const normalizedPath = options?.path
-    ? normalizePathForDiagnostics(options.path, detail)
+  const err = structured['error'];
+  return isObject(err) && typeof err['message'] === 'string'
+    ? err['message']
     : undefined;
-
-  if (normalizedPath !== undefined) {
-    event.path = normalizedPath;
-  }
-
-  TOOL_CHANNEL.publish(event);
 }
 
-function publishEndEvent(
-  tool: string,
-  ok: boolean,
-  durationMs: number,
-  error?: unknown
-): void {
-  const event: ToolDiagnosticsEvent = {
-    phase: 'end',
-    tool,
-    ok,
-    durationMs,
+function normalizePath(path: string | undefined): string | undefined {
+  const { detail } = readConfig();
+  if (!path || detail === 0) return undefined;
+  if (detail === 2) return path;
+  return createHash('sha256').update(path).digest('hex').slice(0, 16);
+}
+
+// --- Perf Helpers ---
+
+function toMs(nanos: number): number {
+  return nanos / 1_000_000;
+}
+
+function getDelayStats(
+  h: ReturnType<typeof monitorEventLoopDelay>
+): NonNullable<PerfDiagnosticsEvent['eventLoopDelay']> | undefined {
+  if (h.count === 0) return undefined;
+  return {
+    min: toMs(h.min),
+    max: toMs(h.max),
+    mean: toMs(h.mean),
+    p50: toMs(h.percentile(50)),
+    p95: toMs(h.percentile(95)),
+    p99: toMs(h.percentile(99)),
+    exceeds: h.exceeds,
   };
-
-  const message = resolveDiagnosticsErrorMessage(error);
-  if (message !== undefined) {
-    event.error = message;
-  }
-
-  TOOL_CHANNEL.publish(event);
 }
 
-function publishPerfEndEvent(
-  tool: string,
-  durationMs: number,
-  elu: ReturnType<typeof diffEventLoopUtilization>,
-  eventLoopDelay?: EventLoopDelayStats
-): void {
-  PERF_CHANNEL.publish({
-    phase: 'end',
-    tool,
-    durationMs,
-    elu: {
-      idle: elu.idle,
-      active: elu.active,
-      utilization: elu.utilization,
-    },
-    ...(eventLoopDelay ? { eventLoopDelay } : {}),
-  } satisfies PerfDiagnosticsEvent);
-}
-
-function ensurePerfObserver(): void {
+function ensureObserver(): void {
   if (perfObserver) return;
-
   perfObserver = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
-      const { detail } = entry as { detail?: unknown };
-      PERF_CHANNEL.publish({
+      CHANNELS.perf.publish({
         phase: 'measure',
         name: entry.name,
         durationMs: entry.duration,
-        ...(detail !== undefined ? { detail } : {}),
+        detail: (entry as { detail?: unknown }).detail,
       } satisfies PerfDiagnosticsEvent);
-
-      performance.clearMeasures(entry.name);
     }
   });
-
   perfObserver.observe({ entryTypes: ['measure'] });
 }
 
-function startToolDiagnostics(
-  tool: string,
-  options: { path?: string } | undefined,
-  config: DiagnosticsConfig,
-  shouldPublishTool: boolean,
-  shouldPublishPerf: boolean
-): {
-  startMs: number;
-  eluStart: ReturnType<typeof captureEventLoopUtilization> | undefined;
-  eventLoopDelay: ReturnType<typeof monitorEventLoopDelay> | undefined;
-} {
-  const startMs = performance.now();
-  const eluStart = shouldPublishPerf
-    ? captureEventLoopUtilization()
-    : undefined;
-  const eventLoopDelay = shouldPublishPerf
-    ? monitorEventLoopDelay()
-    : undefined;
-
-  if (eventLoopDelay) {
-    eventLoopDelay.enable();
-  }
-
-  if (shouldPublishTool) {
-    publishStartEvent(tool, options, config.detail);
-  }
-
-  return { startMs, eluStart, eventLoopDelay };
-}
-
-function finalizeToolDiagnostics(
-  tool: string,
-  startMs: number,
-  options: {
-    ok: boolean;
-    error?: unknown;
-    shouldPublishTool: boolean;
-    shouldPublishPerf: boolean;
-    eluStart: ReturnType<typeof captureEventLoopUtilization> | undefined;
-    eventLoopDelay: ReturnType<typeof monitorEventLoopDelay> | undefined;
-  }
-): void {
-  const durationMs = elapsedMs(startMs);
-  let eventLoopDelay: EventLoopDelayStats | undefined;
-
-  if (options.eventLoopDelay) {
-    options.eventLoopDelay.disable();
-    eventLoopDelay = buildEventLoopDelayStats(options.eventLoopDelay);
-  }
-
-  if (options.shouldPublishPerf && options.eluStart) {
-    publishPerfEndEvent(
-      tool,
-      durationMs,
-      diffEventLoopUtilization(options.eluStart),
-      eventLoopDelay
-    );
-  }
-  if (options.shouldPublishTool) {
-    publishEndEvent(tool, options.ok, durationMs, options.error);
-  }
-}
-
-async function runWithDiagnostics<T>(
-  tool: string,
-  run: () => Promise<T>,
-  options: { path?: string } | undefined,
-  config: DiagnosticsConfig,
-  shouldPublishTool: boolean,
-  shouldPublishPerf: boolean
-): Promise<T> {
-  const { startMs, eluStart, eventLoopDelay } = startToolDiagnostics(
-    tool,
-    options,
-    config,
-    shouldPublishTool,
-    shouldPublishPerf
-  );
-
-  const finalizeOptions = {
-    shouldPublishTool,
-    shouldPublishPerf,
-    eluStart,
-    eventLoopDelay,
-  };
-
-  try {
-    const result = await run();
-    finalizeToolDiagnostics(tool, startMs, {
-      ok: resolveDiagnosticsOk(result) ?? true,
-      ...finalizeOptions,
-    });
-    return result;
-  } catch (error: unknown) {
-    finalizeToolDiagnostics(tool, startMs, {
-      ok: false,
-      error,
-      ...finalizeOptions,
-    });
-    throw error;
-  }
-}
-
-async function runWithErrorLogging<T>(
-  tool: string,
-  run: () => Promise<T>
-): Promise<T> {
-  const startMs = performance.now();
-
-  try {
-    const result = await run();
-    const ok = resolveDiagnosticsOk(result);
-
-    if (ok === false) {
-      logToolError(tool, elapsedMs(startMs), resolveResultErrorMessage(result));
-    }
-
-    return result;
-  } catch (error: unknown) {
-    logToolError(
-      tool,
-      elapsedMs(startMs),
-      resolveDiagnosticsErrorMessage(error)
-    );
-    throw error;
-  }
-}
+// --- Public API ---
 
 export function shouldPublishOpsTrace(): boolean {
-  return parseDiagnosticsEnabled() && OPS_TRACE.hasSubscribers;
+  return readConfig().enabled && CHANNELS.ops.hasSubscribers;
 }
 
 export function publishOpsTraceStart(context: OpsTraceContext): void {
-  OPS_TRACE.start.publish(normalizeOpsTraceContext(context));
+  CHANNELS.ops.start.publish(normalizeContext(context));
 }
 
 export function publishOpsTraceEnd(context: OpsTraceContext): void {
-  OPS_TRACE.end.publish(normalizeOpsTraceContext(context));
+  CHANNELS.ops.end.publish(normalizeContext(context));
 }
 
 export function publishOpsTraceError(
   context: OpsTraceContext,
   error: unknown
 ): void {
-  OPS_TRACE.error.publish({
-    ...normalizeOpsTraceContext(context),
+  CHANNELS.ops.error.publish({
+    ...normalizeContext(context),
     error,
   });
+}
+
+function normalizeContext(ctx: OpsTraceContext): OpsTraceContext {
+  if (!ctx.path) return ctx;
+  const normalized = normalizePath(ctx.path);
+  if (!normalized) {
+    const copy = { ...ctx };
+    delete copy.path;
+    return copy;
+  }
+  return { ...ctx, path: normalized };
 }
 
 export function startPerfMeasure(
   name: string,
   detail?: Record<string, unknown>
 ): ((ok?: boolean) => void) | undefined {
-  const config = readDiagnosticsConfig();
-  if (!config.enabled || !PERF_CHANNEL.hasSubscribers) return undefined;
+  if (!readConfig().enabled || !CHANNELS.perf.hasSubscribers) return undefined;
 
-  ensurePerfObserver();
-  const id = (perfMeasureCounter += 1);
+  ensureObserver();
+  const id = ++traceCounter;
   const startMark = `${name}:start:${id}`;
   const endMark = `${name}:end:${id}`;
+
   performance.mark(startMark);
 
-  return (ok?: boolean): void => {
+  return (ok?: boolean) => {
     performance.mark(endMark);
-    const finalDetail =
-      ok === undefined
-        ? detail
-        : ({ ...(detail ?? {}), ok } satisfies Record<string, unknown>);
+    const meta =
+      ok === undefined && !detail
+        ? undefined
+        : { ...(detail ?? {}), ...(ok !== undefined ? { ok } : {}) };
 
-    if (finalDetail) {
-      performance.measure(name, {
-        start: startMark,
-        end: endMark,
-        detail: finalDetail,
-      });
-    } else {
-      performance.measure(name, startMark, endMark);
-    }
+    performance.measure(name, {
+      start: startMark,
+      end: endMark,
+      detail: meta,
+    });
 
     performance.clearMarks(startMark);
     performance.clearMarks(endMark);
@@ -497,16 +260,91 @@ export async function withPerfMeasure<T>(
   detail: Record<string, unknown> | undefined,
   run: () => Promise<T>
 ): Promise<T> {
-  const endMeasure = startPerfMeasure(name, detail);
+  const end = startPerfMeasure(name, detail);
   let ok = false;
+  try {
+    const res = await run();
+    ok = true;
+    return res;
+  } finally {
+    end?.(ok);
+  }
+}
+
+function publishToolStart(tool: string, pathVal?: string): void {
+  const event: ToolDiagnosticsEvent = { phase: 'start', tool };
+  if (pathVal) event.path = pathVal;
+  CHANNELS.tool.publish(event);
+}
+
+function publishToolEnd(
+  tool: string,
+  ok: boolean,
+  durationMs: number,
+  errorMsg?: string
+): void {
+  const event: ToolDiagnosticsEvent = { phase: 'end', tool, ok, durationMs };
+  if (errorMsg) event.error = errorMsg;
+  CHANNELS.tool.publish(event);
+}
+
+function publishPerfEnd(
+  tool: string,
+  durationMs: number,
+  eluStart: ReturnType<typeof performance.eventLoopUtilization>,
+  loopMonitor?: ReturnType<typeof monitorEventLoopDelay>
+): void {
+  const elu = performance.eventLoopUtilization(eluStart);
+  const event: PerfDiagnosticsEvent = {
+    phase: 'end',
+    tool,
+    durationMs,
+    elu: { idle: elu.idle, active: elu.active, utilization: elu.utilization },
+  };
+  if (loopMonitor) {
+    const delays = getDelayStats(loopMonitor);
+    if (delays) event.eventLoopDelay = delays;
+  }
+  CHANNELS.perf.publish(event);
+}
+
+async function runAndObserve<T>(
+  tool: string,
+  run: () => Promise<T>,
+  pubTool: boolean,
+  pubPerf: boolean,
+  logErrors: boolean,
+  pathVal?: string
+): Promise<T> {
+  const startMs = performance.now();
+  const eluStart = pubPerf ? performance.eventLoopUtilization() : undefined;
+  const loopMonitor = pubPerf ? monitorEventLoopDelay() : undefined;
+  loopMonitor?.enable();
+
+  if (pubTool) publishToolStart(tool, pathVal);
+
+  let result: T;
+  let ok = false;
+  let errorMsg: string | undefined;
 
   try {
-    const result = await run();
-    ok = true;
-    return result;
+    result = await run();
+    ({ ok, error: errorMsg } = extractOutcome(result));
+  } catch (err) {
+    ok = false;
+    errorMsg = extractErrorMessage(err);
+    throw err;
   } finally {
-    endMeasure?.(ok);
+    const durationMs = performance.now() - startMs;
+    loopMonitor?.disable();
+
+    if (pubPerf && eluStart)
+      publishPerfEnd(tool, durationMs, eluStart, loopMonitor);
+    if (pubTool) publishToolEnd(tool, ok, durationMs, errorMsg);
+    if (logErrors && !ok) logError(tool, durationMs, errorMsg);
   }
+
+  return result;
 }
 
 export async function withToolDiagnostics<T>(
@@ -514,26 +352,40 @@ export async function withToolDiagnostics<T>(
   run: () => Promise<T>,
   options?: { path?: string }
 ): Promise<T> {
-  const config = readDiagnosticsConfig();
-
+  const config = readConfig();
   if (!config.enabled) {
     if (!config.logToolErrors) return await run();
-    return await runWithErrorLogging(tool, run);
+    const start = performance.now();
+    try {
+      const res = await run();
+      const { ok, error } = extractOutcome(res);
+      if (!ok) logError(tool, performance.now() - start, error);
+      return res;
+    } catch (e) {
+      logError(tool, performance.now() - start, extractErrorMessage(e));
+      throw e;
+    }
   }
 
-  const shouldPublishTool = TOOL_CHANNEL.hasSubscribers;
-  const shouldPublishPerf = PERF_CHANNEL.hasSubscribers;
+  const pubTool = CHANNELS.tool.hasSubscribers;
+  const pubPerf = CHANNELS.perf.hasSubscribers;
 
-  if (!shouldPublishTool && !shouldPublishPerf) {
-    return await run();
-  }
+  if (!pubTool && !pubPerf) return await run();
 
-  return await runWithDiagnostics(
+  const normPath = normalizePath(options?.path);
+  return await runAndObserve(
     tool,
     run,
-    options,
-    config,
-    shouldPublishTool,
-    shouldPublishPerf
+    pubTool,
+    pubPerf,
+    config.logToolErrors,
+    normPath
+  );
+}
+
+function logError(tool: string, durationMs: number, msg?: string): void {
+  const suffix = msg ? `: ${msg}` : '';
+  console.error(
+    `[ToolError] ${tool} failed in ${durationMs.toFixed(1)}ms${suffix}`
   );
 }
