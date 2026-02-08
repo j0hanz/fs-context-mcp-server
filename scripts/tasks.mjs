@@ -113,7 +113,18 @@ const System = {
           : (options.signal ?? timeoutSignal);
 
       if (combinedSignal?.aborted) {
-        reject(new Error(`${command} aborted before start`));
+        const reason = combinedSignal.reason;
+        const reasonText =
+          reason instanceof Error
+            ? reason.message
+            : reason
+              ? String(reason)
+              : undefined;
+        reject(
+          new Error(
+            `${command} aborted before start${reasonText ? `: ${reasonText}` : ''}`
+          )
+        );
         return;
       }
 
@@ -125,9 +136,11 @@ const System = {
       });
 
       let aborted = false;
+      let abortReason;
       const abortListener = combinedSignal
         ? () => {
             aborted = true;
+            abortReason = combinedSignal.reason;
           }
         : null;
 
@@ -153,8 +166,18 @@ const System = {
       proc.on('close', (code, signal) => {
         cleanup();
         if (aborted) {
+          const reasonText =
+            abortReason instanceof Error
+              ? abortReason.message
+              : abortReason
+                ? String(abortReason)
+                : undefined;
           const suffix = signal ? ` (signal ${signal})` : '';
-          reject(new Error(`${command} aborted${suffix}`));
+          reject(
+            new Error(
+              `${command} aborted${suffix}${reasonText ? `: ${reasonText}` : ''}`
+            )
+          );
           return;
         }
         if (code === 0) return resolve();

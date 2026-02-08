@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const isSourceContext = fileURLToPath(import.meta.url).endsWith('.ts');
 const shouldSkip = isSourceContext;
+const WORKER_TEST_TIMEOUT_MS = 15_000;
 
 // Create a test script that will run searchContent with workers enabled
 // Uses compiled code paths for proper module resolution
@@ -119,7 +120,8 @@ function spawnSearchProcess(
   projectRoot: string,
   testDir: string,
   pattern: string,
-  workers: number
+  workers: number,
+  signal?: AbortSignal
 ): ChildProcessWithoutNullStreams {
   return spawn(process.execPath, ['--eval', testScript, testDir, pattern], {
     cwd: projectRoot,
@@ -128,6 +130,7 @@ function spawnSearchProcess(
       FS_CONTEXT_SEARCH_WORKERS: String(workers),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -189,7 +192,14 @@ async function runSearchWithWorkers(
   workers: number
 ): Promise<TestResult> {
   const projectRoot = path.resolve(currentDir, '..', '..', '..', '..');
-  const child = spawnSearchProcess(projectRoot, testDir, pattern, workers);
+  const timeoutSignal = AbortSignal.timeout(WORKER_TEST_TIMEOUT_MS);
+  const child = spawnSearchProcess(
+    projectRoot,
+    testDir,
+    pattern,
+    workers,
+    timeoutSignal
+  );
   return collectProcessOutput(child);
 }
 

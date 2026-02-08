@@ -62,7 +62,10 @@ const testScript = `
 })();
 `;
 
-function spawnSearchProcess(testDir: string): ChildProcessWithoutNullStreams {
+function spawnSearchProcess(
+  testDir: string,
+  signal?: AbortSignal
+): ChildProcessWithoutNullStreams {
   return spawn(process.execPath, ['--eval', testScript], {
     cwd: projectRoot,
     env: {
@@ -71,6 +74,7 @@ function spawnSearchProcess(testDir: string): ChildProcessWithoutNullStreams {
       FS_CONTEXT_SEARCH_WORKERS_DEBUG: '1',
       FS_CONTEXT_TEST_DIR: testDir,
     },
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -79,7 +83,8 @@ async function runSearchInChild(testDir: string): Promise<{
   stderr: string;
   exitCode: number | null;
 }> {
-  const child = spawnSearchProcess(testDir);
+  const timeoutSignal = AbortSignal.timeout(15_000);
+  const child = spawnSearchProcess(testDir, timeoutSignal);
 
   let stdout = '';
   let stderr = '';
@@ -94,18 +99,15 @@ async function runSearchInChild(testDir: string): Promise<{
   });
 
   return await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error('Timed out waiting for dist worker search process'));
-    }, 15000);
-
     child.on('error', (err) => {
-      clearTimeout(timeout);
+      if (timeoutSignal.aborted) {
+        reject(new Error('Timed out waiting for dist worker search process'));
+        return;
+      }
       reject(err);
     });
 
     child.on('close', (code) => {
-      clearTimeout(timeout);
       resolve({ stdout, stderr, exitCode: code });
     });
   });
