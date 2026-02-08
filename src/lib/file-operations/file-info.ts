@@ -7,8 +7,7 @@ import type {
   GetMultipleFileInfoResult,
   MultipleFileInfoResult,
 } from '../../config.js';
-import { PARALLEL_CONCURRENCY } from '../constants.js';
-import { getMimeType } from '../constants.js';
+import { getMimeType, PARALLEL_CONCURRENCY } from '../constants.js';
 import {
   assertNotAborted,
   getFileType,
@@ -30,33 +29,21 @@ const PERM_STRINGS = [
   'rwx',
 ] as const satisfies readonly string[];
 
+interface FileInfoOptions {
+  includeMimeType?: boolean | undefined;
+  signal?: AbortSignal | undefined;
+}
+
 function getPermissions(mode: number): string {
   const ownerIndex = (mode >> 6) & 0b111;
   const groupIndex = (mode >> 3) & 0b111;
   const otherIndex = mode & 0b111;
+
   const owner = PERM_STRINGS[ownerIndex] ?? '---';
   const group = PERM_STRINGS[groupIndex] ?? '---';
   const other = PERM_STRINGS[otherIndex] ?? '---';
 
   return `${owner}${group}${other}`;
-}
-
-function resolveMimeType(
-  ext: string,
-  includeMimeType: boolean
-): string | undefined {
-  if (!includeMimeType) return undefined;
-  if (!ext) return undefined;
-  return getMimeType(ext);
-}
-
-async function resolveSymlinkTarget(
-  pathToRead: string,
-  isSymlink: boolean,
-  signal?: AbortSignal
-): Promise<string | undefined> {
-  if (!isSymlink) return undefined;
-  return getSymlinkTarget(pathToRead, signal);
 }
 
 function buildFileInfoResult(
@@ -84,25 +71,40 @@ function buildFileInfoResult(
   };
 }
 
+async function getSymlinkTarget(
+  pathToRead: string,
+  signal?: AbortSignal
+): Promise<string | undefined> {
+  assertNotAborted(signal);
+  try {
+    return await withAbort(fsp.readlink(pathToRead), signal);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error;
+    return undefined;
+  }
+}
+
 export async function getFileInfo(
   filePath: string,
-  options: { includeMimeType?: boolean; signal?: AbortSignal } = {}
+  options: FileInfoOptions = {}
 ): Promise<FileInfo> {
   const { signal } = options;
   assertNotAborted(signal);
+
   const { requestedPath, resolvedPath, isSymlink } =
     await validateExistingPathDetailed(filePath, signal);
+
   assertAllowedFileAccess(requestedPath, resolvedPath);
 
   const name = path.basename(requestedPath);
   const ext = path.extname(name).toLowerCase();
   const includeMimeType = options.includeMimeType !== false;
-  const mimeType = resolveMimeType(ext, includeMimeType);
-  const symlinkTarget = await resolveSymlinkTarget(
-    requestedPath,
-    isSymlink,
-    signal
-  );
+  const mimeType =
+    includeMimeType && ext.length > 0 ? getMimeType(ext) : undefined;
+
+  const symlinkTarget = isSymlink
+    ? await getSymlinkTarget(requestedPath, signal)
+    : undefined;
 
   const stats = await withAbort(fsp.stat(resolvedPath), signal);
 
@@ -116,29 +118,7 @@ export async function getFileInfo(
   );
 }
 
-async function getSymlinkTarget(
-  pathToRead: string,
-  signal?: AbortSignal
-): Promise<string | undefined> {
-  assertNotAborted(signal);
-  try {
-    return await withAbort(fsp.readlink(pathToRead), signal);
-  } catch (error) {
-    handleSymlinkError(error);
-    return undefined;
-  }
-}
-
-function handleSymlinkError(error: unknown): void {
-  if (error instanceof Error && error.name === 'AbortError') {
-    throw error;
-  }
-}
-
-interface GetMultipleFileInfoOptions {
-  includeMimeType?: boolean;
-  signal?: AbortSignal;
-}
+type GetMultipleFileInfoOptions = FileInfoOptions;
 
 function buildEmptyResult(): GetMultipleFileInfoResult {
   return {
@@ -147,39 +127,31 @@ function buildEmptyResult(): GetMultipleFileInfoResult {
   };
 }
 
-function buildOutput(paths: readonly string[]): MultipleFileInfoResult[] {
-  return paths.map((filePath) => ({
-    path: filePath,
-  }));
+interface ParallelResult {
+  index: number;
+  value: MultipleFileInfoResult;
+}
+interface ParallelError {
+  index: number;
+  error: Error;
 }
 
 async function processFileInfo(
   filePath: string,
   options: GetMultipleFileInfoOptions
 ): Promise<MultipleFileInfoResult> {
-  const fileInfoOptions: { includeMimeType?: boolean; signal?: AbortSignal } =
-    {};
-  if (options.includeMimeType !== undefined) {
-    fileInfoOptions.includeMimeType = options.includeMimeType;
-  }
-  if (options.signal) {
-    fileInfoOptions.signal = options.signal;
-  }
-  const info = await getFileInfo(filePath, fileInfoOptions);
+  const info = await getFileInfo(filePath, {
+    includeMimeType: options.includeMimeType,
+    signal: options.signal,
+  });
 
-  return {
-    path: filePath,
-    info,
-  };
+  return { path: filePath, info };
 }
 
 async function readFileInfoInParallel(
   paths: readonly string[],
   options: GetMultipleFileInfoOptions
-): Promise<{
-  results: { index: number; value: MultipleFileInfoResult }[];
-  errors: { index: number; error: Error }[];
-}> {
+): Promise<{ results: ParallelResult[]; errors: ParallelError[] }> {
   return await processInParallel(
     paths.map((filePath, index) => ({ filePath, index })),
     async ({ filePath, index }) => ({
@@ -193,7 +165,7 @@ async function readFileInfoInParallel(
 
 function applyResults(
   output: MultipleFileInfoResult[],
-  results: { index: number; value: MultipleFileInfoResult }[]
+  results: ParallelResult[]
 ): void {
   for (const result of results) {
     output[result.index] = result.value;
@@ -202,14 +174,16 @@ function applyResults(
 
 function applyErrors(
   output: MultipleFileInfoResult[],
-  errors: { index: number; error: Error }[],
+  errors: ParallelError[],
   paths: readonly string[]
 ): void {
   for (const failure of errors) {
-    const filePath = paths[failure.index] ?? '(unknown)';
-    if (output[failure.index] !== undefined) {
-      output[failure.index] = { path: filePath, error: failure.error.message };
-    }
+    const { index } = failure;
+    if (index < 0 || index >= output.length) continue;
+    if (output[index] === undefined) continue;
+
+    const filePath = paths[index] ?? '(unknown)';
+    output[index] = { path: filePath, error: failure.error.message };
   }
 }
 
@@ -246,8 +220,9 @@ export async function getMultipleFileInfo(
 ): Promise<GetMultipleFileInfoResult> {
   if (paths.length === 0) return buildEmptyResult();
 
-  const output = buildOutput(paths);
+  const output = paths.map((filePath) => ({ path: filePath }));
   const { results, errors } = await readFileInfoInParallel(paths, options);
+
   applyResults(output, results);
   applyErrors(output, errors, paths);
 
