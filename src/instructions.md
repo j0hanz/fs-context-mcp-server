@@ -1,63 +1,50 @@
 # FS-Context MCP Server Instructions
 
-<!-- path: src/instructions.md -->
+> Available as resource `internal://instructions`. Load when unsure about tool usage.
 
-> Guidance for the Agent: These instructions are available as a resource (`internal://instructions`) or prompt (`get-help`). Load them when you are unsure about tool usage.
+## Core Capability
 
-## 1. Core Capability
+- **Domain:** Read-only filesystem exploration, search, and inspection within allowed roots.
+- **Tools (all READ-ONLY):** `roots` `ls` `find` `tree` `read` `read_many` `grep` `stat` `stat_many`
 
-- **Domain:** Read-only filesystem exploration, search, and inspection within explicitly allowed roots.
-- **Primary Resources:** Directory trees, file content, metadata, and search results.
+## Golden Path Workflows
 
-## 2. The "Golden Path" Workflows (Critical)
+### Discovery & Navigation
 
-_Describe the standard order of operations using ONLY tools that exist._
+1. `roots` — see allowed directories.
+2. `ls` (single dir) or `tree` (recursive) to map layout.
+   > Never guess paths. Always list first.
 
-### Workflow A: Discovery & Navigation
+### Search & Retrieval
 
-1. Call `roots` to confirm designated access points.
-2. Call `ls` (for single directory) or `tree` (for structure) to map layout.
-   > Constraint: Never guess paths. Always list first.
+1. `find` — locate files by glob.
+2. `grep` — search contents by regex.
+3. `read` / `read_many` — inspect files.
+   > Large results return `resourceUri`; read it for full content.
 
-### Workflow B: Search & Retrieval
+### Metadata
 
-1. Call `find` to locate files by name/glob pattern.
-2. Call `grep` to find code by content/regex.
-3. Call `read` (single) or `read_many` (batch) to inspect specific files.
-   > Constraint: Large readings return incomplete previews with resource URIs.
+- `stat` / `stat_many` — size, type, permissions, token estimate.
 
-## 3. Tool Nuances & Gotchas
+## Tool Nuances
 
-_Do NOT repeat JSON schema. Focus on behavior and pitfalls._
+- **`roots`** — Call first; all tools are scoped to these directories.
+- **`ls`** — Non-recursive. Multiple roots require absolute `path`.
+- **`find`** — Glob (e.g. `**/*.ts`). `maxResults` default 100. Respects `.gitignore`; `includeIgnored=true` overrides.
+- **`tree`** — ASCII+JSON tree. Default depth 5, max 1000 entries.
+- **`grep`** — RE2 regex. Skips binaries and files >1MB. Max 50 inline matches; excess via `resourceUri`.
+- **`read`/`read_many`** — `head` is exclusive with `startLine`/`endLine`. Large content via `resourceUri`. Batch max 100.
+- **`stat`/`stat_many`** — Includes `tokenEstimate ≈ ceil(size/4)`. Batch max 100.
 
-- **`ls`**
-  - **Purpose:** Non-recursive directory listing.
-  - **Inputs:** `path` (relative to root). default: root.
-  - **Limits:** Not recursive; use `tree` or `find` for depth.
-  - **Multi-root:** When multiple roots are configured, pass an absolute path to disambiguate (relative paths are rejected).
+## Errors
 
-- **`find`**
-  - **Purpose:** Recursive file search by globs.
-  - **Inputs:** `pattern` (glob like `**/*.ts`), `path` (base dir).
-  - **Latency:** Scans disk; bounded by `maxResults` (default 100).
+- `E_ACCESS_DENIED` — Outside allowed roots. Check `roots`.
+- `E_NOT_FOUND` — Use `ls`/`find` to verify path.
+- `E_TOO_LARGE` — Use `head` for preview.
+- `E_TIMEOUT` — Narrow scope or reduce batch.
+- `E_INVALID_PATTERN` — Check glob/regex syntax.
 
-- **`grep`**
-  - **Purpose:** Content search using RE2 regex.
-  - **Inputs:** `pattern` (regex), `path` (base).
-  - **Limits:** Skips binaries & files >1MB. Truncates results >50 matches.
+## Resources
 
-- **`read` / `read_many`**
-  - **Purpose:** Read file contents.
-  - **Inputs:** `path`/`paths`. Optional: `head` (first N lines) OR `startLine`/`endLine`.
-  - **Gotchas:** `head` is mutually exclusive with `startLine`/`endLine`. Large content returns `resourceUri` link.
-
-- **`tree`**
-  - **Purpose:** ASCII + JSON tree visualization.
-  - **Limits:** Max depth/entries apply. Good for high-level "glance".
-
-## 4. Error Handling Strategy
-
-- **`E_ACCESS_DENIED`**: You are trying to access a path outside allowed `roots`.
-- **`E_NOT_FOUND`**: Re-run `ls` or `find` to verify the path exists.
-- **`E_TIMEOUT`**: Reduce scope (subdir) or batch size.
-- **Resource Links**: Content was too large for inline. Read the provided URI to get full content.
+- `internal://instructions` — This document.
+- `fs-context://result/{id}` — Cached large output (ephemeral).
