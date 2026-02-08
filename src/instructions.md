@@ -1,50 +1,87 @@
-# FS-Context MCP Server Instructions
+# FS-CONTEXT INSTRUCTIONS
 
-> Available as resource `internal://instructions`. Load when unsure about tool usage.
+These instructions are available as a resource (internal://instructions) or prompt (get-help). Load them when unsure about tool usage.
 
-## Core Capability
+---
 
-- **Domain:** Read-only filesystem exploration, search, and inspection within allowed roots.
-- **Tools (all READ-ONLY):** `roots` `ls` `find` `tree` `read` `read_many` `grep` `stat` `stat_many`
+## CORE CAPABILITY
 
-## Golden Path Workflows
+- Domain: Read-only filesystem exploration, search, and analysis within allowed roots.
+- Primary Resources: Files, Directories, Search Results, File Metadata.
+- Tools: `ls`, `roots`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep` (READ); `create_directory`, `write_file`, `edit_file`, `move_file`, `delete_file` (WRITE).
 
-### Discovery & Navigation
+---
 
-1. `roots` — see allowed directories.
-2. `ls` (single dir) or `tree` (recursive) to map layout.
-   > Never guess paths. Always list first.
+## THE "GOLDEN PATH" WORKFLOWS (CRITICAL)
 
-### Search & Retrieval
+### WORKFLOW A: DISCOVERY & NAVIGATION
 
-1. `find` — locate files by glob.
-2. `grep` — search contents (literal by default; set `isRegex=true` for regex).
-3. `read` / `read_many` — inspect files.
-   > Large results return `resourceUri`; read it for full content.
+- Call `roots` to see allowed directories.
+- Call `ls` (single dir) or `tree` (recursive) to map layout.
+- Call `stat` or `stat_many` to check file types/sizes before reading.
+  NOTE: Never guess paths. Always list first.
 
-### Metadata
+### WORKFLOW B: SEARCH & RETRIEVAL
 
-- `stat` / `stat_many` — size, type, permissions, token estimate.
+- Call `find` to locate files by glob (e.g., `**/*.ts`).
+- Call `grep` to search contents by regex (e.g., `function.*test`).
+- Call `read` or `read_many` to inspect files.
+- If content is truncated, use `resourceUri` from response or paginated `read` with `startLine`.
 
-## Tool Nuances
+### WORKFLOW C: MODIFICATION (IF PERMITTED)
 
-- **`roots`** — Call first; all tools are scoped to these directories.
-- **`ls`** — Non-recursive. Multiple roots require absolute `path`.
-- **`find`** — Glob (e.g. `**/*.ts`). `maxResults` default 100. Respects `.gitignore`; `includeIgnored=true` overrides.
-- **`tree`** — ASCII+JSON tree. Default depth 5, max 1000 entries.
-- **`grep`** — Literal search by default; supports RE2 regex when `isRegex=true`. RE2 does not support backreferences or lookahead. Skips binaries and files >1MB. Max 50 inline matches; excess via `resourceUri`.
-- **`read`/`read_many`** — `head` is exclusive with `startLine`/`endLine`. Large content via `resourceUri`. Batch max 100.
-- **`stat`/`stat_many`** — Includes `tokenEstimate ≈ ceil(size/4)`. Batch max 100.
+- Call `create_directory` to ensure paths exist.
+- Call `write_file` to create/overwrite files.
+- Call `edit_file` for targeted replacements.
+- Call `move_file` or `delete_file` for organization.
+  NOTE: Always confirm destructive actions (delete/overwrite) with the user first.
 
-## Errors
+---
 
-- `E_ACCESS_DENIED` — Outside allowed roots. Check `roots`.
-- `E_NOT_FOUND` — Use `ls`/`find` to verify path.
-- `E_TOO_LARGE` — Use `head` for preview.
-- `E_TIMEOUT` — Narrow scope or reduce batch.
-- `E_INVALID_PATTERN` — Check glob/regex syntax.
+## TOOL NUANCES & GOTCHAS
 
-## Resources
+`ls`
 
-- `internal://instructions` — This document.
-- `fs-context://result/{id}` — Cached large output (ephemeral).
+- Purpose: List directory contents (non-recursive).
+- Input: `path` (optional, default root), `includeIgnored` (bool).
+- Limits: Use `tree` for recursion (depth limited).
+
+`find`
+
+- Purpose: Search file paths by glob.
+- Input: `pattern` (required), `path` (optional root).
+- Nuance: Respects `.gitignore` unless `includeIgnored=true`.
+
+`grep`
+
+- Purpose: Search file content.
+- Input: `pattern` (string/regex), `isRegex` (bool).
+- Limits: Skips binaries/large files. Returns max 50 inline matches.
+
+`read` / `read_many`
+
+- Purpose: Read file text.
+- Input: `path`, `head` (lines), `startLine`/`endLine`.
+- Gotcha: Large files return `resourceUri`; read it or use pagination.
+
+`edit_file`
+
+- Purpose: Sequential string replacement.
+- Input: `edits` (array of {oldText, newText}).
+- Gotcha: `oldText` must match exactly. First occurrence only per edit.
+
+---
+
+## ERROR HANDLING STRATEGY
+
+- `E_NOT_FOUND`: Check path with `ls` or `find`.
+- `E_ACCESS_DENIED`: Path outside allowed `roots`.
+- `E_TIMEOUT`: Reduce scope (e.g., specific subdir) or batch size.
+- `E_INVALID_PATTERN`: Fix glob/regex syntax.
+
+---
+
+## RESOURCES
+
+- `internal://instructions`: This document.
+- `fs-context://result/{id}`: Cached large output (ephemeral).
