@@ -145,7 +145,7 @@ export function registerSearchFilesTool(
     },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `find ${args.pattern}`,
+      progressMessage: (args) => `find \`${args.pattern}\``,
     })
   );
 }
