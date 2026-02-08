@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { channel, tracingChannel } from 'node:diagnostics_channel';
 import {
@@ -41,7 +42,7 @@ export interface OpsTraceContext {
   op: string;
   engine?: string;
   tool?: string;
-  path?: string;
+  path?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -51,6 +52,11 @@ interface ToolDiagnosticsEvent {
   durationMs?: number;
   ok?: boolean;
   error?: string;
+  path?: string;
+}
+
+interface ToolAsyncContext {
+  tool: string;
   path?: string;
 }
 
@@ -79,6 +85,10 @@ const CHANNELS = {
   perf: channel('fs-context:perf'),
   ops: tracingChannel<unknown, OpsTraceContext>('fs-context:ops'),
 };
+
+const toolContext = new AsyncLocalStorage<ToolAsyncContext>({
+  name: 'fs-context:tool',
+});
 
 let perfObserver: PerformanceObserver | undefined;
 let traceCounter = 0;
@@ -196,11 +206,11 @@ export function shouldPublishOpsTrace(): boolean {
 }
 
 export function publishOpsTraceStart(context: OpsTraceContext): void {
-  CHANNELS.ops.start.publish(normalizeContext(context));
+  CHANNELS.ops.start.publish(normalizeContext(applyToolContext(context)));
 }
 
 export function publishOpsTraceEnd(context: OpsTraceContext): void {
-  CHANNELS.ops.end.publish(normalizeContext(context));
+  CHANNELS.ops.end.publish(normalizeContext(applyToolContext(context)));
 }
 
 export function publishOpsTraceError(
@@ -208,9 +218,19 @@ export function publishOpsTraceError(
   error: unknown
 ): void {
   CHANNELS.ops.error.publish({
-    ...normalizeContext(context),
+    ...normalizeContext(applyToolContext(context)),
     error,
   });
+}
+
+function applyToolContext(context: OpsTraceContext): OpsTraceContext {
+  const current = toolContext.getStore();
+  if (!current) return context;
+
+  const merged: OpsTraceContext = { ...context };
+  merged.tool ??= current.tool;
+  merged.path ??= current.path;
+  return merged;
 }
 
 function normalizeContext(ctx: OpsTraceContext): OpsTraceContext {
@@ -353,34 +373,42 @@ export async function withToolDiagnostics<T>(
   options?: { path?: string }
 ): Promise<T> {
   const config = readConfig();
-  if (!config.enabled) {
-    if (!config.logToolErrors) return await run();
-    const start = performance.now();
-    try {
-      const res = await run();
-      const { ok, error } = extractOutcome(res);
-      if (!ok) logError(tool, performance.now() - start, error);
-      return res;
-    } catch (e) {
-      logError(tool, performance.now() - start, extractErrorMessage(e));
-      throw e;
-    }
-  }
-
-  const pubTool = CHANNELS.tool.hasSubscribers;
-  const pubPerf = CHANNELS.perf.hasSubscribers;
-
-  if (!pubTool && !pubPerf) return await run();
-
   const normPath = normalizePath(options?.path);
-  return await runAndObserve(
+
+  const context: ToolAsyncContext = {
     tool,
-    run,
-    pubTool,
-    pubPerf,
-    config.logToolErrors,
-    normPath
-  );
+    ...(normPath ? { path: normPath } : {}),
+  };
+
+  return await toolContext.run(context, async () => {
+    if (!config.enabled) {
+      if (!config.logToolErrors) return await run();
+      const start = performance.now();
+      try {
+        const res = await run();
+        const { ok, error } = extractOutcome(res);
+        if (!ok) logError(tool, performance.now() - start, error);
+        return res;
+      } catch (e) {
+        logError(tool, performance.now() - start, extractErrorMessage(e));
+        throw e;
+      }
+    }
+
+    const pubTool = CHANNELS.tool.hasSubscribers;
+    const pubPerf = CHANNELS.perf.hasSubscribers;
+
+    if (!pubTool && !pubPerf) return await run();
+
+    return await runAndObserve(
+      tool,
+      run,
+      pubTool,
+      pubPerf,
+      config.logToolErrors,
+      normPath
+    );
+  });
 }
 
 function logError(tool: string, durationMs: number, msg?: string): void {
