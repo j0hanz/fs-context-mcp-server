@@ -6,7 +6,7 @@ These instructions are available as a resource (internal://instructions) or prom
 
 ## CORE CAPABILITY
 
-- Domain: Read-only filesystem exploration, search, and analysis within allowed roots.
+- Domain: Filesystem operations via an MCP server, enabling LLMs to interact with the filesystem securely and efficiently.
 - Primary Resources: Files, Directories, Search Results, File Metadata.
 - Tools: `ls`, `roots`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep` (READ); `mkdir`, `write`, `edit`, `mv`, `rm` (WRITE).
 

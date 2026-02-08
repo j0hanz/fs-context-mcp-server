@@ -4,7 +4,7 @@
 
 ## 1) Project Context
 
-- **Domain:** Read-only Model Context Protocol (MCP) server for secure filesystem exploration, searching, and analysis. (see `package.json` description)
+- **Domain:** Filesystem operations via an MCP server, enabling LLMs to interact with the filesystem securely and efficiently.
 - **Tech Stack (Verified):**
   - **Languages:** TypeScript 5.9 (see `package.json`), Node.js 24+ (see `package.json` engines).
   - **Frameworks:** Node.js Native Test Runner (`node:test`) (see `scripts/tasks.mjs`, `src/__tests__/tools/grep-regex-mode.test.ts`).
