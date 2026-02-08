@@ -23,7 +23,7 @@ interface GlobDirentLike extends DirentLike {
   parentPath?: string;
 }
 
-export interface GlobEntry {
+interface GlobEntry {
   path: string;
   dirent: DirentLike;
   stats?: Stats;

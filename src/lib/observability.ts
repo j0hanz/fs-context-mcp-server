@@ -38,7 +38,7 @@ function parseDetail(val?: string): 0 | 1 | 2 {
 
 // --- Domain Types ---
 
-export interface OpsTraceContext {
+interface OpsTraceContext {
   op: string;
   engine?: string;
   tool?: string;
@@ -279,22 +279,6 @@ export function startPerfMeasure(
     performance.clearMarks(startMark);
     performance.clearMarks(endMark);
   };
-}
-
-export async function withPerfMeasure<T>(
-  name: string,
-  detail: Record<string, unknown> | undefined,
-  run: () => Promise<T>
-): Promise<T> {
-  const end = startPerfMeasure(name, detail);
-  let ok = false;
-  try {
-    const res = await run();
-    ok = true;
-    return res;
-  } finally {
-    end?.(ok);
-  }
 }
 
 function publishToolStart(tool: string, pathVal?: string): void {

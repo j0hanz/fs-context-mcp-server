@@ -23,7 +23,7 @@ import {
 } from '../path-validation.js';
 import { globEntries } from './glob-engine.js';
 
-export interface ListDirectoryOptions {
+interface ListDirectoryOptions {
   includeHidden?: boolean;
   excludePatterns?: readonly string[];
   maxDepth?: number;

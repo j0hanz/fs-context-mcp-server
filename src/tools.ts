@@ -17,11 +17,6 @@ import { registerTreeTool } from './tools/tree.js';
 import { registerWriteFileTool } from './tools/write-file.js';
 
 export { buildToolErrorResponse, buildToolResponse } from './tools/shared.js';
-export type {
-  ToolExtra,
-  ToolRegistrationOptions,
-  ToolResult,
-} from './tools/shared.js';
 
 export function registerAllTools(
   server: McpServer,

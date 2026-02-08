@@ -157,7 +157,7 @@ export interface ToolExtra {
   }) => Promise<void>;
 }
 
-export function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
+function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
   _meta: { progressToken: ProgressToken };
   sendNotification: NonNullable<ToolExtra['sendNotification']>;
 } {

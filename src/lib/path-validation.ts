@@ -427,7 +427,7 @@ export function toAccessDeniedWithHint(
   );
 }
 
-export interface ValidatedPathDetails {
+interface ValidatedPathDetails {
   requestedPath: string;
   resolvedPath: string;
   isSymlink: boolean;

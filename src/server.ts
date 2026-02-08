@@ -46,7 +46,7 @@ import {
 import { registerAllTools } from './tools.js';
 import type { IconInfo } from './tools/shared.js';
 
-export interface ParseArgsResult {
+interface ParseArgsResult {
   allowedDirs: string[];
   allowCwd: boolean;
 }

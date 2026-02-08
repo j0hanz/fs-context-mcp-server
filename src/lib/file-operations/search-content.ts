@@ -42,15 +42,12 @@ export const MatcherOptionsSchema = z.strictObject({
   wholeWord: z.boolean(),
   isLiteral: z.boolean(),
 });
-
-export const ScanFileOptionsSchema = z.strictObject({
-  maxFileSize: z.number().int().nonnegative(),
-  skipBinary: z.boolean(),
-  contextLines: z.number().int().nonnegative(),
-});
-
 export type MatcherOptions = z.infer<typeof MatcherOptionsSchema>;
-export type ScanFileOptions = z.infer<typeof ScanFileOptionsSchema>;
+export interface ScanFileOptions {
+  maxFileSize: number;
+  skipBinary: boolean;
+  contextLines: number;
+}
 
 const SearchOptionsSchema = z.strictObject({
   filePattern: z.string().min(1),

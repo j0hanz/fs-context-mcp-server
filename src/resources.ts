@@ -9,7 +9,7 @@ const RESULT_TEMPLATE = new ResourceTemplate('fs-context://result/{id}', {
   list: undefined,
 });
 
-export interface IconInfo {
+interface IconInfo {
   src: string;
   mimeType: string;
 }

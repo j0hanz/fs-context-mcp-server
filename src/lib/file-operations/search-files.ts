@@ -22,7 +22,7 @@ const INTERNAL_MAX_RESULTS = 1000;
 
 type SortBy = 'name' | 'size' | 'modified' | 'path';
 
-export interface SearchFilesOptions {
+interface SearchFilesOptions {
   maxResults?: number;
   sortBy?: SortBy;
   maxDepth?: number;
