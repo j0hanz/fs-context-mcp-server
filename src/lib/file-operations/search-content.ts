@@ -145,18 +145,24 @@ function buildLiteralMatcher(
   pattern: string,
   options: MatcherOptions
 ): Matcher {
-  const needle = options.caseSensitive ? pattern : pattern.toLowerCase();
+  // Optimization (RT-001): Use Regex for case-insensitive search to avoid O(N*L) allocations (toLowerCase)
+  if (!options.caseSensitive) {
+    const final = escapeLiteral(pattern);
+    return buildRegexMatcher(final, false);
+  }
+
+  // Fast path for case-sensitive literal
+  const needle = pattern;
   if (needle.length === 0) return () => 0;
 
   return (line: string): number => {
-    const hay = options.caseSensitive ? line : line.toLowerCase();
-    if (hay.length === 0) return 0;
+    if (line.length === 0) return 0;
 
     let count = 0;
-    let pos = hay.indexOf(needle);
+    let pos = line.indexOf(needle);
     while (pos !== -1) {
       count++;
-      pos = hay.indexOf(needle, pos + needle.length);
+      pos = line.indexOf(needle, pos + needle.length);
     }
     return count;
   };
@@ -203,13 +209,14 @@ interface PendingContext {
  */
 class ContextBuffer {
   private readonly capacity: number;
-  private buffer: string[] = []; // Circular buffer simulation using simple array + push/shift could be inefficient for huge contexts, but typical context is small (<10).
-  // For strictly strictly correctness with potentially large context, we'll use an array and slice.
-
+  private buffer: string[]; // Ring buffer fixed size
+  private head = 0; // Next write index
+  private size = 0; // Current count of items
   private pending: PendingContext[] = [];
 
   constructor(contextLines: number) {
     this.capacity = Math.max(0, contextLines);
+    this.buffer = new Array<string>(this.capacity);
   }
 
   add(line: string): void {
@@ -227,15 +234,25 @@ class ContextBuffer {
 
     // 2. Maintain 'Before' Buffer
     if (this.capacity > 0) {
-      this.buffer.push(line);
-      if (this.buffer.length > this.capacity) {
-        this.buffer.shift();
+      this.buffer[this.head] = line;
+      this.head = (this.head + 1) % this.capacity;
+      if (this.size < this.capacity) {
+        this.size++;
       }
     }
   }
 
   snapshotBefore(): string[] {
-    return [...this.buffer];
+    if (this.size === 0) return [];
+    if (this.size < this.capacity) {
+      return this.buffer.slice(0, this.size);
+    }
+    // Full buffer: return ordered from oldest to newest
+    // Oldest is at 'head', newest is at 'head - 1'
+    return [
+      ...this.buffer.slice(this.head, this.capacity),
+      ...this.buffer.slice(0, this.head),
+    ];
   }
 
   scheduleAfter(): string[] {

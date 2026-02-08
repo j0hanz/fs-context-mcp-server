@@ -19,7 +19,6 @@ import type {
 import { z } from 'zod';
 
 import packageJsonRaw from '../package.json' with { type: 'json' };
-import { ErrorCode, McpError } from './lib/errors.js';
 import {
   assertNotAborted,
   createTimedAbortSignal,
@@ -40,7 +39,6 @@ import {
   registerResultResources,
 } from './resources.js';
 import { registerAllTools } from './tools.js';
-import { buildToolErrorResponse } from './tools.js';
 import type { IconInfo } from './tools/shared.js';
 
 export interface ParseArgsResult {
@@ -409,43 +407,6 @@ async function getLocalIconInfo(): Promise<IconInfo | undefined> {
   }
 }
 
-function resolveToolErrorCode(message: string): ErrorCode | undefined {
-  return extractExplicitErrorCode(message);
-}
-
-function extractExplicitErrorCode(message: string): ErrorCode | undefined {
-  const match = /\bE_[A-Z_]+\b/.exec(message);
-  if (!match) return undefined;
-
-  const candidate = match[0];
-  if (!candidate) return undefined;
-
-  const codes = Object.values(ErrorCode) as string[];
-  return codes.includes(candidate) ? (candidate as ErrorCode) : undefined;
-}
-
-type ToolErrorBuilder = (errorMessage: string) => {
-  content: unknown[];
-  structuredContent: Record<string, unknown>;
-  isError: true;
-};
-
-function patchToolErrorHandling(server: McpServer): void {
-  const createToolError: ToolErrorBuilder = (errorMessage: string) => {
-    const code = resolveToolErrorCode(errorMessage);
-    if (code) {
-      const error = new McpError(code, errorMessage);
-      return buildToolErrorResponse(error, code);
-    }
-    return buildToolErrorResponse(new Error(errorMessage), ErrorCode.E_UNKNOWN);
-  };
-  Object.defineProperty(server, 'createToolError', {
-    value: createToolError,
-    configurable: true,
-    writable: true,
-  });
-}
-
 export async function createServer(
   options: ServerOptions = {}
 ): Promise<McpServer> {
@@ -480,8 +441,6 @@ export async function createServer(
     },
     serverConfig
   );
-
-  patchToolErrorHandling(server);
 
   const rootsManager = new RootsManager(options);
   rootsManagers.set(server, rootsManager);
