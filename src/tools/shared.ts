@@ -1,3 +1,5 @@
+import { inspect } from 'node:util';
+
 import type {
   ContentBlock,
   Icon,
@@ -64,7 +66,23 @@ function buildContentBlock<T>(
   structuredContent: T,
   extraContent: ContentBlock[] = []
 ): { content: ContentBlock[]; structuredContent: T } {
-  const json = JSON.stringify(structuredContent);
+  let json: string;
+  try {
+    json = JSON.stringify(structuredContent);
+  } catch (error: unknown) {
+    const preview = inspect(structuredContent, {
+      depth: 4,
+      colors: false,
+      compact: 3,
+      breakLength: 80,
+    });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    json = JSON.stringify({
+      ok: false,
+      error: `Failed to serialize structuredContent: ${errorMessage}`,
+      preview,
+    });
+  }
   return {
     content: [
       { type: 'text', text },
@@ -139,7 +157,7 @@ export interface ToolExtra {
   }) => Promise<void>;
 }
 
-export function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
+function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
   _meta: { progressToken: ProgressToken };
   sendNotification: NonNullable<ToolExtra['sendNotification']>;
 } {

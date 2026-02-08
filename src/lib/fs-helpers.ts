@@ -1,5 +1,6 @@
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { Writable } from 'node:stream';
@@ -12,14 +13,12 @@ import {
   MAX_TEXT_FILE_SIZE,
   PARALLEL_CONCURRENCY,
 } from './constants.js';
-import { ErrorCode, McpError } from './errors.js';
+import { ErrorCode, formatUnknownErrorMessage, McpError } from './errors.js';
 import { assertAllowedFileAccess } from './path-policy.js';
 import { validateExistingPath } from './path-validation.js';
 
 function createAbortError(message = 'Operation aborted'): Error {
-  const error = new Error(message);
-  error.name = 'AbortError';
-  return error;
+  return new DOMException(message, 'AbortError');
 }
 
 export function assertNotAborted(signal?: AbortSignal, message?: string): void {
@@ -81,7 +80,11 @@ export function withAbort<T>(
       })
       .catch((error: unknown) => {
         signal.removeEventListener('abort', onAbort);
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(
+          error instanceof Error
+            ? error
+            : new Error(formatUnknownErrorMessage(error))
+        );
       });
   });
 }
@@ -221,7 +224,9 @@ function createTask<T, R>(
       state.results.push(result);
     } catch (reason) {
       const error =
-        reason instanceof Error ? reason : new Error(String(reason));
+        reason instanceof Error
+          ? reason
+          : new Error(formatUnknownErrorMessage(reason));
       state.errors.push({ index, error });
     }
   })();
@@ -400,7 +405,7 @@ function isBinarySlice(slice: Buffer): boolean {
 
 type ReadMode = 'head' | 'full' | 'range';
 
-export interface ReadFileOptions {
+interface ReadFileOptions {
   encoding?: BufferEncoding;
   maxSize?: number;
   head?: number;
@@ -426,7 +431,7 @@ interface ReadContentOptions {
   signal?: AbortSignal;
 }
 
-export interface ReadFileResult {
+interface ReadFileResult {
   path: string;
   content: string;
   truncated: boolean;
@@ -723,39 +728,44 @@ async function readRangeContent(
   let stoppedEarly = false;
   let next = await iterator.next();
 
-  while (!next.done) {
-    const line = next.value;
-    lineNumber++;
+  try {
+    while (!next.done) {
+      const line = next.value;
+      lineNumber++;
 
-    if (lineNumber < startLine) {
+      if (lineNumber < startLine) {
+        next = await iterator.next();
+        continue;
+      }
+
+      if (lineNumber > stopAt) {
+        hasMoreLines = true;
+        stoppedEarly = true;
+        break;
+      }
+
+      lines.push(line);
+
+      estimatedBytes +=
+        Buffer.byteLength(line, options.encoding) + newlineBytes;
+      if (estimatedBytes >= options.maxSize) {
+        stoppedByLimit = true;
+        stoppedEarly = true;
+        break;
+      }
+
+      if (hasEndLine && lineNumber === stopAt) {
+        const peek = await iterator.next();
+        hasMoreLines = !peek.done;
+        reachedEof = peek.done === true;
+        stoppedEarly = true;
+        break;
+      }
+
       next = await iterator.next();
-      continue;
     }
-
-    if (lineNumber > stopAt) {
-      hasMoreLines = true;
-      stoppedEarly = true;
-      break;
-    }
-
-    lines.push(line);
-
-    estimatedBytes += Buffer.byteLength(line, options.encoding) + newlineBytes;
-    if (estimatedBytes >= options.maxSize) {
-      stoppedByLimit = true;
-      stoppedEarly = true;
-      break;
-    }
-
-    if (hasEndLine && lineNumber === stopAt) {
-      const peek = await iterator.next();
-      hasMoreLines = !peek.done;
-      reachedEof = peek.done === true;
-      stoppedEarly = true;
-      break;
-    }
-
-    next = await iterator.next();
+  } finally {
+    await iterator.return?.();
   }
 
   if (!stoppedEarly) {
@@ -1050,6 +1060,32 @@ export async function readFile(
     stats,
     normalized
   );
+}
+
+export async function atomicWriteFile(
+  filePath: string,
+  content: string,
+  options: { encoding?: BufferEncoding; signal?: AbortSignal | undefined } = {}
+): Promise<void> {
+  const { encoding = 'utf-8', signal } = options;
+  const tempPath = `${filePath}.${randomUUID()}.tmp`;
+
+  try {
+    assertNotAborted(signal);
+    await withAbort(
+      fsp.writeFile(tempPath, content, { encoding, signal }),
+      signal
+    );
+    await withAbort(fsp.rename(tempPath, filePath), signal);
+  } catch (error) {
+    // Attempt cleanup on error, but don't overwrite the original error
+    try {
+      await fsp.unlink(tempPath).catch(() => {});
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
 }
 
 export { headFile };

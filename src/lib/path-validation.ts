@@ -40,6 +40,10 @@ const RESERVED_DEVICE_NAMES = new Set([
   'LPT9',
 ]);
 
+function dedupePreserveOrder<T>(items: readonly T[]): T[] {
+  return [...new Set(items)];
+}
+
 function expandHome(filepath: string): string {
   if (filepath === '~') return HOMEDIR;
 
@@ -71,6 +75,16 @@ export function normalizePath(p: string): string {
 
 function normalizeForComparison(value: string): string {
   return IS_WINDOWS ? value.toLowerCase() : value;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError') return true;
+  return isNodeError(error) && error.code === 'ABORT_ERR';
+}
+
+function rethrowIfAborted(error: unknown): void {
+  if (isAbortError(error)) throw error;
 }
 
 function isSamePath(left: string, right: string): boolean {
@@ -108,7 +122,7 @@ function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
     .filter((dir) => dir.length > 0);
 
   // Preserve first-seen order while deduping.
-  return [...new Set(normalized)];
+  return dedupePreserveOrder(normalized);
 }
 
 // Cached module state (configured roots).
@@ -119,8 +133,8 @@ function setAllowedDirectoriesState(
   primary: readonly string[],
   expanded: readonly string[]
 ): void {
-  allowedDirectoriesPrimary = [...new Set(primary)];
-  allowedDirectoriesExpanded = [...new Set(expanded)];
+  allowedDirectoriesPrimary = dedupePreserveOrder(primary);
+  allowedDirectoriesExpanded = dedupePreserveOrder(expanded);
 }
 
 export function getAllowedDirectories(): string[] {
@@ -162,12 +176,6 @@ export function isPathWithinDirectories(
   return false;
 }
 
-function rethrowIfAborted(error: unknown): void {
-  if (error instanceof Error && error.name === 'AbortError') {
-    throw error;
-  }
-}
-
 async function resolveRealPath(
   normalized: string,
   signal?: AbortSignal
@@ -203,7 +211,7 @@ async function expandAllowedDirectories(
     }
   }
 
-  return [...new Set(expanded)];
+  return dedupePreserveOrder(expanded);
 }
 
 export async function setAllowedDirectoriesResolved(
@@ -419,7 +427,7 @@ export function toAccessDeniedWithHint(
   );
 }
 
-export interface ValidatedPathDetails {
+interface ValidatedPathDetails {
   requestedPath: string;
   resolvedPath: string;
   isSymlink: boolean;
@@ -546,6 +554,48 @@ export async function validateExistingDirectory(
   }
 
   return details.resolvedPath;
+}
+
+export async function validatePathForWrite(
+  requestedPath: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const normalizedRequested = validateRequestedPath(requestedPath);
+  const allowedDirs = getAllowedDirectories();
+
+  ensureWithinAllowedDirectories({
+    normalizedPath: normalizedRequested,
+    requestedPath,
+    allowedDirs,
+    details: { normalizedPath: normalizedRequested },
+  });
+
+  let current = normalizedRequested;
+  for (;;) {
+    try {
+      assertNotAborted(signal);
+      const realPath = await withAbort(fs.realpath(current), signal);
+      const normalizedReal = normalizePath(realPath);
+
+      if (!isPathWithinDirectories(normalizedReal, allowedDirs)) {
+        throw toAccessDeniedWithHint(requestedPath, realPath, normalizedReal);
+      }
+
+      return normalizedRequested;
+    } catch (error) {
+      rethrowIfAborted(error);
+      const code = isNodeError(error) ? error.code : undefined;
+      if (code === 'ENOENT') {
+        const parent = path.dirname(current);
+        if (parent === current) {
+          throw toMcpError(requestedPath, error);
+        }
+        current = parent;
+        continue;
+      }
+      throw toMcpError(requestedPath, error);
+    }
+  }
 }
 
 function isFileRoot(root: Root): boolean {

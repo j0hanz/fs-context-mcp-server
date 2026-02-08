@@ -1,8 +1,8 @@
 {
   "name": "@j0hanz/fs-context-mcp",
-  "version": "2.4.4",
+  "version": "2.5.0",
   "mcpName": "io.github.j0hanz/fs-context",
-  "description": "🔍 Read-only MCP server for secure filesystem exploration, searching, and analysis",
+  "description": "MCP Server that enables LLMs to interact with the local filesystem.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -49,8 +49,9 @@
     "scanner",
     "search",
     "analysis",
-    "read-only",
-    "exploration"
+    "exploration",
+    "manipulation",
+    "server"
   ],
   "author": "j0hanz",
   "license": "MIT",

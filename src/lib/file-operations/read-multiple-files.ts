@@ -14,7 +14,7 @@ import {
 } from '../fs-helpers.js';
 import { validateExistingPath } from '../path-validation.js';
 
-export interface ReadMultipleResult {
+interface ReadMultipleResult {
   path: string;
   content?: string;
   truncated?: boolean;
@@ -37,7 +37,7 @@ interface NormalizedReadMultipleOptions {
   endLine?: number;
 }
 
-export interface ReadMultipleOptions {
+interface ReadMultipleOptions {
   encoding?: BufferEncoding;
   maxSize?: number;
   maxTotalSize?: number;

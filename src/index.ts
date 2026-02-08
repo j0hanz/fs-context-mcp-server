@@ -1,7 +1,10 @@
 #!/usr/bin/env node
+import process from 'node:process';
+
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { DEFAULT_SEARCH_TIMEOUT_MS } from './lib/constants.js';
+import { formatUnknownErrorMessage } from './lib/errors.js';
 import { createTimedAbortSignal } from './lib/fs-helpers.js';
 import { setAllowedDirectoriesResolved } from './lib/path-validation.js';
 import { createServer, parseArgs, startServer } from './server.js';
@@ -10,13 +13,16 @@ const SHUTDOWN_TIMEOUT_MS = 5000;
 let activeServer: McpServer | undefined;
 let shutdownStarted = false;
 
-async function shutdown(signal: string): Promise<void> {
+async function shutdown(reason: string, exitCode = 0): Promise<void> {
   if (shutdownStarted) return;
   shutdownStarted = true;
 
+  process.exitCode = exitCode;
+
   const timer = setTimeout(() => {
-    process.exit(0);
+    process.exit(exitCode);
   }, SHUTDOWN_TIMEOUT_MS);
+  timer.unref();
 
   try {
     if (activeServer) {
@@ -24,12 +30,12 @@ async function shutdown(signal: string): Promise<void> {
     }
   } catch (error: unknown) {
     console.error(
-      `Shutdown error (${signal}):`,
-      error instanceof Error ? error.message : String(error)
+      `Shutdown error (${reason}):`,
+      formatUnknownErrorMessage(error)
     );
   } finally {
     clearTimeout(timer);
-    process.exit(0);
+    process.exit(exitCode);
   }
 }
 
@@ -61,39 +67,33 @@ async function main(): Promise<void> {
   await startServer(server);
 }
 
-process.on('SIGTERM', () => {
-  void shutdown('SIGTERM');
+process.once('SIGTERM', () => {
+  void shutdown('SIGTERM', 0);
 });
 
-process.on('SIGINT', () => {
-  void shutdown('SIGINT');
+process.once('SIGINT', () => {
+  void shutdown('SIGINT', 0);
 });
 
-process.stdin.on('end', () => {
-  void shutdown('stdin end');
+process.stdin.once('end', () => {
+  void shutdown('stdin end', 0);
 });
 
-process.stdin.on('close', () => {
-  void shutdown('stdin close');
+process.stdin.once('close', () => {
+  void shutdown('stdin close', 0);
 });
 
-process.on('unhandledRejection', (reason: unknown) => {
-  console.error(
-    'Unhandled rejection:',
-    reason instanceof Error ? reason.message : String(reason)
-  );
-  void shutdown('unhandledRejection');
+process.once('unhandledRejection', (reason: unknown) => {
+  console.error('Unhandled rejection:', formatUnknownErrorMessage(reason));
+  void shutdown('unhandledRejection', 1);
 });
 
-process.on('uncaughtException', (error: Error) => {
-  console.error('Uncaught exception:', error.message);
-  void shutdown('uncaughtException');
+process.once('uncaughtException', (error: Error) => {
+  console.error('Uncaught exception:', error);
+  void shutdown('uncaughtException', 1);
 });
 
 main().catch((error: unknown) => {
-  console.error(
-    'Fatal error:',
-    error instanceof Error ? error.message : String(error)
-  );
-  process.exit(1);
+  console.error('Fatal error:', formatUnknownErrorMessage(error));
+  void shutdown('fatal', 1);
 });

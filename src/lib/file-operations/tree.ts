@@ -17,14 +17,14 @@ import { globEntries } from './glob-engine.js';
 
 type TreeEntryType = 'file' | 'directory' | 'symlink' | 'other';
 
-export interface TreeEntry {
+interface TreeEntry {
   name: string;
   type: TreeEntryType;
   relativePath: string;
   children?: TreeEntry[];
 }
 
-export interface TreeOptions {
+interface TreeOptions {
   maxDepth?: number;
   maxEntries?: number;
   includeHidden?: boolean;
@@ -41,7 +41,7 @@ interface NormalizedOptions {
   timeoutMs: number;
 }
 
-export interface TreeResult {
+interface TreeResult {
   root: string;
   tree: TreeEntry;
   truncated: boolean;
@@ -100,7 +100,9 @@ function ensureParentNodes(
 
   for (const segment of segments.slice(0, Math.max(0, segments.length - 1))) {
     currentPath =
-      currentPath.length === 0 ? segment : `${currentPath}/${segment}`;
+      currentPath.length === 0
+        ? segment
+        : path.posix.join(currentPath, segment);
 
     let child = nodeByPath.get(currentPath);
     if (!child) {

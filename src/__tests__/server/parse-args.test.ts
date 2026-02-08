@@ -41,7 +41,7 @@ await it('parseArgs normalizes allowed directories', async () => {
 });
 
 await it('parseArgs rejects Windows drive-relative paths', async () => {
-  if (process.platform !== 'win32') return;
+  if (os.platform() !== 'win32') return;
   await assert.rejects(
     withArgv(['C:relative'], () => parseArgs()),
     /drive-relative/i
@@ -49,7 +49,7 @@ await it('parseArgs rejects Windows drive-relative paths', async () => {
 });
 
 await it('parseArgs rejects Windows reserved device names', async () => {
-  if (process.platform !== 'win32') return;
+  if (os.platform() !== 'win32') return;
   await assert.rejects(
     withArgv(['CON'], () => parseArgs()),
     /reserved/i

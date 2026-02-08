@@ -49,12 +49,12 @@ export function createInMemoryResourceStore(
   };
 
   const byUri = new Map<string, TextResourceEntry>();
-  const insertionOrder: string[] = [];
   let totalBytes = 0;
 
   function evictOldest(): void {
-    const uri = insertionOrder.shift();
-    if (!uri) return;
+    const first = byUri.keys().next();
+    if (first.done) return;
+    const uri = first.value;
     const existing = byUri.get(uri);
     if (!existing) return;
     totalBytes -= estimateBytes(existing.text);
@@ -62,9 +62,9 @@ export function createInMemoryResourceStore(
   }
 
   function enforceLimits(): void {
-    while (insertionOrder.length > resolved.maxEntries) evictOldest();
+    while (byUri.size > resolved.maxEntries) evictOldest();
     while (totalBytes > resolved.maxTotalBytes) {
-      if (insertionOrder.length === 0) break;
+      if (byUri.size === 0) break;
       evictOldest();
     }
   }
@@ -96,7 +96,6 @@ export function createInMemoryResourceStore(
     };
 
     byUri.set(uri, entry);
-    insertionOrder.push(uri);
     totalBytes += entryBytes;
 
     enforceLimits();
@@ -121,7 +120,6 @@ export function createInMemoryResourceStore(
 
   function clear(): void {
     byUri.clear();
-    insertionOrder.length = 0;
     totalBytes = 0;
   }
 

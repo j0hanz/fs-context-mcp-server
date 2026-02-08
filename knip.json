@@ -6,5 +6,6 @@
     "node-tests/**/*.test.ts"
   ],
   "project": ["src/**/*.ts", "node-tests/**/*.ts"],
-  "ignore": ["src/__tests__/shared/**"]
+  "ignore": ["src/__tests__/shared/**"],
+  "ignoreDependencies": ["jscpd", "tsx"]
 }

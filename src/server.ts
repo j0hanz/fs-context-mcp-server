@@ -2,7 +2,11 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { Stats } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseArgs as parseNodeArgs } from 'node:util';
+import {
+  getSystemErrorMessage,
+  getSystemErrorName,
+  parseArgs as parseNodeArgs,
+} from 'node:util';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -19,7 +23,7 @@ import type {
 import { z } from 'zod';
 
 import packageJsonRaw from '../package.json' with { type: 'json' };
-import { ErrorCode, McpError } from './lib/errors.js';
+import { formatUnknownErrorMessage } from './lib/errors.js';
 import {
   assertNotAborted,
   createTimedAbortSignal,
@@ -40,10 +44,9 @@ import {
   registerResultResources,
 } from './resources.js';
 import { registerAllTools } from './tools.js';
-import { buildToolErrorResponse } from './tools.js';
 import type { IconInfo } from './tools/shared.js';
 
-export interface ParseArgsResult {
+interface ParseArgsResult {
   allowedDirs: string[];
   allowCwd: boolean;
 }
@@ -91,6 +94,37 @@ function isCliError(error: unknown): error is Error {
 
 function normalizeDirectoryError(error: unknown, inputPath: string): Error {
   if (isCliError(error)) return error;
+
+  const code =
+    error instanceof Error &&
+    'code' in error &&
+    typeof (error as { code?: unknown }).code === 'string'
+      ? String((error as { code?: unknown }).code)
+      : undefined;
+
+  const errno =
+    error instanceof Error &&
+    'errno' in error &&
+    typeof (error as { errno?: unknown }).errno === 'number'
+      ? (error as { errno?: unknown }).errno
+      : undefined;
+
+  if (typeof errno === 'number') {
+    try {
+      const name = getSystemErrorName(errno);
+      const message = getSystemErrorMessage(errno);
+      return new Error(
+        `Error: Cannot access directory ${inputPath} (${name}: ${message})`
+      );
+    } catch {
+      // Fall through to best-effort formatting.
+    }
+  }
+
+  if (code) {
+    return new Error(`Error: Cannot access directory ${inputPath} (${code})`);
+  }
+
   return new Error(`Error: Cannot access directory ${inputPath}`);
 }
 
@@ -163,7 +197,7 @@ function logToMcp(
     console.error(
       `Failed to send MCP log: ${level} │ ${data}`,
       data,
-      error instanceof Error ? error.message : String(error)
+      formatUnknownErrorMessage(error)
     );
   });
 }
@@ -271,7 +305,7 @@ class RootsManager {
       logToMcp(
         server,
         'debug',
-        `[DEBUG] MCP Roots protocol unavailable or failed: ${error instanceof Error ? error.message : String(error)}`
+        `[DEBUG] MCP Roots protocol unavailable or failed: ${formatUnknownErrorMessage(error)}`
       );
     } finally {
       await this.recomputeAllowedDirectories();
@@ -390,7 +424,7 @@ try {
 } catch (error) {
   console.error(
     '[WARNING] Failed to load instructions.md:',
-    error instanceof Error ? error.message : String(error)
+    formatUnknownErrorMessage(error)
   );
 }
 
@@ -407,43 +441,6 @@ async function getLocalIconInfo(): Promise<IconInfo | undefined> {
   } catch {
     return undefined;
   }
-}
-
-function resolveToolErrorCode(message: string): ErrorCode | undefined {
-  return extractExplicitErrorCode(message);
-}
-
-function extractExplicitErrorCode(message: string): ErrorCode | undefined {
-  const match = /\bE_[A-Z_]+\b/.exec(message);
-  if (!match) return undefined;
-
-  const candidate = match[0];
-  if (!candidate) return undefined;
-
-  const codes = Object.values(ErrorCode) as string[];
-  return codes.includes(candidate) ? (candidate as ErrorCode) : undefined;
-}
-
-type ToolErrorBuilder = (errorMessage: string) => {
-  content: unknown[];
-  structuredContent: Record<string, unknown>;
-  isError: true;
-};
-
-function patchToolErrorHandling(server: McpServer): void {
-  const createToolError: ToolErrorBuilder = (errorMessage: string) => {
-    const code = resolveToolErrorCode(errorMessage);
-    if (code) {
-      const error = new McpError(code, errorMessage);
-      return buildToolErrorResponse(error, code);
-    }
-    return buildToolErrorResponse(new Error(errorMessage), ErrorCode.E_UNKNOWN);
-  };
-  Object.defineProperty(server, 'createToolError', {
-    value: createToolError,
-    configurable: true,
-    writable: true,
-  });
 }
 
 export async function createServer(
@@ -480,8 +477,6 @@ export async function createServer(
     },
     serverConfig
   );
-
-  patchToolErrorHandling(server);
 
   const rootsManager = new RootsManager(options);
   rootsManagers.set(server, rootsManager);

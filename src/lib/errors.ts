@@ -1,3 +1,5 @@
+import { inspect } from 'node:util';
+
 import { ErrorCode, joinLines } from '../config.js';
 
 export { ErrorCode };
@@ -15,6 +17,23 @@ export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   if (!('code' in error)) return false;
   const { code } = error as { code?: unknown };
   return typeof code === 'string';
+}
+
+export function formatUnknownErrorMessage(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  try {
+    return inspect(error, {
+      depth: 3,
+      colors: false,
+      compact: 3,
+      breakLength: 80,
+      maxArrayLength: 50,
+      maxStringLength: 2000,
+    });
+  } catch {
+    return String(error);
+  }
 }
 
 const NODE_ERROR_CODE_MAP = {
@@ -127,6 +146,7 @@ function classifyMessageError(error: unknown): ErrorCode | undefined {
 
 function isTimeoutError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError' || error.name === 'TimeoutError') return true;
   const message = error.message.toLowerCase();
   return message.includes('timed out') || message.includes('timeout');
 }

@@ -4,6 +4,7 @@ import type { Stats } from 'node:fs';
 import { glob as fsGlob } from 'node:fs/promises';
 
 import {
+  getToolContextSnapshot,
   publishOpsTraceEnd,
   publishOpsTraceError,
   publishOpsTraceStart,
@@ -22,7 +23,7 @@ interface GlobDirentLike extends DirentLike {
   parentPath?: string;
 }
 
-export interface GlobEntry {
+interface GlobEntry {
   path: string;
   dirent: DirentLike;
   stats?: Stats;
@@ -320,8 +321,8 @@ function* processDirentMatch(
   yield { path: absolutePath, dirent: match };
 }
 
-// Helper to yield entries for string matches
-async function* processStringMatch(
+// Helper to resolve string matches (Parallelizable)
+async function resolveStringMatch(
   match: string,
   cwd: string,
   maxDepth: number | undefined,
@@ -330,16 +331,16 @@ async function* processStringMatch(
   followSymlinks: boolean,
   returnStats: boolean,
   suppressErrors: boolean
-): AsyncGenerator<GlobEntry> {
+): Promise<GlobEntry | null> {
   // Optimization: check depth on the relative string BEFORE resolving absolute path
   if (maxDepth !== undefined) {
     const depth = getRelativeDepth(match);
-    if (depth > maxDepth) return;
+    if (depth > maxDepth) return null;
   }
 
   const absolutePath = resolveStringMatchPath(cwd, match);
 
-  if (seen.has(absolutePath)) return;
+  if (seen.has(absolutePath)) return null;
   seen.add(absolutePath);
 
   try {
@@ -347,13 +348,14 @@ async function* processStringMatch(
       ? await fs.stat(absolutePath)
       : await fs.lstat(absolutePath);
 
-    if (onlyFiles && !stats.isFile()) return;
+    if (onlyFiles && !stats.isFile()) return null;
 
     const entry: GlobEntry = { path: absolutePath, dirent: stats };
     if (returnStats) entry.stats = stats;
-    yield entry;
+    return entry;
   } catch (error) {
     if (!suppressErrors) throw error;
+    return null;
   }
 }
 
@@ -379,11 +381,18 @@ async function* processIterable(
     suppressErrors,
   } = context;
 
-  try {
-    for await (const match of iterable) {
-      if (typeof match === 'string') {
-        yield* processStringMatch(
-          match,
+  const CONCURRENCY = 32;
+  const buffer: string[] = [];
+
+  const flush = async function* (): AsyncGenerator<GlobEntry> {
+    if (buffer.length === 0) return;
+    const batch = buffer.slice();
+    buffer.length = 0;
+
+    const results = await Promise.all(
+      batch.map((m) =>
+        resolveStringMatch(
+          m,
           cwd,
           maxDepth,
           seen,
@@ -391,14 +400,32 @@ async function* processIterable(
           followSymlinks,
           returnStats,
           suppressErrors
-        );
+        )
+      )
+    );
+
+    for (const res of results) {
+      if (res) yield res;
+    }
+  };
+
+  try {
+    for await (const match of iterable) {
+      if (typeof match === 'string') {
+        buffer.push(match);
+        if (buffer.length >= CONCURRENCY) {
+          yield* flush();
+        }
         continue;
       }
+
+      if (buffer.length > 0) yield* flush();
 
       if (isGlobDirentLike(match)) {
         yield* processDirentMatch(match, cwd, maxDepth, seen, onlyFiles);
       }
     }
+    yield* flush();
   } catch (error) {
     if (!suppressErrors) throw error;
   }
@@ -450,8 +477,15 @@ export async function* globEntries(
   const engine = 'node:fs/promises.glob';
 
   const endMeasure = startPerfMeasure('globEntries', { engine });
+  const toolContext = getToolContextSnapshot();
   const traceContext = shouldPublishOpsTrace()
-    ? { op: 'globEntries', engine }
+    ? {
+        op: 'globEntries',
+        engine,
+        ...(toolContext
+          ? { tool: toolContext.tool, path: toolContext.path }
+          : {}),
+      }
     : undefined;
 
   if (traceContext) publishOpsTraceStart(traceContext);

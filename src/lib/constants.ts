@@ -102,7 +102,7 @@ export const DEFAULT_SEARCH_MAX_FILES = 20000;
 export const MAX_LINE_CONTENT_LENGTH = 200;
 export const BINARY_CHECK_BUFFER_SIZE = 512;
 
-export const DEFAULT_SENSITIVE_PATTERNS = [
+const DEFAULT_SENSITIVE_PATTERNS = [
   '.env',
   '.env.*',
   '.npmrc',
