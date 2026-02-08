@@ -1,10 +1,19 @@
 /* eslint-disable */
 import { spawn } from 'node:child_process';
-import { access, chmod, cp, mkdir, rm } from 'node:fs/promises';
+import { access, chmod, cp, glob, mkdir, rm, stat } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import process from 'node:process';
+import { parseArgs } from 'node:util';
 
-// --- Configuration (Single Source of Truth) ---
+const require = createRequire(import.meta.url);
+
+// --- Configuration Layer (Constants & Settings) ---
+const BIN = {
+  tsc: require.resolve('typescript/bin/tsc'),
+};
+
 const CONFIG = {
   paths: {
     dist: 'dist',
@@ -24,13 +33,22 @@ const CONFIG = {
     },
   },
   commands: {
-    tsc: ['npx', ['tsc', '-p', 'tsconfig.build.json']],
-    tscCheck: ['npx', ['tsc', '-p', 'tsconfig.json', '--noEmit']],
+    tsc: ['node', [BIN.tsc, '-p', 'tsconfig.build.json']],
+    tscCheck: ['node', [BIN.tsc, '-p', 'tsconfig.json', '--noEmit']],
   },
   test: {
     patterns: ['src/__tests__/**/*.test.ts', 'tests/**/*.test.ts'],
   },
 };
+
+const DEFAULT_TASK_TIMEOUT_MS = Number.parseInt(
+  process.env.TASK_TIMEOUT_MS ?? '',
+  10
+);
+const TASK_TIMEOUT_MS =
+  Number.isFinite(DEFAULT_TASK_TIMEOUT_MS) && DEFAULT_TASK_TIMEOUT_MS > 0
+    ? DEFAULT_TASK_TIMEOUT_MS
+    : undefined;
 
 // --- Infrastructure Layer (IO & System) ---
 const Logger = {
@@ -49,6 +67,14 @@ const System = {
     try {
       await access(path);
       return true;
+    } catch {
+      return false;
+    }
+  },
+  async isDirectory(path) {
+    try {
+      const stats = await stat(path);
+      return stats.isDirectory();
     } catch {
       return false;
     }
@@ -73,24 +99,67 @@ const System = {
     await chmod(path, mode);
   },
 
-  exec(command, args = []) {
+  exec(command, args = [], options = {}) {
     return new Promise((resolve, reject) => {
-      const useShell = command !== 'node';
-      const spawnArgs = useShell ? [] : args;
-      const spawnCommand = useShell
-        ? [command, ...args]
-            .map((arg) => (arg.includes(' ') ? `"${arg}"` : arg))
-            .join(' ')
-        : command;
+      const resolvedCommand = command === 'node' ? process.execPath : command;
+      const timeoutMs = options.timeoutMs ?? TASK_TIMEOUT_MS;
+      const timeoutSignal =
+        typeof timeoutMs === 'number' && timeoutMs > 0
+          ? AbortSignal.timeout(timeoutMs)
+          : undefined;
+      const combinedSignal =
+        options.signal && timeoutSignal
+          ? AbortSignal.any([options.signal, timeoutSignal])
+          : (options.signal ?? timeoutSignal);
 
-      const proc = spawn(spawnCommand, spawnArgs, {
+      if (combinedSignal?.aborted) {
+        reject(new Error(`${command} aborted before start`));
+        return;
+      }
+
+      const proc = spawn(resolvedCommand, args, {
         stdio: 'inherit',
-        shell: useShell,
+        shell: false,
+        windowsHide: true,
+        ...(combinedSignal ? { signal: combinedSignal } : {}),
       });
 
-      proc.on('close', (code) => {
+      let aborted = false;
+      const abortListener = combinedSignal
+        ? () => {
+            aborted = true;
+          }
+        : null;
+
+      if (combinedSignal && abortListener) {
+        combinedSignal.addEventListener('abort', abortListener, { once: true });
+      }
+
+      const cleanup = () => {
+        if (combinedSignal && abortListener) {
+          try {
+            combinedSignal.removeEventListener('abort', abortListener);
+          } catch {
+            /* ignore */
+          }
+        }
+      };
+
+      proc.on('error', (error) => {
+        cleanup();
+        reject(error);
+      });
+
+      proc.on('close', (code, signal) => {
+        cleanup();
+        if (aborted) {
+          const suffix = signal ? ` (signal ${signal})` : '';
+          reject(new Error(`${command} aborted${suffix}`));
+          return;
+        }
         if (code === 0) return resolve();
-        reject(new Error(`${command} exited with code ${code}`));
+        const suffix = signal ? ` (signal ${signal})` : '';
+        reject(new Error(`${command} exited with code ${code}${suffix}`));
       });
     });
   },
@@ -118,7 +187,7 @@ const BuildTasks = {
     await System.makeDir(CONFIG.paths.dist);
     await System.copy(CONFIG.paths.instructions, CONFIG.paths.distInstructions);
 
-    if (await System.exists(CONFIG.paths.assets)) {
+    if (await System.isDirectory(CONFIG.paths.assets)) {
       await System.copy(CONFIG.paths.assets, CONFIG.paths.distAssets, {
         recursive: true,
       });
@@ -146,14 +215,24 @@ function getCoverageArgs(args) {
 }
 
 async function findTestPatterns() {
-  const existing = [];
-  for (const pattern of CONFIG.test.patterns) {
-    const basePath = pattern.split('/')[0];
-    if (await System.exists(basePath)) {
-      existing.push(pattern);
+  const matches = await Promise.all(
+    CONFIG.test.patterns.map(async (pattern) => {
+      const files = [];
+      for await (const entry of glob(pattern)) {
+        files.push(entry);
+      }
+      return files;
+    })
+  );
+
+  const files = new Set();
+  for (const group of matches) {
+    for (const file of group) {
+      files.add(file);
     }
   }
-  return existing;
+
+  return [...files].sort();
 }
 
 const TestTasks = {
@@ -167,10 +246,10 @@ const TestTasks = {
   async test(args = []) {
     await Pipeline.fullBuild();
 
-    const patterns = await findTestPatterns();
-    if (patterns.length === 0) {
+    const testFiles = await findTestPatterns();
+    if (testFiles.length === 0) {
       throw new Error(
-        `No test directories found. Expected one of: ${CONFIG.test.patterns.join(
+        `No test files found. Expected one of: ${CONFIG.test.patterns.join(
           ', '
         )}`
       );
@@ -184,7 +263,7 @@ const TestTasks = {
         '--test',
         ...loader,
         ...coverage,
-        ...patterns,
+        ...testFiles,
       ]);
     });
   },
@@ -249,20 +328,55 @@ const CLI = {
   },
 
   async main(args) {
-    const taskName = args[2] ?? 'build';
-    const restArgs = args.slice(3);
+    const rawArgs = args.slice(2);
+    let parsed;
+    try {
+      parsed = parseArgs({
+        args: rawArgs,
+        allowPositionals: true,
+        strict: false,
+        tokens: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      Logger.error(`Invalid arguments: ${message}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    const tokens = parsed.tokens ?? [];
+    const positionalTokens = tokens.filter(
+      (token) => token.kind === 'positional'
+    );
+    let taskIndex = -1;
+
+    for (const token of positionalTokens) {
+      const candidate = String(token.value);
+      if (candidate in this.routes) {
+        taskIndex = token.index;
+        break;
+      }
+    }
+
+    if (taskIndex === -1 && positionalTokens.length > 0) {
+      taskIndex = positionalTokens[0].index;
+    }
+
+    const taskName = taskIndex >= 0 ? String(rawArgs[taskIndex]) : 'build';
+    const restArgs = taskIndex >= 0 ? rawArgs.slice(taskIndex + 1) : [];
     const action = this.routes[taskName];
 
     if (!action) {
       Logger.error(`Unknown task: ${taskName}`);
       Logger.error(`Available tasks: ${Object.keys(this.routes).join(', ')}`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     try {
       await action(restArgs);
     } catch {
-      process.exit(1);
+      process.exitCode = 1;
     }
   },
 };
