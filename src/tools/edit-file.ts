@@ -87,7 +87,7 @@ export function registerEditFileTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof EditFileOutputSchema>>> =>
     withToolDiagnostics(
-      'edit_file',
+      'edit',
       () =>
         withToolErrorHandling(
           async () => {
@@ -105,10 +105,12 @@ export function registerEditFileTool(
     );
 
   server.registerTool(
-    'edit_file',
+    'edit',
     withDefaultIcons({ ...EDIT_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
+      progressMessage: (args) =>
+        `edit: ${args.path} (${args.edits.length} edits)`,
     })
   );
 }

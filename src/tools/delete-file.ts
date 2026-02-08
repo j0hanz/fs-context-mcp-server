@@ -57,7 +57,7 @@ export function registerDeleteFileTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof DeleteFileOutputSchema>>> =>
     withToolDiagnostics(
-      'delete_file',
+      'rm',
       () =>
         withToolErrorHandling(
           async () => {
@@ -105,10 +105,11 @@ export function registerDeleteFileTool(
     );
 
   server.registerTool(
-    'delete_file',
+    'rm',
     withDefaultIcons({ ...DELETE_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
+      progressMessage: (args) => `rm: ${args.path}`,
     })
   );
 }

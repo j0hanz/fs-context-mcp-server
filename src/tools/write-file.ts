@@ -62,7 +62,7 @@ export function registerWriteFileTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof WriteFileOutputSchema>>> =>
     withToolDiagnostics(
-      'write_file',
+      'write',
       () =>
         withToolErrorHandling(
           async () => {
@@ -80,10 +80,11 @@ export function registerWriteFileTool(
     );
 
   server.registerTool(
-    'write_file',
+    'write',
     withDefaultIcons({ ...WRITE_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
+      progressMessage: (args) => `write: ${args.path}`,
     })
   );
 }

@@ -8,7 +8,7 @@ These instructions are available as a resource (internal://instructions) or prom
 
 - Domain: Read-only filesystem exploration, search, and analysis within allowed roots.
 - Primary Resources: Files, Directories, Search Results, File Metadata.
-- Tools: `ls`, `roots`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep` (READ); `create_directory`, `write_file`, `edit_file`, `move_file`, `delete_file` (WRITE).
+- Tools: `ls`, `roots`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep` (READ); `mkdir`, `write`, `edit`, `mv`, `rm` (WRITE).
 
 ---
 
@@ -30,10 +30,10 @@ These instructions are available as a resource (internal://instructions) or prom
 
 ### WORKFLOW C: MODIFICATION (IF PERMITTED)
 
-- Call `create_directory` to ensure paths exist.
-- Call `write_file` to create/overwrite files.
-- Call `edit_file` for targeted replacements.
-- Call `move_file` or `delete_file` for organization.
+- Call `mkdir` to ensure paths exist.
+- Call `write` to create/overwrite files.
+- Call `edit` for targeted replacements.
+- Call `mv` or `rm` for organization.
   NOTE: Always confirm destructive actions (delete/overwrite) with the user first.
 
 ---
@@ -64,7 +64,7 @@ These instructions are available as a resource (internal://instructions) or prom
 - Input: `path`, `head` (lines), `startLine`/`endLine`.
 - Gotcha: Large files return `resourceUri`; read it or use pagination.
 
-`edit_file`
+`edit`
 
 - Purpose: Sequential string replacement.
 - Input: `edits` (array of {oldText, newText}).

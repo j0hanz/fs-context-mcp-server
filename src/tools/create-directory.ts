@@ -54,7 +54,7 @@ export function registerCreateDirectoryTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof CreateDirectoryOutputSchema>>> =>
     withToolDiagnostics(
-      'create_directory',
+      'mkdir',
       () =>
         withToolErrorHandling(
           async () => {
@@ -72,10 +72,11 @@ export function registerCreateDirectoryTool(
     );
 
   server.registerTool(
-    'create_directory',
+    'mkdir',
     withDefaultIcons({ ...CREATE_DIRECTORY_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
+      progressMessage: (args) => `mkdir: ${args.path}`,
     })
   );
 }

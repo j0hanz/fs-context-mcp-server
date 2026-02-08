@@ -82,7 +82,7 @@ export function registerMoveFileTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof MoveFileOutputSchema>>> =>
     withToolDiagnostics(
-      'move_file',
+      'mv',
       () =>
         withToolErrorHandling(
           async () => {
@@ -100,10 +100,11 @@ export function registerMoveFileTool(
     );
 
   server.registerTool(
-    'move_file',
+    'mv',
     withDefaultIcons({ ...MOVE_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
+      progressMessage: (args) => `mv: ${args.source} -> ${args.destination}`,
     })
   );
 }
