@@ -75,6 +75,8 @@ function spawnSearchProcess(
       FS_CONTEXT_SEARCH_WORKERS_DEBUG: '1',
       FS_CONTEXT_TEST_DIR: testDir,
     },
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
     ...(signal ? { signal } : {}),
   });
 }
