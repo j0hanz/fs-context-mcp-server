@@ -20,6 +20,7 @@ import {
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
+  withDefaultIcons,
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
@@ -147,22 +148,7 @@ export function registerGetMultipleFileInfoTool(
 
   server.registerTool(
     'stat_many',
-    {
-      ...GET_MULTIPLE_FILE_INFO_TOOL,
-      ...(options.iconInfo
-        ? {
-            icons: [
-              {
-                src: options.iconInfo.src,
-                mimeType: options.iconInfo.mimeType,
-                ...(options.iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons({ ...GET_MULTIPLE_FILE_INFO_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: (args) => `stat_many ${args.paths.length} paths`,

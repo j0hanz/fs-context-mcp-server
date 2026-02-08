@@ -395,26 +395,18 @@ try {
 }
 
 async function getLocalIconInfo(): Promise<IconInfo | undefined> {
-  const candidates = [
-    { name: 'logo.svg', mime: 'image/svg+xml' },
-    { name: 'logo.png', mime: 'image/png' },
-    { name: 'logo.jpg', mime: 'image/jpeg' },
-    { name: 'logo.jpeg', mime: 'image/jpeg' },
-  ];
-
-  for (const { name, mime } of candidates) {
-    try {
-      const iconPath = new URL(`../assets/${name}`, import.meta.url);
-      const buffer = await fs.readFile(iconPath);
-      return {
-        src: `data:${mime};base64,${buffer.toString('base64')}`,
-        mimeType: mime,
-      };
-    } catch {
-      continue;
-    }
+  const name = 'logo.svg';
+  const mime = 'image/svg+xml';
+  try {
+    const iconPath = new URL(`../assets/${name}`, import.meta.url);
+    const buffer = await fs.readFile(iconPath);
+    return {
+      src: `data:${mime};base64,${buffer.toString('base64')}`,
+      mimeType: mime,
+    };
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 function resolveToolErrorCode(message: string): ErrorCode | undefined {
@@ -481,9 +473,6 @@ export async function createServer(
               {
                 src: localIcon.src,
                 mimeType: localIcon.mimeType,
-                ...(localIcon.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
               },
             ],
           }

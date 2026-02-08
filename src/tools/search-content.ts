@@ -23,6 +23,7 @@ import {
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
+  withDefaultIcons,
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
@@ -226,22 +227,7 @@ export function registerSearchContentTool(
 
   server.registerTool(
     'grep',
-    {
-      ...SEARCH_CONTENT_TOOL,
-      ...(options.iconInfo
-        ? {
-            icons: [
-              {
-                src: options.iconInfo.src,
-                mimeType: options.iconInfo.mimeType,
-                ...(options.iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons({ ...SEARCH_CONTENT_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: (args) => `grep | ${args.pattern}`,

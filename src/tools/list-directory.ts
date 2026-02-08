@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
@@ -19,6 +21,7 @@ import {
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
+  withDefaultIcons,
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
@@ -142,25 +145,11 @@ export function registerListDirectoryTool(
 
   server.registerTool(
     'ls',
-    {
-      ...LIST_DIRECTORY_TOOL,
-      ...(options.iconInfo
-        ? {
-            icons: [
-              {
-                src: options.iconInfo.src,
-                mimeType: options.iconInfo.mimeType,
-                ...(options.iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons({ ...LIST_DIRECTORY_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `ls | ${args.path ?? '.'}`,
+      progressMessage: (args) =>
+        `ls | ${args.path ? path.basename(args.path) : '.'}`,
     })
   );
 }

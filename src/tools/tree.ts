@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
@@ -16,6 +18,7 @@ import {
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
+  withDefaultIcons,
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
@@ -95,25 +98,11 @@ export function registerTreeTool(
 
   server.registerTool(
     'tree',
-    {
-      ...TREE_TOOL,
-      ...(options.iconInfo
-        ? {
-            icons: [
-              {
-                src: options.iconInfo.src,
-                mimeType: options.iconInfo.mimeType,
-                ...(options.iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons({ ...TREE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `tree | ${args.path ?? '.'}`,
+      progressMessage: (args) =>
+        `tree | ${args.path ? path.basename(args.path) : '.'}`,
     })
   );
 }

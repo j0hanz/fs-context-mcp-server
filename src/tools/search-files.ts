@@ -22,6 +22,7 @@ import {
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
+  withDefaultIcons,
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
@@ -127,22 +128,7 @@ export function registerSearchFilesTool(
 
   server.registerTool(
     'find',
-    {
-      ...SEARCH_FILES_TOOL,
-      ...(options.iconInfo
-        ? {
-            icons: [
-              {
-                src: options.iconInfo.src,
-                mimeType: options.iconInfo.mimeType,
-                ...(options.iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons({ ...SEARCH_FILES_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: (args) => `find | ${args.pattern}`,

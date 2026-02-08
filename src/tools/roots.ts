@@ -16,6 +16,7 @@ import {
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
+  withDefaultIcons,
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
@@ -73,22 +74,7 @@ export function registerListAllowedDirectoriesTool(
 
   server.registerTool(
     'roots',
-    {
-      ...LIST_ALLOWED_DIRECTORIES_TOOL,
-      ...(options.iconInfo
-        ? {
-            icons: [
-              {
-                src: options.iconInfo.src,
-                mimeType: options.iconInfo.mimeType,
-                ...(options.iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons({ ...LIST_ALLOWED_DIRECTORIES_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: () => 'roots',

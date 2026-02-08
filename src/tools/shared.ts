@@ -1,5 +1,6 @@
 import type {
   ContentBlock,
+  Icon,
   ProgressNotificationParams,
 } from '@modelcontextprotocol/sdk/types.js';
 
@@ -151,6 +152,28 @@ export function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
 export interface IconInfo {
   src: string;
   mimeType: string;
+}
+
+export function withDefaultIcons<T extends object>(
+  tool: T,
+  iconInfo: IconInfo | undefined
+): T & { icons?: Icon[] } {
+  if (!iconInfo) return tool as T & { icons?: Icon[] };
+
+  const existingIcons = (tool as { icons?: Icon[] }).icons;
+  if (existingIcons && existingIcons.length > 0) {
+    return tool as T & { icons?: Icon[] };
+  }
+
+  return {
+    ...tool,
+    icons: [
+      {
+        src: iconInfo.src,
+        mimeType: iconInfo.mimeType,
+      },
+    ],
+  } as unknown as T & { icons?: Icon[] };
 }
 
 export interface ToolRegistrationOptions {

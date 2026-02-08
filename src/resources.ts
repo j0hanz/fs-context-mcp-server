@@ -32,9 +32,6 @@ export function registerInstructionResource(
               {
                 src: iconInfo.src,
                 mimeType: iconInfo.mimeType,
-                ...(iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
               },
             ],
           }
@@ -71,9 +68,6 @@ export function registerResultResources(
               {
                 src: iconInfo.src,
                 mimeType: iconInfo.mimeType,
-                ...(iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
               },
             ],
           }

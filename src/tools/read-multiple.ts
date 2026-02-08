@@ -22,6 +22,7 @@ import {
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
+  withDefaultIcons,
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
@@ -169,22 +170,7 @@ export function registerReadMultipleFilesTool(
 
   server.registerTool(
     'read_many',
-    {
-      ...READ_MULTIPLE_FILES_TOOL,
-      ...(options.iconInfo
-        ? {
-            icons: [
-              {
-                src: options.iconInfo.src,
-                mimeType: options.iconInfo.mimeType,
-                ...(options.iconInfo.mimeType === 'image/svg+xml'
-                  ? { sizes: ['any'] }
-                  : {}),
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons({ ...READ_MULTIPLE_FILES_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: (args) => `read_many | ${args.paths.length} files`,
