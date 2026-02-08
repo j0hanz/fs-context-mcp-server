@@ -614,7 +614,9 @@ class BufferCollector extends Writable {
     _encoding: BufferEncoding,
     callback: (error?: Error | null) => void
   ): void {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const buffer = Buffer.isBuffer(chunk)
+      ? chunk
+      : Buffer.from(chunk, _encoding);
 
     this.#totalSize += buffer.length;
 
@@ -664,6 +666,7 @@ async function headFile(
   const lines: string[] = [];
   let estimatedBytes = 0;
   const hasMaxBytes = maxBytesRead !== undefined;
+  const newlineBytes = Buffer.byteLength('\n', encoding);
 
   for await (const line of handle.readLines({ encoding, signal })) {
     lines.push(line);
@@ -671,7 +674,7 @@ async function headFile(
     if (lines.length >= numLines) break;
     if (!hasMaxBytes) continue;
 
-    estimatedBytes += Buffer.byteLength(line, encoding) + 1;
+    estimatedBytes += Buffer.byteLength(line, encoding) + newlineBytes;
     if (estimatedBytes >= maxBytesRead) break;
   }
 
@@ -733,6 +736,7 @@ async function readRangeContent(
   const hasEndLine = endLine !== undefined;
   let stoppedByLimit = false;
   let reachedEof = false;
+  const newlineBytes = Buffer.byteLength('\n', options.encoding);
 
   const iterator = handle
     .readLines({ encoding: options.encoding, signal: options.signal })
@@ -762,7 +766,7 @@ async function readRangeContent(
 
     lines.push(line);
 
-    estimatedBytes += Buffer.byteLength(line, options.encoding) + 1;
+    estimatedBytes += Buffer.byteLength(line, options.encoding) + newlineBytes;
     if (estimatedBytes >= options.maxSize) {
       stoppedByLimit = true;
       stoppedEarly = true;
