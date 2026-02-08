@@ -9,54 +9,64 @@ import { ErrorCode, isNodeError, McpError } from './errors.js';
 import { assertNotAborted, withAbort } from './fs-helpers.js';
 
 const IS_WINDOWS = os.platform() === 'win32';
+const HOMEDIR = os.homedir();
 const PATH_SEPARATOR = path.sep;
 
+const DRIVE_LETTER_REGEX = /^[A-Za-z]:/;
+const WINDOWS_DRIVE_REL_REGEX = /^[A-Za-z]:$/u;
+
+const RESERVED_DEVICE_NAMES = new Set([
+  'CON',
+  'PRN',
+  'AUX',
+  'NUL',
+  'COM1',
+  'COM2',
+  'COM3',
+  'COM4',
+  'COM5',
+  'COM6',
+  'COM7',
+  'COM8',
+  'COM9',
+  'LPT1',
+  'LPT2',
+  'LPT3',
+  'LPT4',
+  'LPT5',
+  'LPT6',
+  'LPT7',
+  'LPT8',
+  'LPT9',
+]);
+
 function expandHome(filepath: string): string {
-  if (filepath.startsWith('~/') || filepath === '~') {
-    return path.join(os.homedir(), filepath.slice(1));
+  if (filepath === '~') return HOMEDIR;
+
+  // Accept both "~/" and "~\\" for cross-platform UX.
+  if (filepath.startsWith('~/') || filepath.startsWith('~\\')) {
+    // Avoid `path.join(HOMEDIR, "/foo")` resetting to the filesystem root.
+    const rest = filepath.slice(2).replace(/^[/\\]+/, '');
+    return rest.length === 0 ? HOMEDIR : path.join(HOMEDIR, rest);
   }
+
   return filepath;
 }
 
+/**
+ * Normalizes any path-like input to an absolute path suitable for comparisons.
+ * - Expands "~" home directory shorthand.
+ * - Resolves against process CWD if relative.
+ * - Lowercases Windows drive letter for stable comparisons.
+ */
 export function normalizePath(p: string): string {
-  const expanded = expandHome(p);
-  const resolved = path.resolve(expanded);
+  const resolved = path.resolve(expandHome(p));
 
-  if (IS_WINDOWS && /^[A-Z]:/.test(resolved)) {
+  if (IS_WINDOWS && DRIVE_LETTER_REGEX.test(resolved)) {
     return resolved.charAt(0).toLowerCase() + resolved.slice(1);
   }
 
   return resolved;
-}
-
-function isEscapingRoot(relative: string): boolean {
-  if (relative === '') return false;
-  if (relative === '..') return true;
-  const parentPrefix = `..${PATH_SEPARATOR}`;
-  return relative.startsWith(parentPrefix);
-}
-
-function resolveWithinRoot(root: string, input: string): string | null {
-  const resolved = path.resolve(root, input);
-  const relative = path.relative(root, resolved);
-
-  if (
-    relative === '' ||
-    (!isEscapingRoot(relative) && !path.isAbsolute(relative))
-  ) {
-    return resolved;
-  }
-  return null;
-}
-
-function isPathWithinRoot(root: string, candidate: string): boolean {
-  return resolveWithinRoot(root, candidate) !== null;
-}
-
-function rethrowIfAborted(error: unknown): void {
-  if (error instanceof Error && error.name === 'AbortError') {
-    throw error;
-  }
 }
 
 function normalizeForComparison(value: string): string {
@@ -64,11 +74,12 @@ function normalizeForComparison(value: string): string {
 }
 
 function isSamePath(left: string, right: string): boolean {
+  if (left === right) return true;
   return normalizeForComparison(left) === normalizeForComparison(right);
 }
 
 function stripTrailingSeparator(normalized: string): string {
-  return normalized.endsWith(PATH_SEPARATOR)
+  return normalized.length > 1 && normalized.endsWith(PATH_SEPARATOR)
     ? normalized.slice(0, -1)
     : normalized;
 }
@@ -78,10 +89,15 @@ function normalizeAllowedDirectory(dir: string): string {
   if (trimmed.length === 0) return '';
 
   const normalized = normalizePath(trimmed);
-
   const { root } = path.parse(normalized);
-  const isRootPath = isSamePath(root, normalized);
-  if (isRootPath) return root;
+
+  // Keep filesystem roots as-is ("/", "c:\\", "\\\\server\\share\\").
+  if (
+    normalized === root ||
+    normalizeForComparison(normalized) === normalizeForComparison(root)
+  ) {
+    return root;
+  }
 
   return stripTrailingSeparator(normalized);
 }
@@ -91,9 +107,11 @@ function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
     .map(normalizeAllowedDirectory)
     .filter((dir) => dir.length > 0);
 
+  // Preserve first-seen order while deduping.
   return [...new Set(normalized)];
 }
 
+// Cached module state (configured roots).
 let allowedDirectoriesExpanded: string[] = [];
 let allowedDirectoriesPrimary: string[] = [];
 
@@ -115,14 +133,39 @@ function getAllowedDirectoriesForRelativeResolution(): string[] {
     : [...allowedDirectoriesExpanded];
 }
 
+function isPathPrefix(rootComp: string, candidateComp: string): boolean {
+  if (candidateComp.length < rootComp.length) return false;
+  if (!candidateComp.startsWith(rootComp)) return false;
+
+  if (candidateComp.length === rootComp.length) return true;
+
+  // If root already ends with a separator, it is a valid prefix.
+  const rootLast = rootComp.charCodeAt(rootComp.length - 1);
+  if (rootLast === 47 || rootLast === 92) return true;
+
+  // Boundary check: "/foo" is not a prefix of "/foobar".
+  const boundary = candidateComp.charCodeAt(rootComp.length);
+  return boundary === 47 || boundary === 92;
+}
+
 export function isPathWithinDirectories(
   normalizedPath: string,
   allowedDirs: readonly string[]
 ): boolean {
   const candidate = normalizeForComparison(normalizedPath);
-  return allowedDirs.some((allowedDir) =>
-    isPathWithinRoot(normalizeForComparison(allowedDir), candidate)
-  );
+
+  for (const allowedDir of allowedDirs) {
+    const root = normalizeForComparison(allowedDir);
+    if (isPathPrefix(root, candidate)) return true;
+  }
+
+  return false;
+}
+
+function rethrowIfAborted(error: unknown): void {
+  if (error instanceof Error && error.name === 'AbortError') {
+    throw error;
+  }
 }
 
 async function resolveRealPath(
@@ -172,31 +215,6 @@ export async function setAllowedDirectoriesResolved(
   setAllowedDirectoriesState(primary, expanded);
 }
 
-export const RESERVED_DEVICE_NAMES = new Set([
-  'CON',
-  'PRN',
-  'AUX',
-  'NUL',
-  'COM1',
-  'COM2',
-  'COM3',
-  'COM4',
-  'COM5',
-  'COM6',
-  'COM7',
-  'COM8',
-  'COM9',
-  'LPT1',
-  'LPT2',
-  'LPT3',
-  'LPT4',
-  'LPT5',
-  'LPT6',
-  'LPT7',
-  'LPT8',
-  'LPT9',
-]);
-
 function ensureNonEmptyPath(requestedPath: string): void {
   if (!requestedPath || requestedPath.trim().length === 0) {
     throw new McpError(
@@ -217,24 +235,29 @@ function ensureNoNullBytes(requestedPath: string): void {
   }
 }
 
-function trimTrailingDotsAndSpaces(value: string): string {
-  let end = value.length;
-  while (end > 0) {
-    const char = value[end - 1];
-    if (char === ' ' || char === '.') {
-      end -= 1;
-      continue;
-    }
-    break;
-  }
-  return value.slice(0, end);
-}
-
 function getReservedDeviceName(segment: string): string | undefined {
-  const trimmed = trimTrailingDotsAndSpaces(segment);
-  const withoutStream = trimmed.split(':')[0] ?? '';
-  const baseName = withoutStream.split('.')[0]?.toUpperCase();
-  if (!baseName) return undefined;
+  // Trim trailing dots/spaces (Windows ignores these in path segments).
+  let end = segment.length;
+  while (end > 0) {
+    const c = segment.charCodeAt(end - 1);
+    if (c === 32 || c === 46)
+      end--; // space or dot
+    else break;
+  }
+
+  const trimmed = segment.slice(0, end);
+
+  // Remove alternate data stream suffix (e.g. "file.txt:stream").
+  const streamIdx = trimmed.indexOf(':');
+  const withoutStream =
+    streamIdx !== -1 ? trimmed.slice(0, streamIdx) : trimmed;
+
+  // Remove extension (e.g. "CON.txt" => "CON").
+  const dotIdx = withoutStream.indexOf('.');
+  const baseName = (
+    dotIdx !== -1 ? withoutStream.slice(0, dotIdx) : withoutStream
+  ).toUpperCase();
+
   return RESERVED_DEVICE_NAMES.has(baseName) ? baseName : undefined;
 }
 
@@ -242,35 +265,34 @@ export function getReservedDeviceNameForPath(
   requestedPath: string
 ): string | undefined {
   if (!IS_WINDOWS) return undefined;
+
   const segments = requestedPath.split(/[\\/]/);
   for (const segment of segments) {
     const reserved = getReservedDeviceName(segment);
     if (reserved) return reserved;
   }
+
   return undefined;
 }
 
 function ensureNoReservedWindowsNames(requestedPath: string): void {
   if (!IS_WINDOWS) return;
 
-  const segments = requestedPath.split(/[\\/]/);
-  for (const segment of segments) {
-    const reserved = getReservedDeviceName(segment);
-    if (reserved) {
-      throw new McpError(
-        ErrorCode.E_INVALID_INPUT,
-        `Windows reserved device name not allowed: ${reserved}`,
-        requestedPath
-      );
-    }
-  }
+  const reserved = getReservedDeviceNameForPath(requestedPath);
+  if (!reserved) return;
+
+  throw new McpError(
+    ErrorCode.E_INVALID_INPUT,
+    `Windows reserved device name not allowed: ${reserved}`,
+    requestedPath
+  );
 }
 
 export function isWindowsDriveRelativePath(requestedPath: string): boolean {
   if (!IS_WINDOWS) return false;
 
   const parsed = path.win32.parse(requestedPath);
-  if (!/^[A-Za-z]:$/u.test(parsed.root)) return false;
+  if (!WINDOWS_DRIVE_REL_REGEX.test(parsed.root)) return false;
   return !path.win32.isAbsolute(requestedPath);
 }
 
@@ -367,18 +389,18 @@ function toMcpError(requestedPath: string, error: unknown): McpError {
     );
   }
 
-  let message = '';
+  let originalMessage = '';
   if (error instanceof Error) {
-    ({ message } = error);
+    originalMessage = error.message;
   } else if (typeof error === 'string') {
-    message = error;
+    originalMessage = error;
   }
 
   return new McpError(
     ErrorCode.E_NOT_FOUND,
     `Path is not accessible: ${requestedPath}`,
     requestedPath,
-    { originalCode: code, originalMessage: message },
+    { originalCode: code, originalMessage },
     error
   );
 }
@@ -397,7 +419,7 @@ export function toAccessDeniedWithHint(
   );
 }
 
-interface ValidatedPathDetails {
+export interface ValidatedPathDetails {
   requestedPath: string;
   resolvedPath: string;
   isSymlink: boolean;
@@ -411,6 +433,8 @@ function ensureWithinAllowedDirectories(options: {
 }): void {
   const { normalizedPath, requestedPath, allowedDirs, details } = options;
 
+  if (isPathWithinDirectories(normalizedPath, allowedDirs)) return;
+
   if (allowedDirs.length === 0) {
     throw new McpError(
       ErrorCode.E_ACCESS_DENIED,
@@ -419,8 +443,6 @@ function ensureWithinAllowedDirectories(options: {
       details
     );
   }
-
-  if (isPathWithinDirectories(normalizedPath, allowedDirs)) return;
 
   throw new McpError(
     ErrorCode.E_ACCESS_DENIED,
@@ -436,6 +458,7 @@ async function resolveRealPathOrThrow(options: {
   signal?: AbortSignal;
 }): Promise<string> {
   const { requestedPath, normalizedRequested, signal } = options;
+
   try {
     assertNotAborted(signal);
     return await withAbort(fs.realpath(normalizedRequested), signal);
@@ -538,6 +561,7 @@ async function maybeAddRealPath(
     assertNotAborted(signal);
     const realPath = await withAbort(fs.realpath(normalizedPath), signal);
     const normalizedReal = normalizePath(realPath);
+
     if (!isSamePath(normalizedReal, normalizedPath)) {
       validDirs.push(normalizedReal);
     }
