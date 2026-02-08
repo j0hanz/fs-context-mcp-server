@@ -19,9 +19,7 @@ function isSafeGlobPattern(value: string): boolean {
 const MAX_PATH_LENGTH = 4096;
 
 const DESC_PATH_ROOT =
-  'Base directory for the operation (leave empty for workspace root). ' +
-  'If multiple roots are configured, path is required and must be absolute. ' +
-  'Examples: "src", "src/components"';
+  'Base directory (default: root). Absolute path required if multiple roots exist. Examples: "src", "src/components"';
 
 const DESC_PATH_REQUIRED =
   'Absolute path to file or directory. Examples: "src/index.ts", "README.md"';
@@ -30,12 +28,12 @@ const PathSchemaBase = z
   .string()
   .max(
     MAX_PATH_LENGTH,
-    `Path exceeds maximum length of ${MAX_PATH_LENGTH} characters`
+    `Path too long (max ${MAX_PATH_LENGTH} chars)`
   );
 
 const OptionalPathSchema = PathSchemaBase.optional();
 
-const RequiredPathSchema = PathSchemaBase.min(1, 'Path is required');
+const RequiredPathSchema = PathSchemaBase.min(1, 'Path required');
 
 const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 
@@ -50,31 +48,31 @@ interface TreeEntry {
 
 const TreeEntrySchema: z.ZodType<TreeEntry> = z.lazy(() =>
   z.object({
-    name: z.string(),
-    type: TreeEntryTypeSchema,
-    relativePath: z.string(),
-    children: z.array(TreeEntrySchema).optional(),
+    name: z.string().describe('Name'),
+    type: TreeEntryTypeSchema.describe('Type'),
+    relativePath: z.string().describe('Relative path'),
+    children: z.array(TreeEntrySchema).optional().describe('Children'),
   })
 );
 
 const ErrorSchema = z.object({
-  code: z.string().describe('Error code (e.g., E_NOT_FOUND)'),
-  message: z.string().describe('Human-readable error message'),
-  path: z.string().optional().describe('Path that caused the error'),
-  suggestion: z.string().optional().describe('Suggested action to resolve'),
+  code: z.string().describe('Error code (e.g. E_NOT_FOUND)'),
+  message: z.string().describe('Human-readable message'),
+  path: z.string().optional().describe('Relevant path'),
+  suggestion: z.string().optional().describe('Fix suggestion'),
 });
 
 const HeadLinesSchema = z
-  .int({ error: 'head must be an integer' })
-  .min(1, 'head must be at least 1')
-  .max(100000, 'head cannot exceed 100,000 lines')
+  .int({ error: 'Must be integer' })
+  .min(1, 'Min: 1')
+  .max(100000, 'Max: 100,000')
   .optional()
-  .describe('Read only the first N lines');
+  .describe('Read first N lines');
 
 const LineNumberSchema = z
   .number()
-  .int({ error: 'line numbers must be integers' })
-  .min(1, 'line numbers must be at least 1');
+  .int({ error: 'Must be integer' })
+  .min(1, 'Min: 1');
 
 interface ReadRangeValue {
   head?: number | undefined;
@@ -94,7 +92,7 @@ const validateReadRange = (
     ctx.addIssue({
       code: 'custom',
       path: ['head'],
-      message: 'head cannot be used together with startLine/endLine',
+      message: "Cannot use 'head' with 'startLine'/'endLine'",
     });
   }
 
@@ -102,7 +100,7 @@ const validateReadRange = (
     ctx.addIssue({
       code: 'custom',
       path: ['endLine'],
-      message: 'endLine requires startLine',
+      message: "'endLine' requires 'startLine'",
     });
   }
 
@@ -114,33 +112,33 @@ const validateReadRange = (
     ctx.addIssue({
       code: 'custom',
       path: ['endLine'],
-      message: 'endLine must be greater than or equal to startLine',
+      message: "'endLine' must be >= 'startLine'",
     });
   }
 };
 
 const FileInfoSchema = z.object({
-  name: z.string(),
-  path: z.string(),
-  type: FileTypeSchema,
-  size: z.number(),
+  name: z.string().describe('Name'),
+  path: z.string().describe('Absolute path'),
+  type: FileTypeSchema.describe('Type'),
+  size: z.number().describe('Size (bytes)'),
   tokenEstimate: z
     .number()
     .optional()
-    .describe('Approximate token count estimate (rule of thumb: ceil(size/4))'),
-  created: z.string(),
-  modified: z.string(),
-  accessed: z.string(),
-  permissions: z.string(),
-  isHidden: z.boolean(),
-  mimeType: z.string().optional(),
-  symlinkTarget: z.string().optional(),
+    .describe('Est. tokens (size/4)'),
+  created: z.string().describe('Created'),
+  modified: z.string().describe('Modified'),
+  accessed: z.string().describe('Accessed'),
+  permissions: z.string().describe('Permissions'),
+  isHidden: z.boolean().describe('Hidden?'),
+  mimeType: z.string().optional().describe('MIME type'),
+  symlinkTarget: z.string().optional().describe('Target (symlink)'),
 });
 
 const OperationSummarySchema = z.object({
-  total: z.number(),
-  succeeded: z.number(),
-  failed: z.number(),
+  total: z.number().describe('Total'),
+  succeeded: z.number().describe('Succeeded'),
+  failed: z.number().describe('Failed'),
 });
 
 const ReadRangeInputSchema = z.strictObject({
@@ -155,13 +153,13 @@ export const ListDirectoryInputSchema = z.strictObject({
     .boolean()
     .optional()
     .default(false)
-    .describe('Include hidden files and directories (starting with .)'),
+    .describe('Include hidden items (starting with .)'),
   includeIgnored: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      'Include normally ignored directories (node_modules, dist, .git, etc).'
+      'Include ignored items (node_modules, .git, etc).'
     ),
 });
 
@@ -173,30 +171,29 @@ export const SearchFilesInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   pattern: z
     .string()
-    .min(1, 'Pattern is required')
-    .max(1000, 'Pattern exceeds 1000 characters')
+    .min(1, 'Pattern required')
+    .max(1000, 'Max 1000 chars')
     .refine((val) => isSafeGlobPattern(val), {
       error:
-        'Invalid glob pattern syntax or unsafe path (absolute/.. segments not allowed)',
+        'Invalid glob or unsafe path (absolute/.. forbidden)',
     })
     .describe(
-      'Glob pattern to match files. Examples: "**/*.ts", "src/**/*.js", "*.json"'
+      'Glob pattern (e.g. "**/*.ts", "src/*.js")'
     ),
   maxResults: z
     .number()
-    .int({ error: 'maxResults must be an integer' })
-    .min(1, 'maxResults must be at least 1')
-    .max(10000, 'maxResults cannot exceed 10,000')
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(10000, 'Max: 10,000')
     .optional()
     .default(100)
-    .describe('Maximum matches to return (1-10000)'),
+    .describe('Max results (1-10000)'),
   includeIgnored: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      'Include normally ignored directories (node_modules, dist, .git, etc). ' +
-        'Set to true when debugging in dependencies.'
+      'Include ignored items (node_modules, etc).'
     ),
 });
 
@@ -204,32 +201,31 @@ export const TreeInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   maxDepth: z
     .number()
-    .int({ error: 'maxDepth must be an integer' })
-    .min(0, 'maxDepth must be at least 0')
-    .max(50, 'maxDepth cannot exceed 50')
+    .int({ error: 'Must be integer' })
+    .min(0, 'Min: 0')
+    .max(50, 'Max: 50')
     .optional()
     .default(5)
-    .describe('Maximum depth to recurse (0 = just the root)'),
+    .describe('Depth (0=root). Default: 5'),
   maxEntries: z
     .number()
-    .int({ error: 'maxEntries must be an integer' })
-    .min(1, 'maxEntries must be at least 1')
-    .max(20000, 'maxEntries cannot exceed 20,000')
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(20000, 'Max: 20,000')
     .optional()
     .default(1000)
-    .describe('Maximum number of entries to return before truncating'),
+    .describe('Max entries (Default: 1000)'),
   includeHidden: z
     .boolean()
     .optional()
     .default(false)
-    .describe('Include hidden files and directories (starting with .)'),
+    .describe('Include hidden items (starting with .)'),
   includeIgnored: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      'Include normally ignored directories (node_modules, dist, .git, etc). ' +
-        'When true, also disables root .gitignore filtering.'
+      'Include ignored items. Disables .gitignore.'
     ),
 });
 
@@ -237,36 +233,35 @@ export const SearchContentInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   pattern: z
     .string()
-    .min(1, 'Pattern is required')
-    .max(1000, 'Pattern exceeds 1000 characters')
+    .min(1, 'Pattern required')
+    .max(1000, 'Max 1000 chars')
     .describe(
-      'Text to search for. By default this is treated as a literal substring match. ' +
-        'Set isRegex=true to treat pattern as a regular expression.'
+      'Search text or regex (if isRegex=true)'
     ),
   isRegex: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      'Treat pattern as a regular expression (default: false = literal substring).'
+      'Treat pattern as regex'
     ),
   includeHidden: z
     .boolean()
     .optional()
     .default(false)
-    .describe('Include hidden files and directories (starting with .)'),
+    .describe('Include hidden items (starting with .)'),
 });
 
 export const ReadFileInputSchema = ReadRangeInputSchema.extend({
   path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
   head: HeadLinesSchema.describe(
-    'Read only the first N lines of the file (useful for previewing large files)'
+    'Read first N lines (preview)'
   ),
   startLine: LineNumberSchema.optional().describe(
-    '1-based line number to start reading from (inclusive).'
+    'Start line (1-based, inclusive)'
   ),
   endLine: LineNumberSchema.optional().describe(
-    '1-based line number to stop reading at (inclusive). Requires startLine.'
+    'End line (1-based, inclusive). Requires startLine.'
   ),
 })
   .strict()
@@ -275,17 +270,17 @@ export const ReadFileInputSchema = ReadRangeInputSchema.extend({
 export const ReadMultipleFilesInputSchema = ReadRangeInputSchema.extend({
   paths: z
     .array(RequiredPathSchema)
-    .min(1, 'At least one path is required')
-    .max(100, 'Cannot read more than 100 files at once')
+    .min(1, 'Min 1 path required')
+    .max(100, 'Max 100 files')
     .describe(
-      'Array of file paths to read. Examples: ["README.md", "src/index.ts"]'
+      'Files to read. e.g. ["src/index.ts"]'
     ),
-  head: HeadLinesSchema.describe('Read only the first N lines of each file'),
+  head: HeadLinesSchema.describe('Read first N lines of each file'),
   startLine: LineNumberSchema.optional().describe(
-    '1-based line number to start reading from (inclusive), applied to each file.'
+    'Start line (1-based, inclusive) per file'
   ),
   endLine: LineNumberSchema.optional().describe(
-    '1-based line number to stop reading at (inclusive), applied to each file. Requires startLine.'
+    'End line (1-based, inclusive) per file. Requires startLine.'
   ),
 })
   .strict()
@@ -298,14 +293,14 @@ export const GetFileInfoInputSchema = z.strictObject({
 export const GetMultipleFileInfoInputSchema = z.strictObject({
   paths: z
     .array(RequiredPathSchema)
-    .min(1, 'At least one path is required')
-    .max(100, 'Cannot get info for more than 100 files at once')
-    .describe('Array of file or directory paths. Examples: ["src", "lib"]'),
+    .min(1, 'Min 1 path required')
+    .max(100, 'Max 100 files')
+    .describe('File/directory paths. e.g. ["src", "lib"]'),
 });
 
 export const ListAllowedDirectoriesOutputSchema = z.object({
   ok: z.boolean(),
-  directories: z.array(z.string()).optional(),
+  directories: z.array(z.string()).optional().describe('Allowed directories'),
   error: ErrorSchema.optional(),
 });
 
@@ -315,7 +310,7 @@ export const ListDirectoryOutputSchema = z.object({
   entries: z
     .array(
       z.object({
-        name: z.string().describe('Entry name (basename)'),
+        name: z.string().describe('Entry name'),
         relativePath: z.string().optional(),
         type: FileTypeSchema,
         size: z.number().optional(),
@@ -328,9 +323,9 @@ export const ListDirectoryOutputSchema = z.object({
 });
 
 const SearchSummarySchema = z.object({
-  totalMatches: z.number().optional(),
-  truncated: z.boolean().optional(),
-  resourceUri: z.string().optional(),
+  totalMatches: z.number().optional().describe('Total matches found'),
+  truncated: z.boolean().optional().describe('Results truncated?'),
+  resourceUri: z.string().optional().describe('Full results URI'),
   error: ErrorSchema.optional(),
 });
 
@@ -339,7 +334,7 @@ export const SearchFilesOutputSchema = SearchSummarySchema.extend({
   results: z
     .array(
       z.object({
-        path: z.string().describe('Relative path from search base'),
+        path: z.string().describe('Relative path'),
         size: z.number().optional(),
         modified: z.string().optional(),
       })
@@ -352,7 +347,7 @@ export const SearchContentOutputSchema = SearchSummarySchema.extend({
   matches: z
     .array(
       z.object({
-        file: z.string().describe('Relative path from search base'),
+        file: z.string().describe('Relative path'),
         line: z.number(),
         content: z.string(),
         matchCount: z.number(),
@@ -374,16 +369,16 @@ export const TreeOutputSchema = z.object({
 });
 
 const ReadResultSchema = z.object({
-  content: z.string().optional(),
-  truncated: z.boolean().optional(),
-  resourceUri: z.string().optional(),
-  totalLines: z.number().optional(),
-  readMode: z.enum(['full', 'head', 'range']).optional(),
-  head: z.number().optional(),
-  startLine: z.number().optional(),
-  endLine: z.number().optional(),
-  linesRead: z.number().optional(),
-  hasMoreLines: z.boolean().optional(),
+  content: z.string().optional().describe('Content'),
+  truncated: z.boolean().optional().describe('Truncated?'),
+  resourceUri: z.string().optional().describe('Full content URI'),
+  totalLines: z.number().optional().describe('Total lines'),
+  readMode: z.enum(['full', 'head', 'range']).optional().describe('Mode'),
+  head: z.number().optional().describe('Head lines'),
+  startLine: z.number().optional().describe('Start line'),
+  endLine: z.number().optional().describe('End line'),
+  linesRead: z.number().optional().describe('Lines read'),
+  hasMoreLines: z.boolean().optional().describe('More lines?'),
 });
 
 export const ReadFileOutputSchema = ReadResultSchema.extend({
@@ -393,8 +388,8 @@ export const ReadFileOutputSchema = ReadResultSchema.extend({
 });
 
 const ReadMultipleFileResultSchema = ReadResultSchema.extend({
-  path: z.string(),
-  error: z.string().optional(),
+  path: z.string().describe('File path'),
+  error: z.string().optional().describe('Error message'),
 });
 
 export const ReadMultipleFilesOutputSchema = z.object({
@@ -437,7 +432,7 @@ export const CreateDirectoryOutputSchema = z.object({
 
 export const WriteFileInputSchema = z.strictObject({
   path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
-  content: z.string().describe('The content to write to the file'),
+  content: z.string().describe('Content to write'),
 });
 
 export const WriteFileOutputSchema = z.object({
@@ -452,16 +447,16 @@ export const EditFileInputSchema = z.strictObject({
   edits: z
     .array(
       z.object({
-        oldText: z.string().describe('The exact string to be replaced'),
-        newText: z.string().describe('The new string to replace with'),
+        oldText: z.string().describe('Exact string to replace'),
+        newText: z.string().describe('Replacement string'),
       })
     )
-    .min(1, 'At least one edit is required'),
+    .min(1, 'Min 1 edit required'),
   dryRun: z
     .boolean()
     .optional()
     .default(false)
-    .describe('If true, only checks if edits would succeed'),
+    .describe('Check only, no writes'),
 });
 
 export const EditFileOutputSchema = z.object({
@@ -472,9 +467,9 @@ export const EditFileOutputSchema = z.object({
 });
 
 export const MoveFileInputSchema = z.strictObject({
-  source: RequiredPathSchema.describe('The path of the file/directory to move'),
+  source: RequiredPathSchema.describe('Path to move'),
   destination: RequiredPathSchema.describe(
-    'The new path for the file/directory'
+    'New path'
   ),
 });
 
@@ -491,12 +486,12 @@ export const DeleteFileInputSchema = z.strictObject({
     .boolean()
     .optional()
     .default(false)
-    .describe('If true, allows deleting non-empty directories'),
+    .describe('Delete non-empty directories'),
   ignoreIfNotExists: z
     .boolean()
     .optional()
     .default(false)
-    .describe('If true, does not fail if the path does not exist'),
+    .describe('No error if missing'),
 });
 
 export const DeleteFileOutputSchema = z.object({
