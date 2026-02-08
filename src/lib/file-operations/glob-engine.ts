@@ -42,6 +42,8 @@ export interface GlobEntriesOptions {
   suppressErrors?: boolean;
 }
 
+type GlobMatch = string | GlobDirentLike;
+
 interface NormalizedGlob {
   cwd: string;
   patterns: readonly string[];
@@ -51,12 +53,16 @@ interface NormalizedGlob {
   maxDepth?: number;
 }
 
-function normalizeToPosixPath(filePath: string): string {
-  return filePath.replace(/\\/gu, '/');
+const GLOB_MAGIC_RE = /[*?[\]{}!]/u;
+const DEFAULT_MAX_HIDDEN_DEPTH = 10;
+
+function toPosixSlashes(value: string): string {
+  return value.replace(/\\/gu, '/');
 }
 
 function normalizePattern(pattern: string, baseNameMatch: boolean): string {
-  const normalized = pattern.replace(/\\/gu, '/');
+  const normalized = toPosixSlashes(pattern);
+
   if (!baseNameMatch) return normalized;
   if (normalized.includes('/')) return normalized;
   return `**/${normalized}`;
@@ -65,11 +71,11 @@ function normalizePattern(pattern: string, baseNameMatch: boolean): string {
 function normalizeIgnorePatterns(
   patterns: readonly string[]
 ): readonly string[] {
-  return patterns.map((pattern) => pattern.replace(/\\/gu, '/'));
+  return patterns.map(toPosixSlashes);
 }
 
 function hasGlobMagic(segment: string): boolean {
-  return /[*?[\]{}!]/u.test(segment);
+  return GLOB_MAGIC_RE.test(segment);
 }
 
 function splitPatternPrefix(normalizedPattern: string): {
@@ -100,6 +106,7 @@ function splitPatternPrefix(normalizedPattern: string): {
 
   const prefixSegments = segments.slice(0, splitIndex);
   const remainderSegments = segments.slice(splitIndex);
+
   return {
     prefix: `${prefixSegments.join('/')}/`,
     remainder: remainderSegments.join('/'),
@@ -110,13 +117,15 @@ function buildHiddenPatterns(
   normalizedPattern: string,
   maxDepth: number
 ): readonly string[] {
-  const patterns = new Set<string>();
-  patterns.add(normalizedPattern);
+  const patterns = new Set<string>([normalizedPattern]);
 
   const { prefix, remainder } = splitPatternPrefix(normalizedPattern);
   const remainderSegments = remainder.length > 0 ? remainder.split('/') : [];
 
-  // Dotfile candidate handling (e.g. foo/bar -> .foo/bar, foo/.bar)
+  // Dotfile candidate handling:
+  // - only modifies the first non-"**" segment within the glob-capable remainder
+  // - does not make literal prefix segments match dot-prefixed variants
+  // Example: foo/bar -> foo/.bar (not .foo/bar)
   const dotfileSegments = [...remainderSegments];
   const firstCandidateIndex = dotfileSegments.findIndex(
     (segment) => segment !== '**' && segment.length > 0
@@ -129,7 +138,8 @@ function buildHiddenPatterns(
     }
   }
 
-  // Globstar handling (e.g. **/foo -> **/.*/**/foo, **/.foo)
+  // Globstar handling:
+  // If the remainder starts with "**/", expand patterns to match hidden directories at various depths.
   if (remainder.startsWith('**/')) {
     const afterGlobstar = remainder.slice('**/'.length);
 
@@ -148,18 +158,23 @@ function buildHiddenPatterns(
 }
 
 function shouldUseGlobDirents(options: GlobEntriesOptions): boolean {
+  // fs.promises.glob supports `withFileTypes`, but does not provide stats nor symlink-following.
+  // If either is needed, we'll glob as strings and stat/lstat afterwards.
   return !options.stats && !options.followSymbolicLinks;
 }
 
 function normalizeOptions(options: GlobEntriesOptions): NormalizedGlob {
-  const normalized = normalizePattern(options.pattern, options.baseNameMatch);
-  const maxHiddenDepth = options.maxDepth ?? 10;
+  const normalizedPattern = normalizePattern(
+    options.pattern,
+    options.baseNameMatch
+  );
+  const maxHiddenDepth = options.maxDepth ?? DEFAULT_MAX_HIDDEN_DEPTH;
 
   const patterns = options.includeHidden
-    ? buildHiddenPatterns(normalized, maxHiddenDepth)
-    : [normalized];
+    ? buildHiddenPatterns(normalizedPattern, maxHiddenDepth)
+    : [normalizedPattern];
 
-  const result: NormalizedGlob = {
+  const normalized: NormalizedGlob = {
     cwd: options.cwd,
     patterns,
     exclude: normalizeIgnorePatterns(options.excludePatterns),
@@ -168,26 +183,25 @@ function normalizeOptions(options: GlobEntriesOptions): NormalizedGlob {
   };
 
   if (options.maxDepth !== undefined) {
-    result.maxDepth = options.maxDepth;
+    normalized.maxDepth = options.maxDepth;
   }
 
-  return result;
+  return normalized;
 }
 
 function resolveDepth(cwd: string, entryPath: string): number {
   const relative = path.relative(cwd, entryPath);
   if (relative.length === 0) return 0;
-  const normalized = normalizeToPosixPath(relative);
+
+  const normalized = toPosixSlashes(relative);
   const parts = normalized.split('/').filter((part) => part.length > 0);
+
   return parts.length;
 }
 
-function isWithinDepthLimit(
-  normalized: NormalizedGlob,
-  entryPath: string
-): boolean {
-  if (normalized.maxDepth === undefined) return true;
-  return resolveDepth(normalized.cwd, entryPath) <= normalized.maxDepth;
+function isWithinDepthLimit(plan: NormalizedGlob, entryPath: string): boolean {
+  if (plan.maxDepth === undefined) return true;
+  return resolveDepth(plan.cwd, entryPath) <= plan.maxDepth;
 }
 
 function toAbsolutePath(cwd: string, match: string): string {
@@ -212,10 +226,7 @@ function isGlobDirentLike(value: unknown): value is GlobDirentLike {
   );
 }
 
-function resolveAbsolutePathFromGlobMatch(
-  cwd: string,
-  match: string | GlobDirentLike
-): string {
+function resolveAbsolutePathFromMatch(cwd: string, match: GlobMatch): string {
   return typeof match === 'string'
     ? toAbsolutePath(cwd, match)
     : toAbsolutePathFromDirent(cwd, match);
@@ -237,90 +248,88 @@ function buildEntryFromGlobDirent(
   return { path: absolutePath, dirent };
 }
 
-async function buildEntry(
-  entryPath: string,
-  options: GlobEntriesOptions
+async function buildEntryFromPath(
+  absolutePath: string,
+  options: GlobEntriesOptions,
+  suppressErrors: boolean
 ): Promise<GlobEntry | null> {
   try {
     const stats = options.followSymbolicLinks
-      ? await fs.stat(entryPath)
-      : await fs.lstat(entryPath);
+      ? await fs.stat(absolutePath)
+      : await fs.lstat(absolutePath);
 
-    if (!passesOnlyFilesFilter(stats, options.onlyFiles)) {
-      return null;
-    }
+    if (!passesOnlyFilesFilter(stats, options.onlyFiles)) return null;
 
-    const result: GlobEntry = { path: entryPath, dirent: stats };
-    if (options.stats) result.stats = stats;
-    return result;
+    const entry: GlobEntry = { path: absolutePath, dirent: stats };
+    if (options.stats) entry.stats = stats;
+    return entry;
   } catch (error) {
-    if (options.suppressErrors) return null;
+    if (suppressErrors) return null;
     throw error;
   }
 }
 
-function tryCreateGlobIterable(
+function createGlobIterable(
   pattern: string | readonly string[],
-  normalized: NormalizedGlob
-): AsyncIterable<string | GlobDirentLike> | null {
+  plan: NormalizedGlob
+): AsyncIterable<GlobMatch> | null {
   try {
     return fsGlob(pattern as string | string[], {
-      cwd: normalized.cwd,
-      exclude: normalized.exclude,
-      withFileTypes: normalized.useDirents,
-    });
+      cwd: plan.cwd,
+      exclude: plan.exclude,
+      withFileTypes: plan.useDirents,
+    }) as AsyncIterable<GlobMatch>;
   } catch (error) {
-    if (normalized.suppressErrors) return null;
+    if (plan.suppressErrors) return null;
     throw error;
   }
 }
 
 function shouldYieldEntry(
   absolutePath: string,
-  normalized: NormalizedGlob,
+  plan: NormalizedGlob,
   seen: Set<string>
 ): boolean {
+  if (!isWithinDepthLimit(plan, absolutePath)) return false;
   if (seen.has(absolutePath)) return false;
+
   seen.add(absolutePath);
-  if (!isWithinDepthLimit(normalized, absolutePath)) return false;
   return true;
 }
 
 async function buildEntryFromMatch(
-  match: string | GlobDirentLike,
+  match: GlobMatch,
   options: GlobEntriesOptions,
-  normalized: NormalizedGlob,
+  plan: NormalizedGlob,
   seen: Set<string>
 ): Promise<GlobEntry | null> {
-  const absolutePath = resolveAbsolutePathFromGlobMatch(normalized.cwd, match);
+  const absolutePath = resolveAbsolutePathFromMatch(plan.cwd, match);
 
-  if (!shouldYieldEntry(absolutePath, normalized, seen)) {
-    return null;
-  }
+  if (!shouldYieldEntry(absolutePath, plan, seen)) return null;
 
-  if (normalized.useDirents && isGlobDirentLike(match)) {
+  if (plan.useDirents && isGlobDirentLike(match)) {
     return buildEntryFromGlobDirent(absolutePath, match, options);
   }
 
-  return await buildEntry(absolutePath, options);
+  return await buildEntryFromPath(absolutePath, options, plan.suppressErrors);
 }
 
 async function* scanPattern(
   pattern: string | readonly string[],
   options: GlobEntriesOptions,
-  normalized: NormalizedGlob,
+  plan: NormalizedGlob,
   seen: Set<string>
 ): AsyncGenerator<GlobEntry> {
-  const iterable = tryCreateGlobIterable(pattern, normalized);
+  const iterable = createGlobIterable(pattern, plan);
   if (!iterable) return;
 
   try {
     for await (const match of iterable) {
-      const entry = await buildEntryFromMatch(match, options, normalized, seen);
+      const entry = await buildEntryFromMatch(match, options, plan, seen);
       if (entry) yield entry;
     }
   } catch (error) {
-    if (normalized.suppressErrors) return;
+    if (plan.suppressErrors) return;
     throw error;
   }
 }
@@ -328,10 +337,10 @@ async function* scanPattern(
 async function* nativeGlobEntries(
   options: GlobEntriesOptions
 ): AsyncGenerator<GlobEntry> {
-  const normalized = normalizeOptions(options);
+  const plan = normalizeOptions(options);
   const seen = new Set<string>();
 
-  yield* scanPattern(normalized.patterns, options, normalized, seen);
+  yield* scanPattern(plan.patterns, options, plan, seen);
 }
 
 export async function* globEntries(

@@ -20,9 +20,11 @@ import { globEntries } from './glob-engine.js';
 // Internal default for find tool - not exposed to MCP users
 const INTERNAL_MAX_RESULTS = 1000;
 
+type SortBy = 'name' | 'size' | 'modified' | 'path';
+
 export interface SearchFilesOptions {
   maxResults?: number;
-  sortBy?: 'name' | 'size' | 'modified' | 'path';
+  sortBy?: SortBy;
   maxDepth?: number;
   maxFilesScanned?: number;
   timeoutMs?: number;
@@ -39,6 +41,8 @@ type NormalizedOptions = Required<
   maxDepth?: number;
   sortBy: NonNullable<SearchFilesOptions['sortBy']>;
 };
+
+type StopReason = SearchFilesResult['summary']['stoppedReason'];
 
 function normalizeOptions(options: SearchFilesOptions): NormalizedOptions {
   const normalized: NormalizedOptions = {
@@ -73,7 +77,15 @@ interface CollectState {
   results: SearchResult[];
   filesScanned: number;
   truncated: boolean;
-  stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
+  stoppedReason?: StopReason;
+  skippedInaccessible: number;
+}
+
+interface CollectOutcome {
+  results: SearchResult[];
+  filesScanned: number;
+  truncated: boolean;
+  stoppedReason?: StopReason;
   skippedInaccessible: number;
 }
 
@@ -110,10 +122,7 @@ function needsStatsForSort(sortBy: NormalizedOptions['sortBy']): boolean {
   return sortBy === 'size' || sortBy === 'modified';
 }
 
-function markStopped(
-  state: CollectState,
-  reason: SearchFilesResult['summary']['stoppedReason']
-): void {
+function markStopped(state: CollectState, reason: StopReason): void {
   state.truncated = true;
   state.stoppedReason = reason;
 }
@@ -174,25 +183,19 @@ function buildSearchStream(
   return globEntries(options);
 }
 
-function buildCollectResult(state: CollectState): {
-  results: SearchResult[];
-  filesScanned: number;
-  truncated: boolean;
-  stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
-  skippedInaccessible: number;
-} {
-  const baseResult = {
+function buildCollectResult(state: CollectState): CollectOutcome {
+  const outcome: CollectOutcome = {
     results: state.results,
     filesScanned: state.filesScanned,
     truncated: state.truncated,
     skippedInaccessible: state.skippedInaccessible,
   };
-  return {
-    ...baseResult,
-    ...(state.stoppedReason !== undefined
-      ? { stoppedReason: state.stoppedReason }
-      : {}),
-  };
+
+  if (state.stoppedReason !== undefined) {
+    outcome.stoppedReason = state.stoppedReason;
+  }
+
+  return outcome;
 }
 
 function handleEntry(
@@ -261,11 +264,11 @@ async function isEntryAccessible(
     }
   }
 
-  const normalized = normalizePath(entry.path);
-  if (!isPathWithinDirectories(normalized, [root])) {
+  const resolvedPath = normalizePath(entry.path);
+  if (!isPathWithinDirectories(resolvedPath, [root])) {
     return false;
   }
-  return !isSensitivePath(entry.path, normalized);
+  return !isSensitivePath(entry.path, resolvedPath);
 }
 
 async function collectSearchResults(
@@ -274,13 +277,7 @@ async function collectSearchResults(
   excludePatterns: readonly string[],
   normalized: NormalizedOptions,
   signal: AbortSignal
-): Promise<{
-  results: SearchResult[];
-  filesScanned: number;
-  truncated: boolean;
-  stoppedReason?: SearchFilesResult['summary']['stoppedReason'];
-  skippedInaccessible: number;
-}> {
+): Promise<CollectOutcome> {
   const needsStats = needsStatsForSort(normalized.sortBy);
   const stream = buildSearchStream(
     root,
@@ -311,22 +308,19 @@ function buildSearchSummary(
   results: SearchResult[],
   filesScanned: number,
   truncated: boolean,
-  stoppedReason: SearchFilesResult['summary']['stoppedReason'] | undefined,
+  stoppedReason: StopReason | undefined,
   skippedInaccessible: number
 ): SearchFilesResult['summary'] {
-  const baseSummary: SearchFilesResult['summary'] = {
+  const summary: SearchFilesResult['summary'] = {
     matched: results.length,
     truncated,
     skippedInaccessible,
     filesScanned,
-  };
-  return {
-    ...baseSummary,
     ...(stoppedReason !== undefined ? { stoppedReason } : {}),
   };
-}
 
-type SortKey = 'name' | 'size' | 'modified' | 'path';
+  return summary;
+}
 
 interface Sortable {
   name?: string;
@@ -362,7 +356,7 @@ function compareOptionalNumberDesc(
 }
 
 const SORT_COMPARATORS: Readonly<
-  Record<SortKey, (a: Sortable, b: Sortable) => number>
+  Record<SortBy, (a: Sortable, b: Sortable) => number>
 > = {
   size: (a, b) =>
     compareOptionalNumberDesc(a.size, b.size, () => compareNameThenPath(a, b)),
@@ -376,10 +370,7 @@ const SORT_COMPARATORS: Readonly<
   name: (a, b) => compareNameThenPath(a, b),
 };
 
-export function sortSearchResults(
-  results: Sortable[],
-  sortBy: 'name' | 'size' | 'modified' | 'path'
-): void {
+export function sortSearchResults(results: Sortable[], sortBy: SortBy): void {
   if (sortBy === 'name') {
     const decorated = results.map((item, index) => ({
       item,

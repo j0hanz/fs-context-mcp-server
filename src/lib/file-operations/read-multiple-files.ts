@@ -54,6 +54,12 @@ interface FileReadTask {
   stats?: Stats;
 }
 
+function estimateReadSize(stats: Stats, maxSize: number): number {
+  // `readFile`/`readFileWithStats` are always invoked with a `maxSize` cap, so the
+  // combined budget should reflect the maximum number of bytes we might actually read.
+  return Math.min(stats.size, maxSize);
+}
+
 function buildReadOptions(options: NormalizedReadMultipleOptions): {
   encoding: BufferEncoding;
   maxSize: number;
@@ -110,9 +116,7 @@ async function readSingleFile(
   signal?: AbortSignal
 ): Promise<{ index: number; value: ReadMultipleResult }> {
   const { filePath, index, validPath, stats } = task;
-  const readOptions: Parameters<typeof readFile>[1] = {
-    ...buildReadOptions(options),
-  };
+  const readOptions: Parameters<typeof readFile>[1] = buildReadOptions(options);
   if (signal) {
     readOptions.signal = signal;
   }
@@ -125,10 +129,6 @@ async function readSingleFile(
     index,
     value: buildReadMultipleResult(filePath, result),
   };
-}
-
-function isPartialRead(options: NormalizedReadMultipleOptions): boolean {
-  return options.head !== undefined || options.startLine !== undefined;
 }
 
 async function readFilesInParallel(
@@ -170,10 +170,10 @@ function normalizeReadMultipleOptions(
   return normalized;
 }
 
-function resolveNormalizedOptions(
-  _filePaths: readonly string[],
-  options: ReadMultipleOptions
-): { normalized: NormalizedReadMultipleOptions; signal?: AbortSignal } {
+function resolveNormalizedOptions(options: ReadMultipleOptions): {
+  normalized: NormalizedReadMultipleOptions;
+  signal?: AbortSignal;
+} {
   const { signal, ...rest } = options;
   const resolved: {
     normalized: NormalizedReadMultipleOptions;
@@ -202,14 +202,6 @@ async function validateFile(
   return { filePath, index, validPath, stats };
 }
 
-function estimatePartialSize(stats: Stats, maxSize: number): number {
-  return Math.min(stats.size, maxSize);
-}
-
-function estimateFullSize(stats: Stats): number {
-  return stats.size;
-}
-
 function markRemainingSkipped(
   startIndex: number,
   total: number,
@@ -234,7 +226,6 @@ async function tryValidateFile(
 
 async function collectFileBudget(
   filePaths: readonly string[],
-  partialRead: boolean,
   maxTotalSize: number,
   maxSize: number,
   signal?: AbortSignal
@@ -244,9 +235,8 @@ async function collectFileBudget(
 }> {
   const skippedBudget = new Set<number>();
   const validated = new Map<number, ValidatedFileInfo>();
-  const estimateSize = partialRead
-    ? (stats: Stats) => estimatePartialSize(stats, maxSize)
-    : estimateFullSize;
+  const estimateSize = (stats: Stats): number =>
+    estimateReadSize(stats, maxSize);
   let totalSize = 0;
 
   for (let index = 0; index < filePaths.length; index += 1) {
@@ -316,6 +306,27 @@ function applyResults(
   }
 }
 
+function resolveErrorOriginalIndex(
+  failureIndex: number,
+  filesToProcess: { index: number }[],
+  totalInputFiles: number
+): number | undefined {
+  // processInParallel implementations vary: some return error indices relative to
+  // the submitted batch (filesToProcess), others may forward the task/index.
+  const batchIndex = filesToProcess[failureIndex]?.index;
+  if (
+    typeof batchIndex === 'number' &&
+    batchIndex >= 0 &&
+    batchIndex < totalInputFiles
+  ) {
+    return batchIndex;
+  }
+  if (failureIndex >= 0 && failureIndex < totalInputFiles) {
+    return failureIndex;
+  }
+  return undefined;
+}
+
 function applyErrors(
   output: ReadMultipleResult[],
   errors: { index: number; error: Error }[],
@@ -323,9 +334,12 @@ function applyErrors(
   filePaths: readonly string[]
 ): void {
   for (const failure of errors) {
-    const target = filesToProcess[failure.index];
-    const originalIndex = target?.index ?? -1;
-    if (originalIndex < 0) continue;
+    const originalIndex = resolveErrorOriginalIndex(
+      failure.index,
+      filesToProcess,
+      filePaths.length
+    );
+    if (originalIndex === undefined) continue;
     const filePath = filePaths[originalIndex] ?? '(unknown)';
     output[originalIndex] = {
       path: filePath,
@@ -382,13 +396,11 @@ export async function readMultipleFiles(
 ): Promise<ReadMultipleResult[]> {
   if (filePaths.length === 0) return [];
 
-  const { normalized, signal } = resolveNormalizedOptions(filePaths, options);
+  const { normalized, signal } = resolveNormalizedOptions(options);
 
   const output = buildOutput(filePaths);
-  const partialRead = isPartialRead(normalized);
   const { skippedBudget, validated } = await collectFileBudget(
     filePaths,
-    partialRead,
     normalized.maxTotalSize,
     normalized.maxSize,
     signal

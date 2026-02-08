@@ -82,11 +82,89 @@ const DEFAULTS: SearchOptions = {
   caseSensitiveFileMatch: true,
 };
 
+const ERROR_SCAN_CANCELLED = 'Scan cancelled';
+const ERROR_WORKER_POOL_CLOSED = 'Worker pool closed';
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function invalidOption(name: string, message: string, value: unknown): never {
+  throw new McpError(
+    ErrorCode.E_INVALID_INPUT,
+    `Invalid option "${name}": ${message}`,
+    undefined,
+    { value }
+  );
+}
+
+function assertNonEmptyStringOption(name: string, value: unknown): void {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    invalidOption(name, 'must be a non-empty string', value);
+  }
+}
+
+function assertStringArrayOption(name: string, value: unknown): void {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== 'string')
+  ) {
+    invalidOption(name, 'must be an array of strings', value);
+  }
+}
+
+function assertBooleanOption(name: string, value: unknown): void {
+  if (typeof value !== 'boolean') {
+    invalidOption(name, 'must be a boolean', value);
+  }
+}
+
+function assertSafeIntOption(name: string, value: unknown): void {
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    invalidOption(name, 'must be a non-negative safe integer', value);
+  }
+}
+
+function validateResolvedOptions(opts: ResolvedOptions): void {
+  assertNonEmptyStringOption('filePattern', opts.filePattern);
+  assertStringArrayOption('excludePatterns', opts.excludePatterns);
+
+  assertBooleanOption('caseSensitive', opts.caseSensitive);
+  assertSafeIntOption('maxResults', opts.maxResults);
+  assertSafeIntOption('maxFileSize', opts.maxFileSize);
+  assertSafeIntOption('maxFilesScanned', opts.maxFilesScanned);
+  assertSafeIntOption('timeoutMs', opts.timeoutMs);
+  assertBooleanOption('skipBinary', opts.skipBinary);
+  assertSafeIntOption('contextLines', opts.contextLines);
+  assertBooleanOption('wholeWord', opts.wholeWord);
+  assertBooleanOption('isLiteral', opts.isLiteral);
+  assertBooleanOption('includeHidden', opts.includeHidden);
+  assertBooleanOption('baseNameMatch', opts.baseNameMatch);
+  assertBooleanOption('caseSensitiveFileMatch', opts.caseSensitiveFileMatch);
+}
+
 function mergeOptions(options: SearchContentOptions): ResolvedOptions {
-  const optionsCopy = { ...options };
-  delete optionsCopy.signal;
-  delete optionsCopy.onProgress;
-  return { ...DEFAULTS, ...optionsCopy };
+  const rest: Record<string, unknown> = { ...options };
+  delete rest.signal;
+  delete rest.onProgress;
+
+  const overrides: Partial<SearchOptions> = {};
+  for (const [key, value] of Object.entries(rest) as [
+    keyof SearchOptions,
+    unknown,
+  ][]) {
+    if (value === undefined) continue;
+    (overrides as Record<string, unknown>)[key as string] = value;
+  }
+
+  const merged: ResolvedOptions = { ...DEFAULTS, ...overrides };
+  validateResolvedOptions(merged);
+  return merged;
 }
 
 export interface MatcherOptions {
@@ -109,7 +187,12 @@ interface ScanFileResult {
   readonly skippedTooLarge: boolean;
   readonly skippedBinary: boolean;
 }
+
 function validatePattern(pattern: string, options: MatcherOptions): void {
+  // Empty literal patterns are treated as "match nothing" elsewhere; avoid
+  // compiling special-case whole-word regex patterns like `\b\b`.
+  if (options.isLiteral && pattern.length === 0) return;
+
   if (options.isLiteral && !options.wholeWord) {
     return;
   }
@@ -173,11 +256,17 @@ export function buildMatcher(
   pattern: string,
   options: MatcherOptions
 ): Matcher {
-  if (options.isLiteral && !options.wholeWord && !options.caseSensitive) {
-    if (pattern.length === 0) {
-      return (): number => 0;
-    }
+  if (typeof pattern !== 'string') {
+    throw new TypeError('pattern must be a string');
+  }
 
+  // Empty literal patterns should never match anything, even in whole-word mode
+  // (which would otherwise compile to `\b\b` and match excessively).
+  if (options.isLiteral && pattern.length === 0) {
+    return (): number => 0;
+  }
+
+  if (options.isLiteral && !options.wholeWord && !options.caseSensitive) {
     return buildRegexMatcher(escapeLiteral(pattern), false);
   }
 
@@ -189,6 +278,7 @@ export function buildMatcher(
   assertSafePattern(final, pattern);
   return buildRegexMatcher(final, options.caseSensitive);
 }
+
 interface PendingAfter {
   buffer: string[];
   left: number;
@@ -274,97 +364,71 @@ function pushContext(ctx: ContextState, line: string, max: number): void {
 }
 
 function trimContent(line: string): string {
-  return line.trimEnd().slice(0, MAX_LINE_CONTENT_LENGTH);
-}
-
-type BinaryDetector = (
-  path: string,
-  handle: fsp.FileHandle,
-  signal?: AbortSignal
-) => Promise<boolean>;
-
-interface ScanLoopOptions {
-  matcher: Matcher;
-  options: ScanFileOptions;
-  maxMatches: number;
-  isCancelled: () => boolean;
-  isProbablyBinary: BinaryDetector;
-  signal?: AbortSignal;
-}
-
-function updateContext(
-  line: string,
-  contextLines: number,
-  ctx: ContextState
-): string | undefined {
-  if (contextLines <= 0) return undefined;
-  const trimmedLine = trimContent(line);
-  pushContext(ctx, trimmedLine, contextLines);
-  return trimmedLine;
+  return line.length > MAX_LINE_CONTENT_LENGTH
+    ? line.slice(0, MAX_LINE_CONTENT_LENGTH)
+    : line;
 }
 
 function appendMatch(
-  matches: ContentMatch[],
   requestedPath: string,
-  line: string,
-  trimmedLine: string | undefined,
-  lineNo: number,
-  count: number,
-  contextLines: number,
-  ctx: ContextState,
-  contextBeforeOverride?: readonly string[]
+  lineNumber: number,
+  content: string,
+  matchCount: number,
+  contextBefore: string[],
+  pendingAfter: PendingAfter | null,
+  matches: ContentMatch[]
 ): void {
-  const contextBefore =
-    contextLines > 0
-      ? (contextBeforeOverride ?? snapshotContextBefore(ctx))
-      : undefined;
-  const contextAfterBuffer = contextLines > 0 ? [] : undefined;
   const match: ContentMatch = {
     file: requestedPath,
-    line: lineNo,
-    content: trimmedLine ?? trimContent(line),
-    matchCount: count,
-    ...(contextBefore ? { contextBefore } : {}),
-    ...(contextAfterBuffer ? { contextAfter: contextAfterBuffer } : {}),
+    line: lineNumber,
+    content,
+    matchCount,
+    ...(pendingAfter ? { contextBefore } : {}),
+    ...(pendingAfter ? { contextAfter: pendingAfter.buffer } : {}),
   };
+
   matches.push(match);
-  if (contextAfterBuffer) {
-    ctx.pendingAfter.push({
-      buffer: contextAfterBuffer,
-      left: contextLines,
-    });
-  }
+}
+
+function scheduleContextAfter(
+  ctx: ContextState,
+  contextLines: number
+): PendingAfter | null {
+  if (contextLines <= 0) return null;
+  const pending: PendingAfter = { buffer: [], left: contextLines };
+  ctx.pendingAfter.push(pending);
+  return pending;
 }
 
 function recordLineMatch(
-  line: string,
-  matcher: Matcher,
-  options: ScanFileOptions,
   requestedPath: string,
-  lineNo: number,
-  matches: ContentMatch[],
-  ctx: ContextState
+  lineNumber: number,
+  rawLine: string,
+  matchCount: number,
+  ctx: ContextState,
+  contextLines: number,
+  matches: ContentMatch[]
 ): void {
-  const count = matcher(line);
-  const contextBefore =
-    count > 0 && options.contextLines > 0
-      ? snapshotContextBefore(ctx)
-      : undefined;
-  const trimmedLine = updateContext(line, options.contextLines, ctx);
+  const content = trimContent(rawLine);
+  const contextBefore = snapshotContextBefore(ctx);
+  const pendingAfter = scheduleContextAfter(ctx, contextLines);
+  appendMatch(
+    requestedPath,
+    lineNumber,
+    content,
+    matchCount,
+    contextBefore,
+    pendingAfter,
+    matches
+  );
+}
 
-  if (count > 0) {
-    appendMatch(
-      matches,
-      requestedPath,
-      line,
-      trimmedLine,
-      lineNo,
-      count,
-      options.contextLines,
-      ctx,
-      contextBefore
-    );
-  }
+function updateContext(
+  ctx: ContextState,
+  rawLine: string,
+  contextLines: number
+): void {
+  pushContext(ctx, trimContent(rawLine), contextLines);
 }
 
 async function readLoop(
@@ -377,20 +441,27 @@ async function readLoop(
   matches: ContentMatch[],
   ctx: ContextState
 ): Promise<void> {
-  let lineNo = 0;
-  for await (const line of lines) {
-    if (isCancelled()) break;
-    lineNo++;
-    recordLineMatch(
-      line,
-      matcher,
-      options,
-      requestedPath,
-      lineNo,
-      matches,
-      ctx
-    );
+  let lineNumber = 0;
+
+  for await (const rawLine of lines) {
     if (matches.length >= maxMatches) break;
+    if (isCancelled()) break;
+
+    const matchCount = matcher(rawLine);
+    if (matchCount > 0) {
+      recordLineMatch(
+        requestedPath,
+        lineNumber,
+        rawLine,
+        matchCount,
+        ctx,
+        options.contextLines,
+        matches
+      );
+    }
+
+    updateContext(ctx, rawLine, options.contextLines);
+    lineNumber += 1;
   }
 }
 
@@ -406,7 +477,7 @@ function buildSkipResult(
   };
 }
 
-function buildMatchResult(matches: ContentMatch[]): ScanFileResult {
+function buildMatchResult(matches: readonly ContentMatch[]): ScanFileResult {
   return {
     matches,
     matched: matches.length > 0,
@@ -415,15 +486,32 @@ function buildMatchResult(matches: ContentMatch[]): ScanFileResult {
   };
 }
 
-async function shouldSkipBinary(
-  scanOptions: ScanFileOptions,
+type BinaryDetector = (
   resolvedPath: string,
   handle: fsp.FileHandle,
-  options: ScanLoopOptions
+  signal?: AbortSignal
+) => Promise<boolean>;
+
+interface ScanLoopOptions {
+  matcher: Matcher;
+  options: ScanFileOptions;
+  maxMatches: number;
+  isCancelled: () => boolean;
+  isProbablyBinary: BinaryDetector;
+  signal?: AbortSignal;
+}
+
+async function shouldSkipBinary(
+  options: ScanFileOptions,
+  resolvedPath: string,
+  handle: fsp.FileHandle,
+  scanOptions: Pick<ScanLoopOptions, 'signal' | 'isProbablyBinary'>
 ): Promise<boolean> {
-  return (
-    scanOptions.skipBinary &&
-    (await options.isProbablyBinary(resolvedPath, handle, options.signal))
+  if (!options.skipBinary) return false;
+  return await scanOptions.isProbablyBinary(
+    resolvedPath,
+    handle,
+    scanOptions.signal
   );
 }
 
@@ -535,6 +623,29 @@ export async function scanFileInWorker(
   readonly skippedTooLarge: boolean;
   readonly skippedBinary: boolean;
 }> {
+  if (typeof resolvedPath !== 'string' || resolvedPath.length === 0) {
+    throw new TypeError('resolvedPath must be a non-empty string');
+  }
+  if (typeof requestedPath !== 'string' || requestedPath.length === 0) {
+    throw new TypeError('requestedPath must be a non-empty string');
+  }
+  if (typeof matcher !== 'function') {
+    throw new TypeError('matcher must be a function');
+  }
+  if (
+    typeof maxMatches !== 'number' ||
+    !Number.isFinite(maxMatches) ||
+    maxMatches < 0
+  ) {
+    throw new TypeError('maxMatches must be a non-negative finite number');
+  }
+  if (typeof isCancelled !== 'function') {
+    throw new TypeError('isCancelled must be a function');
+  }
+  if (typeof isBinaryDetector !== 'function') {
+    throw new TypeError('isBinaryDetector must be a function');
+  }
+
   const result = await scanFileWithMatcher(resolvedPath, requestedPath, {
     matcher,
     options,
@@ -549,6 +660,7 @@ export async function scanFileInWorker(
     skippedBinary: result.skippedBinary,
   };
 }
+
 interface ResolvedFile {
   resolvedPath: string;
   requestedPath: string;
@@ -870,6 +982,7 @@ async function scanFilesSequential(
     summary
   );
 }
+
 export interface ScanRequest {
   type: 'scan';
   id: number;
@@ -1193,7 +1306,7 @@ class SearchWorkerPool {
         worker.postMessage(scanRequest);
       } catch (error: unknown) {
         slot.pending.delete(scanRequest.id);
-        safeReject(error instanceof Error ? error : new Error(String(error)));
+        safeReject(toError(error));
       }
     });
   }
@@ -1212,7 +1325,7 @@ class SearchWorkerPool {
       } catch {
         // Ignore: cancellation should still reject the local pending promise.
       }
-      pending.reject(new Error('Scan cancelled'));
+      pending.reject(new Error(ERROR_SCAN_CANCELLED));
     };
   }
 
@@ -1247,7 +1360,7 @@ class SearchWorkerPool {
       (error: unknown) => {
         resolveOutcome({
           task,
-          error: error instanceof Error ? error : new Error(String(error)),
+          error: toError(error),
         });
       }
     );
@@ -1262,7 +1375,7 @@ class SearchWorkerPool {
     this.log('Closing worker pool');
 
     for (const slot of this.slots) {
-      rejectPendingTasks(slot, new Error('Worker pool closed'));
+      rejectPendingTasks(slot, new Error(ERROR_WORKER_POOL_CLOSED));
     }
 
     const terminatePromises: Promise<number>[] = [];
@@ -1309,6 +1422,7 @@ function getSearchWorkerPool(size: number, debug = false): SearchWorkerPool {
 
   return poolInstance;
 }
+
 interface WorkerOutcome {
   task: ScanTask;
   result?: WorkerScanResult;
@@ -1422,7 +1536,7 @@ function handleWorkerOutcome(
 ): void {
   state.inFlight.delete(outcome.task);
   if (outcome.error) {
-    if (outcome.error.message !== 'Scan cancelled') {
+    if (outcome.error.message !== ERROR_SCAN_CANCELLED) {
       state.summary.skippedInaccessible++;
     }
     return;
@@ -1723,6 +1837,21 @@ export async function searchContent(
   pattern: string,
   options: SearchContentOptions = {}
 ): Promise<SearchContentResult> {
+  if (typeof basePath !== 'string' || basePath.trim().length === 0) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'basePath must be a non-empty string',
+      basePath
+    );
+  }
+  if (typeof pattern !== 'string') {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'pattern must be a string',
+      pattern
+    );
+  }
+
   const opts = mergeOptions(options);
   const { signal, cleanup } = createTimedAbortSignal(
     options.signal,

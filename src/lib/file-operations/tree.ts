@@ -48,13 +48,30 @@ export interface TreeResult {
   totalEntries: number;
 }
 
+function toSafeNonNegativeInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  const asInt = Math.floor(value);
+  return asInt >= 0 ? asInt : fallback;
+}
+
+function toSafePositiveInt(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  const asInt = Math.floor(value);
+  return asInt > 0 ? asInt : fallback;
+}
+
+function toSafeBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value !== 'boolean') return fallback;
+  return value;
+}
+
 function normalizeOptions(options: TreeOptions): NormalizedOptions {
   return {
-    maxDepth: options.maxDepth ?? 5,
-    maxEntries: options.maxEntries ?? 1000,
-    includeHidden: options.includeHidden ?? false,
-    includeIgnored: options.includeIgnored ?? false,
-    timeoutMs: options.timeoutMs ?? DEFAULT_SEARCH_TIMEOUT_MS,
+    maxDepth: toSafeNonNegativeInt(options.maxDepth, 5),
+    maxEntries: toSafeNonNegativeInt(options.maxEntries, 1000),
+    includeHidden: toSafeBoolean(options.includeHidden, false),
+    includeIgnored: toSafeBoolean(options.includeIgnored, false),
+    timeoutMs: toSafePositiveInt(options.timeoutMs, DEFAULT_SEARCH_TIMEOUT_MS),
   };
 }
 
@@ -145,6 +162,7 @@ async function resolveTreeEntry(
     };
   },
   root: string,
+  rootNormalized: string,
   gitignoreMatcher: Awaited<ReturnType<typeof loadRootGitignore>>,
   signal: AbortSignal
 ): Promise<{
@@ -155,7 +173,7 @@ async function resolveTreeEntry(
   const type = resolveEntryType(entry.dirent);
   if (type !== 'symlink') {
     const normalized = normalizePath(entry.path);
-    if (!isPathWithinDirectories(normalized, [root])) {
+    if (!isPathWithinDirectories(normalized, [rootNormalized])) {
       return null;
     }
     if (isSensitivePath(entry.path, normalized)) {
@@ -185,6 +203,66 @@ async function resolveTreeEntry(
   const relativePosix = relative.replace(/\\/gu, '/');
   const name = path.basename(entry.path);
   return { type, relativePosix, name };
+}
+
+function upsertChildNode(
+  parent: TreeEntry,
+  nodeByPath: Map<string, TreeEntry>,
+  resolved: { type: TreeEntryType; relativePosix: string; name: string }
+): void {
+  const ensureDirectoryShape = (node: TreeEntry): void => {
+    if (node.type === 'directory') {
+      node.children ??= [];
+    } else {
+      delete node.children;
+    }
+  };
+
+  const maybeUpdateType = (
+    existing: TreeEntry,
+    nextType: TreeEntryType
+  ): void => {
+    if (existing.type === nextType) return;
+
+    const preservePopulatedDirectory =
+      existing.type === 'directory' &&
+      Array.isArray(existing.children) &&
+      existing.children.length > 0;
+    if (preservePopulatedDirectory) return;
+
+    existing.type = nextType;
+    ensureDirectoryShape(existing);
+  };
+
+  const attachChild = (child: TreeEntry): void => {
+    parent.children ??= [];
+    if (!parent.children.includes(child)) {
+      parent.children.push(child);
+    }
+  };
+
+  const existing = nodeByPath.get(resolved.relativePosix);
+  if (existing) {
+    // Avoid duplicate directory nodes when a child file is encountered before the directory entry.
+    // Prefer preserving an existing populated directory node over overwriting it.
+    maybeUpdateType(existing, resolved.type);
+    existing.name = resolved.name;
+    existing.relativePath = resolved.relativePosix;
+
+    ensureDirectoryShape(existing);
+    attachChild(existing);
+    return;
+  }
+
+  const node: TreeEntry = {
+    name: resolved.name,
+    type: resolved.type,
+    relativePath: resolved.relativePosix,
+    ...(resolved.type === 'directory' ? { children: [] as TreeEntry[] } : {}),
+  };
+
+  nodeByPath.set(resolved.relativePosix, node);
+  attachChild(node);
 }
 
 export function formatTreeAscii(tree: TreeEntry): string {
@@ -233,6 +311,7 @@ export async function treeDirectory(
   );
 
   const root = await validateExistingDirectory(dirPath, signal);
+  const rootNormalized = normalizePath(root);
 
   try {
     const excludePatterns = normalized.includeIgnored
@@ -282,6 +361,7 @@ export async function treeDirectory(
       const resolved = await resolveTreeEntry(
         entry,
         root,
+        rootNormalized,
         gitignoreMatcher,
         signal
       );
@@ -295,18 +375,7 @@ export async function treeDirectory(
         resolved.relativePosix
       );
 
-      const node: TreeEntry = {
-        name: resolved.name,
-        type: resolved.type,
-        relativePath: resolved.relativePosix,
-        ...(resolved.type === 'directory'
-          ? { children: [] as TreeEntry[] }
-          : {}),
-      };
-
-      nodeByPath.set(resolved.relativePosix, node);
-      parent.children ??= [];
-      parent.children.push(node);
+      upsertChildNode(parent, nodeByPath, resolved);
       totalEntries += 1;
     }
 

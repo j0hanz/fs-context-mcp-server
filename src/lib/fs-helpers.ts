@@ -29,6 +29,31 @@ export function assertNotAborted(signal?: AbortSignal, message?: string): void {
   throw createAbortError(message);
 }
 
+function assertPositiveSafeIntegerOption(
+  name: string,
+  value: unknown,
+  message?: string
+): void {
+  if (value === undefined) return;
+
+  if (
+    typeof value !== 'number' ||
+    !Number.isFinite(value) ||
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      message ?? `${name} must be a positive integer`
+    );
+  }
+}
+
+function normalizeConcurrency(concurrency: number): number {
+  assertPositiveSafeIntegerOption('concurrency', concurrency);
+  return concurrency;
+}
+
 function getAbortError(signal: AbortSignal, message?: string): Error {
   const { reason } = signal as { reason?: unknown };
   if (reason instanceof Error) return reason;
@@ -252,13 +277,20 @@ async function drainTasks<T, R>(
   abortPromise?: Promise<void>
 ): Promise<void> {
   startNextTasks(state);
+
   while (state.inFlight.size > 0) {
-    if (state.aborted) return;
     const raceTargets = abortPromise
       ? [...state.inFlight, abortPromise]
       : [...state.inFlight];
+
     await Promise.race(raceTargets);
+
+    if (state.aborted) break;
     startNextTasks(state);
+  }
+
+  if (state.inFlight.size > 0) {
+    await Promise.allSettled([...state.inFlight]);
   }
 }
 
@@ -268,14 +300,16 @@ export async function processInParallel<T, R>(
   concurrency: number = PARALLEL_CONCURRENCY,
   signal?: AbortSignal
 ): Promise<ParallelResult<R>> {
-  const state = createState(items, processor, concurrency, signal);
   const { abortPromise, cleanup: cleanupAbortPromise } =
     createAbortPromise(signal);
 
   if (items.length === 0) {
     cleanupAbortPromise();
-    return { results: state.results, errors: state.errors };
+    return { results: [], errors: [] };
   }
+
+  const effectiveConcurrency = normalizeConcurrency(concurrency);
+  const state = createState(items, processor, effectiveConcurrency, signal);
 
   const detachAbort = attachAbortListener(state, signal);
 
@@ -436,6 +470,27 @@ function validateReadOptions(options: ReadFileOptions): void {
   const hasStart = options.startLine !== undefined;
   const hasEnd = options.endLine !== undefined;
 
+  assertPositiveSafeIntegerOption(
+    'maxSize',
+    options.maxSize,
+    'maxSize must be at least 1'
+  );
+  assertPositiveSafeIntegerOption(
+    'head',
+    options.head,
+    'head must be at least 1'
+  );
+  assertPositiveSafeIntegerOption(
+    'startLine',
+    options.startLine,
+    'startLine must be at least 1'
+  );
+  assertPositiveSafeIntegerOption(
+    'endLine',
+    options.endLine,
+    'endLine must be at least 1'
+  );
+
   if (hasHead && (hasStart || hasEnd)) {
     throw new McpError(
       ErrorCode.E_INVALID_INPUT,
@@ -481,6 +536,12 @@ function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
     ),
     skipBinary: options.skipBinary ?? false,
   };
+
+  assertPositiveSafeIntegerOption(
+    'maxSize',
+    normalized.maxSize,
+    'maxSize must be at least 1'
+  );
   if (options.head !== undefined) {
     normalized.head = options.head;
   }
@@ -554,6 +615,7 @@ class BufferCollector extends Writable {
     callback: (error?: Error | null) => void
   ): void {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+
     this.#totalSize += buffer.length;
 
     if (this.#totalSize > this.#maxSize) {

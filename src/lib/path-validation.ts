@@ -74,8 +74,10 @@ function stripTrailingSeparator(normalized: string): string {
 }
 
 function normalizeAllowedDirectory(dir: string): string {
-  const normalized = normalizePath(dir.trim());
-  if (normalized.length === 0) return '';
+  const trimmed = dir.trim();
+  if (trimmed.length === 0) return '';
+
+  const normalized = normalizePath(trimmed);
 
   const { root } = path.parse(normalized);
   const isRootPath = isSamePath(root, normalized);
@@ -503,8 +505,14 @@ export async function validateExistingDirectory(
     signal
   );
 
-  assertNotAborted(signal);
-  const stats = await withAbort(fs.stat(details.resolvedPath), signal);
+  let stats: Awaited<ReturnType<typeof fs.stat>>;
+  try {
+    assertNotAborted(signal);
+    stats = await withAbort(fs.stat(details.resolvedPath), signal);
+  } catch (error) {
+    rethrowIfAborted(error);
+    throw toMcpError(requestedPath, error);
+  }
 
   if (!stats.isDirectory()) {
     throw new McpError(
