@@ -1071,6 +1071,10 @@ function attachWorkerHandlers(
     handleWorkerError(slot, error, log);
   });
 
+  worker.on('messageerror', (error: Error) => {
+    handleWorkerError(slot, error, log);
+  });
+
   worker.on('exit', (code: number) => {
     handleWorkerExit(slot, code, getClosed(), maxRespawns, log);
   });
@@ -1108,7 +1112,6 @@ class SearchWorkerPool {
     const workerOptions = {
       workerData: {
         debug: this.debug,
-        threadId: slot.index,
       },
       type: 'module',
       execArgv: isSourceContext ? ['--import', 'tsx/esm'] : undefined,

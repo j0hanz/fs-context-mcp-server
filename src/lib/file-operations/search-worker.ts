@@ -1,4 +1,4 @@
-import { parentPort, workerData } from 'node:worker_threads';
+import { parentPort, threadId, workerData } from 'node:worker_threads';
 
 import { isProbablyBinary } from '../fs-helpers.js';
 import { startPerfMeasure } from '../observability.js';
@@ -151,11 +151,9 @@ function handleMessage(message: WorkerRequest): void {
 if (parentPort) {
   parentPort.on('message', handleMessage);
 
-  const data = workerData as { debug?: boolean; threadId?: number } | null;
+  const data = workerData as { debug?: boolean } | null;
   if (data?.debug) {
-    console.error(
-      `[SearchWorker] Started with threadId=${String(data.threadId)}`
-    );
+    console.error(`[SearchWorker] Started with threadId=${String(threadId)}`);
   }
 }
 
