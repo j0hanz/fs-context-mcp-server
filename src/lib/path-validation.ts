@@ -562,9 +562,8 @@ export async function validatePathForWrite(
     details: { normalizedPath: normalizedRequested },
   });
 
-  /* eslint-disable @typescript-eslint/no-unnecessary-condition */
   let current = normalizedRequested;
-  while (true) {
+  for (;;) {
     try {
       assertNotAborted(signal);
       const realPath = await withAbort(fs.realpath(current), signal);
@@ -589,7 +588,6 @@ export async function validatePathForWrite(
       throw toMcpError(requestedPath, error);
     }
   }
-  /* eslint-enable @typescript-eslint/no-unnecessary-condition */
 }
 
 function isFileRoot(root: Root): boolean {
