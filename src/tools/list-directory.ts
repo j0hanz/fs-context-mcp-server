@@ -160,7 +160,7 @@ export function registerListDirectoryTool(
     },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `ls \`${args.path ?? '.'}\``,
+      progressMessage: (args) => `ls | ${args.path ?? '.'}`,
     })
   );
 }

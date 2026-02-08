@@ -187,7 +187,7 @@ export function registerReadMultipleFilesTool(
     },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `read_many \`${args.paths.length}\` files`,
+      progressMessage: (args) => `read_many | ${args.paths.length} files`,
     })
   );
 }

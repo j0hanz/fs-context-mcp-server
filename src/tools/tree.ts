@@ -113,7 +113,7 @@ export function registerTreeTool(
     },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `tree \`${args.path ?? '.'}\``,
+      progressMessage: (args) => `tree | ${args.path ?? '.'}`,
     })
   );
 }
