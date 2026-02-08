@@ -240,7 +240,15 @@ export const SearchContentInputSchema = z.strictObject({
     .min(1, 'Pattern is required')
     .max(1000, 'Pattern exceeds 1000 characters')
     .describe(
-      'Text to search for (regex). Examples: "console\\.log", "class User"'
+      'Text to search for. By default this is treated as a literal substring match. ' +
+        'Set isRegex=true to treat pattern as a regular expression.'
+    ),
+  isRegex: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Treat pattern as a regular expression (default: false = literal substring).'
     ),
   includeHidden: z
     .boolean()

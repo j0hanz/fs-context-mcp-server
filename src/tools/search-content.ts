@@ -146,6 +146,7 @@ async function handleSearchContent(
   const basePath = resolvePathOrRoot(args.path);
   const options: SearchContentOptions = {
     includeHidden: args.includeHidden,
+    isLiteral: !args.isRegex,
   };
   if (signal) {
     options.signal = signal;

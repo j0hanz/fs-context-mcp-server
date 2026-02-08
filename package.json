@@ -7,9 +7,12 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
-  "sideEffects": false,
   "bin": {
     "fs-context-mcp": "dist/index.js"
   },
@@ -36,7 +39,7 @@
     "test:coverage": "node scripts/tasks.mjs test --coverage",
     "knip": "knip",
     "knip:fix": "knip --fix",
-    "inspector": "npx @modelcontextprotocol/inspector",
+    "inspector": "npm run build && npx -y @modelcontextprotocol/inspector node dist/index.js ${workspaceFolder}",
     "prepublishOnly": "npm run lint && npm run type-check && npm run build"
   },
   "keywords": [
