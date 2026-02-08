@@ -6,7 +6,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
-import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
+import {
+  atomicWriteFile,
+  createTimedAbortSignal,
+  withAbort,
+} from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import { WriteFileInputSchema, WriteFileOutputSchema } from '../schemas.js';
@@ -42,7 +46,7 @@ async function handleWriteFile(
     signal
   );
 
-  await fs.writeFile(validPath, args.content, { encoding: 'utf-8', signal });
+  await atomicWriteFile(validPath, args.content, { encoding: 'utf-8', signal });
 
   const stats = await withAbort(fs.stat(validPath), signal);
 

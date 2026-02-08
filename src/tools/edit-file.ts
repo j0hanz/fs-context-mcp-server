@@ -5,7 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode, McpError } from '../lib/errors.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import { atomicWriteFile, createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import { EditFileInputSchema, EditFileOutputSchema } from '../schemas.js';
@@ -66,7 +66,7 @@ async function handleEditFile(
     });
   }
 
-  await fs.writeFile(validPath, newContent, { encoding: 'utf-8', signal });
+  await atomicWriteFile(validPath, newContent, { encoding: 'utf-8', signal });
 
   return buildToolResponse(
     `Successfully applied ${args.edits.length} edits to ${args.path}`,

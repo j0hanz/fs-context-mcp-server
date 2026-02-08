@@ -1,5 +1,6 @@
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import { Writable } from 'node:stream';
@@ -1050,6 +1051,28 @@ export async function readFile(
     stats,
     normalized
   );
+}
+
+export async function atomicWriteFile(
+  filePath: string,
+  content: string,
+  options: { encoding?: BufferEncoding; signal?: AbortSignal | undefined } = {}
+): Promise<void> {
+  const { encoding = 'utf-8', signal } = options;
+  const tempPath = `${filePath}.${randomUUID()}.tmp`;
+
+  try {
+    await withAbort(fsp.writeFile(tempPath, content, { encoding }), signal);
+    await withAbort(fsp.rename(tempPath, filePath), signal);
+  } catch (error) {
+    // Attempt cleanup on error, but don't overwrite the original error
+    try {
+      await fsp.unlink(tempPath).catch(() => {});
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
 }
 
 export { headFile };
