@@ -6,6 +6,7 @@ import {
   performance,
   PerformanceObserver,
 } from 'node:perf_hooks';
+import { inspect } from 'node:util';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -43,7 +44,7 @@ function resolveObjectDiagnosticsMessage(error: unknown): string | undefined {
     return error['message'];
   }
   try {
-    return JSON.stringify(error);
+    return inspect(error, { depth: 3, maxArrayLength: 50 });
   } catch {
     return undefined;
   }
