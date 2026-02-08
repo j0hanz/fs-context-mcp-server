@@ -233,6 +233,12 @@ function applyToolContext(context: OpsTraceContext): OpsTraceContext {
   return merged;
 }
 
+export function getToolContextSnapshot():
+  | { tool: string; path?: string }
+  | undefined {
+  return toolContext.getStore();
+}
+
 function normalizeContext(ctx: OpsTraceContext): OpsTraceContext {
   if (!ctx.path) return ctx;
   const normalized = normalizePath(ctx.path);

@@ -2,7 +2,11 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { Stats } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseArgs as parseNodeArgs } from 'node:util';
+import {
+  getSystemErrorMessage,
+  getSystemErrorName,
+  parseArgs as parseNodeArgs,
+} from 'node:util';
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -19,6 +23,7 @@ import type {
 import { z } from 'zod';
 
 import packageJsonRaw from '../package.json' with { type: 'json' };
+import { formatUnknownErrorMessage } from './lib/errors.js';
 import {
   assertNotAborted,
   createTimedAbortSignal,
@@ -89,6 +94,37 @@ function isCliError(error: unknown): error is Error {
 
 function normalizeDirectoryError(error: unknown, inputPath: string): Error {
   if (isCliError(error)) return error;
+
+  const code =
+    error instanceof Error &&
+    'code' in error &&
+    typeof (error as { code?: unknown }).code === 'string'
+      ? String((error as { code?: unknown }).code)
+      : undefined;
+
+  const errno =
+    error instanceof Error &&
+    'errno' in error &&
+    typeof (error as { errno?: unknown }).errno === 'number'
+      ? (error as { errno?: unknown }).errno
+      : undefined;
+
+  if (typeof errno === 'number') {
+    try {
+      const name = getSystemErrorName(errno);
+      const message = getSystemErrorMessage(errno);
+      return new Error(
+        `Error: Cannot access directory ${inputPath} (${name}: ${message})`
+      );
+    } catch {
+      // Fall through to best-effort formatting.
+    }
+  }
+
+  if (code) {
+    return new Error(`Error: Cannot access directory ${inputPath} (${code})`);
+  }
+
   return new Error(`Error: Cannot access directory ${inputPath}`);
 }
 
@@ -161,7 +197,7 @@ function logToMcp(
     console.error(
       `Failed to send MCP log: ${level} │ ${data}`,
       data,
-      error instanceof Error ? error.message : String(error)
+      formatUnknownErrorMessage(error)
     );
   });
 }
@@ -269,7 +305,7 @@ class RootsManager {
       logToMcp(
         server,
         'debug',
-        `[DEBUG] MCP Roots protocol unavailable or failed: ${error instanceof Error ? error.message : String(error)}`
+        `[DEBUG] MCP Roots protocol unavailable or failed: ${formatUnknownErrorMessage(error)}`
       );
     } finally {
       await this.recomputeAllowedDirectories();
@@ -388,7 +424,7 @@ try {
 } catch (error) {
   console.error(
     '[WARNING] Failed to load instructions.md:',
-    error instanceof Error ? error.message : String(error)
+    formatUnknownErrorMessage(error)
   );
 }
 

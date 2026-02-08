@@ -17,7 +17,7 @@ import {
   MAX_SEARCHABLE_FILE_SIZE,
   SEARCH_WORKERS,
 } from '../constants.js';
-import { ErrorCode, McpError } from '../errors.js';
+import { ErrorCode, formatUnknownErrorMessage, McpError } from '../errors.js';
 import {
   assertNotAborted,
   createTimedAbortSignal,
@@ -763,7 +763,10 @@ async function waitForWinner(pending: Set<ScanTask>): Promise<{
         (err: unknown): RaceResult => ({
           task: t,
           result: undefined,
-          error: err instanceof Error ? err : new Error(String(err)),
+          error:
+            err instanceof Error
+              ? err
+              : new Error(formatUnknownErrorMessage(err)),
         })
       )
     )

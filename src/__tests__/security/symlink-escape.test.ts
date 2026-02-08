@@ -44,7 +44,7 @@ await it('find skips symlink escapes outside allowed roots', async () => {
 
   const linkPath = path.join(root, 'link');
   try {
-    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+    const linkType = os.platform() === 'win32' ? 'junction' : 'dir';
     await fs.symlink(outside, linkPath, linkType);
   } catch {
     // Symlink creation can be restricted on some platforms; skip coverage.

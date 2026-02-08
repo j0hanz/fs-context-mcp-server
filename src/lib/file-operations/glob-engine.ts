@@ -4,6 +4,7 @@ import type { Stats } from 'node:fs';
 import { glob as fsGlob } from 'node:fs/promises';
 
 import {
+  getToolContextSnapshot,
   publishOpsTraceEnd,
   publishOpsTraceError,
   publishOpsTraceStart,
@@ -450,8 +451,15 @@ export async function* globEntries(
   const engine = 'node:fs/promises.glob';
 
   const endMeasure = startPerfMeasure('globEntries', { engine });
+  const toolContext = getToolContextSnapshot();
   const traceContext = shouldPublishOpsTrace()
-    ? { op: 'globEntries', engine }
+    ? {
+        op: 'globEntries',
+        engine,
+        ...(toolContext
+          ? { tool: toolContext.tool, path: toolContext.path }
+          : {}),
+      }
     : undefined;
 
   if (traceContext) publishOpsTraceStart(traceContext);

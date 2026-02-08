@@ -13,14 +13,12 @@ import {
   MAX_TEXT_FILE_SIZE,
   PARALLEL_CONCURRENCY,
 } from './constants.js';
-import { ErrorCode, McpError } from './errors.js';
+import { ErrorCode, formatUnknownErrorMessage, McpError } from './errors.js';
 import { assertAllowedFileAccess } from './path-policy.js';
 import { validateExistingPath } from './path-validation.js';
 
 function createAbortError(message = 'Operation aborted'): Error {
-  const error = new Error(message);
-  error.name = 'AbortError';
-  return error;
+  return new DOMException(message, 'AbortError');
 }
 
 export function assertNotAborted(signal?: AbortSignal, message?: string): void {
@@ -82,7 +80,11 @@ export function withAbort<T>(
       })
       .catch((error: unknown) => {
         signal.removeEventListener('abort', onAbort);
-        reject(error instanceof Error ? error : new Error(String(error)));
+        reject(
+          error instanceof Error
+            ? error
+            : new Error(formatUnknownErrorMessage(error))
+        );
       });
   });
 }
@@ -222,7 +224,9 @@ function createTask<T, R>(
       state.results.push(result);
     } catch (reason) {
       const error =
-        reason instanceof Error ? reason : new Error(String(reason));
+        reason instanceof Error
+          ? reason
+          : new Error(formatUnknownErrorMessage(reason));
       state.errors.push({ index, error });
     }
   })();

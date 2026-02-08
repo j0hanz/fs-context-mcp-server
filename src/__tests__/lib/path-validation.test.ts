@@ -167,7 +167,7 @@ function registerInvalidInputTests(getFixture: () => TestFixture): void {
   });
 
   void it('detects Windows drive-relative paths', () => {
-    if (process.platform === 'win32') {
+    if (os.platform() === 'win32') {
       assert.strictEqual(isWindowsDriveRelativePath('C:temp'), true);
       assert.strictEqual(isWindowsDriveRelativePath('C:'), true);
       assert.strictEqual(isWindowsDriveRelativePath('C:/temp'), false);

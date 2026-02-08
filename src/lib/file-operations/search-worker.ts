@@ -1,5 +1,6 @@
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 
+import { formatUnknownErrorMessage } from '../errors.js';
 import { isProbablyBinary } from '../fs-helpers.js';
 import { startPerfMeasure } from '../observability.js';
 import { buildMatcher, scanFileInWorker } from './search-content.js';
@@ -57,6 +58,13 @@ function getCachedMatcher(pattern: string, options: MatcherOptions): Matcher {
 
 const cancelledRequests = new Set<number>();
 const activeRequests = new Set<number>();
+let shuttingDown = false;
+
+function maybeFinishShutdown(): void {
+  if (!shuttingDown) return;
+  if (activeRequests.size > 0) return;
+  parentPort?.close();
+}
 
 function consumeCancelled(id: number): boolean {
   if (!cancelledRequests.has(id)) {
@@ -81,7 +89,7 @@ function buildErrorResponse(id: number, error: unknown): ScanError {
   return {
     type: 'error',
     id,
-    error: error instanceof Error ? error.message : String(error),
+    error: formatUnknownErrorMessage(error),
   };
 }
 
@@ -129,12 +137,14 @@ async function handleScanRequest(request: ScanRequest): Promise<void> {
     activeRequests.delete(id);
     cancelledRequests.delete(id);
     endMeasure?.(ok);
+    maybeFinishShutdown();
   }
 }
 
 function handleMessage(message: WorkerRequest): void {
   switch (message.type) {
     case 'scan':
+      if (shuttingDown) return;
       void handleScanRequest(message);
       break;
     case 'cancel':
@@ -143,7 +153,11 @@ function handleMessage(message: WorkerRequest): void {
       }
       break;
     case 'shutdown':
-      process.exit(0);
+      shuttingDown = true;
+      for (const id of activeRequests) {
+        cancelledRequests.add(id);
+      }
+      maybeFinishShutdown();
       break;
   }
 }
