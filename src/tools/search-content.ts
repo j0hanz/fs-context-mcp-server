@@ -244,7 +244,7 @@ export function registerSearchContentTool(
     },
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressTool: 'grep',
+      progressMessage: (args) => `grep ${args.pattern}`,
     })
   );
 }

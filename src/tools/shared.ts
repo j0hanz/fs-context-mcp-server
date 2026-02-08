@@ -156,6 +156,7 @@ export interface IconInfo {
 export interface ToolRegistrationOptions {
   resourceStore?: ResourceStore;
   isInitialized?: () => boolean;
+  serverIcon?: string;
   iconInfo?: IconInfo;
 }
 
@@ -243,24 +244,8 @@ export function createProgressReporter(
   };
 }
 
-function resolveToolOk(result: unknown): boolean {
-  if (!result || typeof result !== 'object') return true;
-  const typed = result as { isError?: unknown; structuredContent?: unknown };
-  if (typed.isError === true) return false;
-  const structured = typed.structuredContent;
-  if (
-    structured &&
-    typeof structured === 'object' &&
-    'ok' in structured &&
-    typeof (structured as { ok?: unknown }).ok === 'boolean'
-  ) {
-    return Boolean((structured as { ok?: boolean }).ok);
-  }
-  return true;
-}
-
 async function withProgress<T>(
-  tool: string,
+  message: string,
   extra: ToolExtra,
   run: () => Promise<T>
 ): Promise<T> {
@@ -274,17 +259,15 @@ async function withProgress<T>(
     progressToken: token,
     progress: 0,
     total,
-    message: `${tool} started`,
+    message,
   });
 
   try {
     const result = await run();
-    const ok = resolveToolOk(result);
     await sendProgressNotification(extra, {
       progressToken: token,
       progress: total,
       total,
-      message: ok ? `${tool} completed` : `${tool} failed`,
     });
     return result;
   } catch (error) {
@@ -292,7 +275,6 @@ async function withProgress<T>(
       progressToken: token,
       progress: total,
       total,
-      message: `${tool} failed`,
     });
     throw error;
   }
@@ -300,7 +282,10 @@ async function withProgress<T>(
 
 export function wrapToolHandler<Args, Result>(
   handler: (args: Args, extra: ToolExtra) => Promise<ToolResult<Result>>,
-  options: { guard?: (() => boolean) | undefined; progressTool?: string }
+  options: {
+    guard?: (() => boolean) | undefined;
+    progressMessage?: (args: Args) => string;
+  }
 ): (args: Args, extra?: ToolExtra) => Promise<ToolResult<Result>> {
   return async (args: Args, extra?: ToolExtra) => {
     const resolvedExtra = extra ?? {};
@@ -308,8 +293,9 @@ export function wrapToolHandler<Args, Result>(
       return buildNotInitializedResult();
     }
 
-    if (options.progressTool) {
-      return await withProgress(options.progressTool, resolvedExtra, () =>
+    if (options.progressMessage) {
+      const message = options.progressMessage(args);
+      return await withProgress(message, resolvedExtra, () =>
         handler(args, resolvedExtra)
       );
     }

@@ -148,6 +148,9 @@ export function registerGetFileInfoTool(
           }
         : {}),
     },
-    wrapToolHandler(handler, { guard: options.isInitialized })
+    wrapToolHandler(handler, {
+      guard: options.isInitialized,
+      progressMessage: (args) => `stat ${args.path}`,
+    })
   );
 }

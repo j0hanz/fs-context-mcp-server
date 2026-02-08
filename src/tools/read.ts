@@ -160,6 +160,9 @@ export function registerReadFileTool(
           }
         : {}),
     },
-    wrapToolHandler(handler, { guard: options.isInitialized })
+    wrapToolHandler(handler, {
+      guard: options.isInitialized,
+      progressMessage: (args) => `read ${args.path}`,
+    })
   );
 }

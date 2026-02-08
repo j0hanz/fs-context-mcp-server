@@ -89,6 +89,9 @@ export function registerListAllowedDirectoriesTool(
           }
         : {}),
     },
-    wrapToolHandler(handler, { guard: options.isInitialized })
+    wrapToolHandler(handler, {
+      guard: options.isInitialized,
+      progressMessage: () => 'roots',
+    })
   );
 }
