@@ -15,6 +15,7 @@ The `fs-context-mcp` server provides a secure interface for language models to p
 - **Filesystem Navigation**: List directories (`ls`), visualize structures (`tree`), and list allowed roots (`roots`).
 - **File Operations**: Read (`read`, `read_many`), write (`write`), edit (`edit`), move (`mv`), and delete (`rm`) files.
 - **Advanced Search**: Find files by glob pattern (`find`) or search file contents (`grep`) with regex support.
+- **Diff & Patch**: Hash files (`calculate_hash`), generate unified diffs (`diff_files`), apply patches (`apply_patch`), and bulk replace (`search_and_replace`).
 - **Batch Processing**: Efficiently read or stat multiple files in a single request (`read_many`, `stat_many`).
 - **Security**: Operations are strictly confined to allowed directories specified at startup.
 
@@ -177,6 +178,55 @@ Search for text within file contents.
 | `path`          | string  | No       | (root)  | Base directory for the operation.      |
 | `isRegex`       | boolean | No       | `false` | Treat pattern as a regular expression. |
 | `includeHidden` | boolean | No       | `false` | Include hidden files.                  |
+
+#### `calculate_hash`
+
+Compute a SHA-256 hash for a file.
+
+| Parameter | Type   | Required | Default | Description            |
+| :-------- | :----- | :------- | :------ | :--------------------- |
+| `path`    | string | Yes      | -       | Absolute path to file. |
+
+#### `diff_files`
+
+Generate a unified diff between two files.
+
+| Parameter          | Type    | Required | Default | Description                                        |
+| :----------------- | :------ | :------- | :------ | :------------------------------------------------- |
+| `original`         | string  | Yes      | -       | Path to original file.                             |
+| `modified`         | string  | Yes      | -       | Path to modified file.                             |
+| `context`          | number  | No       | -       | Lines of context to include in the diff.           |
+| `ignoreWhitespace` | boolean | No       | `false` | Ignore leading/trailing whitespace in comparisons. |
+| `stripTrailingCr`  | boolean | No       | `false` | Strip trailing carriage returns before diffing.    |
+
+#### `apply_patch`
+
+Apply a unified patch to a file.
+
+| Parameter                | Type    | Required | Default | Description                                    |
+| :----------------------- | :------ | :------- | :------ | :--------------------------------------------- |
+| `path`                   | string  | Yes      | -       | Path to file to patch.                         |
+| `patch`                  | string  | Yes      | -       | Unified diff content.                          |
+| `fuzzy`                  | boolean | No       | `false` | Allow fuzzy patching (compatibility flag).     |
+| `fuzzFactor`             | number  | No       | -       | Maximum fuzzy mismatches per hunk.             |
+| `autoConvertLineEndings` | boolean | No       | `true`  | Auto-convert patch line endings to match file. |
+| `dryRun`                 | boolean | No       | `false` | Check only, no writes.                         |
+
+#### `search_and_replace`
+
+Search and replace text across multiple files.
+
+Response includes `failedFiles` and a sample `failures` list when some files cannot be processed.
+
+| Parameter         | Type    | Required | Default | Description                       |
+| :---------------- | :------ | :------- | :------ | :-------------------------------- |
+| `path`            | string  | No       | (root)  | Base directory for the operation. |
+| `filePattern`     | string  | Yes      | -       | Glob pattern (e.g., `**/*.ts`).   |
+| `excludePatterns` | array   | No       | `[]`    | Glob patterns to exclude.         |
+| `searchPattern`   | string  | Yes      | -       | Text or regex pattern to replace. |
+| `replacement`     | string  | Yes      | -       | Replacement text.                 |
+| `isRegex`         | boolean | No       | `false` | Treat search pattern as regex.    |
+| `dryRun`          | boolean | No       | `false` | Check only, no writes.            |
 
 #### `mkdir`
 

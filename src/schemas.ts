@@ -489,11 +489,30 @@ export const CalculateHashOutputSchema = z.object({
 export const DiffFilesInputSchema = z.strictObject({
   original: RequiredPathSchema.describe('Path to original file'),
   modified: RequiredPathSchema.describe('Path to modified file'),
+  context: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(0, 'Min: 0')
+    .max(10000, 'Max: 10,000')
+    .optional()
+    .describe('Lines of context to include in the diff'),
+  ignoreWhitespace: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Ignore leading/trailing whitespace when comparing lines'),
+  stripTrailingCr: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Strip trailing carriage returns before diffing'),
 });
 
 export const DiffFilesOutputSchema = z.object({
   ok: z.boolean(),
   diff: z.string().optional().describe('Unified diff content'),
+  truncated: z.boolean().optional().describe('Diff content truncated?'),
+  resourceUri: z.string().optional().describe('Full diff content URI'),
   error: ErrorSchema.optional(),
 });
 
@@ -501,6 +520,18 @@ export const ApplyPatchInputSchema = z.strictObject({
   path: RequiredPathSchema.describe('Path to file to patch'),
   patch: z.string().describe('Unified diff content to apply'),
   fuzzy: z.boolean().optional().default(false).describe('Allow fuzzy patching'),
+  fuzzFactor: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(0, 'Min: 0')
+    .max(20, 'Max: 20')
+    .optional()
+    .describe('Maximum fuzzy mismatches per hunk'),
+  autoConvertLineEndings: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe('Auto-convert line endings to match target file'),
   dryRun: z.boolean().optional().default(false).describe('Check only'),
 });
 
@@ -516,6 +547,10 @@ export const SearchAndReplaceInputSchema = z.strictObject({
   filePattern: z
     .string()
     .min(1, 'Pattern required')
+    .max(1000, 'Max 1000 chars')
+    .refine((val) => isSafeGlobPattern(val), {
+      error: 'Invalid glob or unsafe path (absolute/.. forbidden)',
+    })
     .describe('Glob pattern (e.g. "**/*.ts")'),
   excludePatterns: z.array(z.string()).optional().default([]),
   searchPattern: z.string().min(1, 'Search pattern required'),
@@ -528,6 +563,16 @@ export const SearchAndReplaceOutputSchema = z.object({
   ok: z.boolean(),
   matches: z.number().optional().describe('Total matches found'),
   filesChanged: z.number().optional().describe('Files modified'),
+  failedFiles: z.number().optional().describe('Files skipped due to errors'),
+  failures: z
+    .array(
+      z.object({
+        path: z.string().describe('File path'),
+        error: z.string().describe('Error message'),
+      })
+    )
+    .optional()
+    .describe('Sample of per-file errors'),
   dryRun: z.boolean().optional(),
   error: ErrorSchema.optional(),
 });

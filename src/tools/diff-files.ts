@@ -1,9 +1,11 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { createTwoFilesPatch } from 'diff';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
 import type { z } from 'zod';
+
+import { createTwoFilesPatch } from 'diff';
 
 import { ErrorCode } from '../lib/errors.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers.js';
@@ -11,8 +13,10 @@ import { withToolDiagnostics } from '../lib/observability.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import { DiffFilesInputSchema, DiffFilesOutputSchema } from '../schemas.js';
 import {
+  buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
+  maybeExternalizeTextContent,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -31,7 +35,8 @@ const DIFF_FILES_TOOL = {
 
 async function handleDiffFiles(
   args: z.infer<typeof DiffFilesInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  resourceStore?: ToolRegistrationOptions['resourceStore']
 ): Promise<ToolResponse<z.infer<typeof DiffFilesOutputSchema>>> {
   const [originalPath, modifiedPath] = await Promise.all([
     validateExistingPath(args.original, signal),
@@ -47,13 +52,46 @@ async function handleDiffFiles(
     path.basename(originalPath),
     path.basename(modifiedPath),
     originalContent,
-    modifiedContent
+    modifiedContent,
+    undefined,
+    undefined,
+    {
+      ...(args.context !== undefined ? { context: args.context } : {}),
+      ignoreWhitespace: args.ignoreWhitespace,
+      stripTrailingCr: args.stripTrailingCr,
+    }
   );
 
-  return buildToolResponse(patch, {
-    ok: true,
-    diff: patch,
+  const externalized = maybeExternalizeTextContent(resourceStore, patch, {
+    name: 'diff:patch',
+    mimeType: 'text/x-diff',
   });
+
+  if (!externalized) {
+    return buildToolResponse(patch, {
+      ok: true,
+      diff: patch,
+    });
+  }
+
+  const { preview, entry } = externalized;
+  return buildToolResponse(
+    preview,
+    {
+      ok: true,
+      diff: preview,
+      truncated: true,
+      resourceUri: entry.uri,
+    },
+    [
+      buildResourceLink({
+        uri: entry.uri,
+        name: entry.name,
+        mimeType: entry.mimeType,
+        description: 'Full diff content',
+      }),
+    ]
+  );
 }
 
 export function registerDiffFilesTool(
@@ -71,7 +109,7 @@ export function registerDiffFilesTool(
           async () => {
             const { signal, cleanup } = createTimedAbortSignal(extra.signal);
             try {
-              return await handleDiffFiles(args, signal);
+              return await handleDiffFiles(args, signal, options.resourceStore);
             } finally {
               cleanup();
             }

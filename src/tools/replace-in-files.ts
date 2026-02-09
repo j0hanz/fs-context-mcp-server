@@ -1,14 +1,23 @@
 import * as fs from 'node:fs/promises';
-import safeRegex from 'safe-regex2';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
 import type { z } from 'zod';
 
-import { ErrorCode, McpError } from '../lib/errors.js';
+import safeRegex from 'safe-regex2';
+
+import {
+  ErrorCode,
+  formatUnknownErrorMessage,
+  McpError,
+} from '../lib/errors.js';
 import { globEntries } from '../lib/file-operations/glob-engine.js';
 import { atomicWriteFile, createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
-import { validateExistingPath } from '../lib/path-validation.js';
+import {
+  validateExistingPath,
+  validatePathForWrite,
+} from '../lib/path-validation.js';
 import {
   SearchAndReplaceInputSchema,
   SearchAndReplaceOutputSchema,
@@ -16,6 +25,7 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -32,11 +42,23 @@ const SEARCH_AND_REPLACE_TOOL = {
   outputSchema: SearchAndReplaceOutputSchema,
 } as const;
 
+const MAX_FAILURES = 20;
+
+interface Failure {
+  path: string;
+  error: string;
+}
+
+function recordFailure(failures: Failure[], failure: Failure): void {
+  if (failures.length >= MAX_FAILURES) return;
+  failures.push(failure);
+}
+
 async function processFile(
   filePath: string,
   args: z.infer<typeof SearchAndReplaceInputSchema>,
   signal?: AbortSignal
-): Promise<{ matches: number; changed: boolean }> {
+): Promise<{ matches: number; changed: boolean; error?: string }> {
   try {
     const content = await fs.readFile(filePath, {
       encoding: 'utf-8',
@@ -74,9 +96,12 @@ async function processFile(
     }
 
     return { matches: matchCount, changed: matchCount > 0 };
-  } catch {
-    // Ignore read/write errors for individual files
-    return { matches: 0, changed: false };
+  } catch (error) {
+    return {
+      matches: 0,
+      changed: false,
+      error: formatUnknownErrorMessage(error),
+    };
   }
 }
 
@@ -86,7 +111,7 @@ async function handleSearchAndReplace(
 ): Promise<ToolResponse<z.infer<typeof SearchAndReplaceOutputSchema>>> {
   const root = args.path
     ? await validateExistingPath(args.path, signal)
-    : process.cwd();
+    : resolvePathOrRoot(args.path);
 
   if (args.isRegex) {
     if (!safeRegex(args.searchPattern)) {
@@ -113,23 +138,61 @@ async function handleSearchAndReplace(
 
   let totalMatches = 0;
   let filesChanged = 0;
+  let failedFiles = 0;
+  const failures: Failure[] = [];
 
-  for await (const entry of entries) {
-    if (signal?.aborted) break;
+  const resolveValidPath = async (
+    entryPath: string
+  ): Promise<{ path: string } | { error: string }> => {
+    try {
+      const validPath = await validatePathForWrite(entryPath, signal);
+      return { path: validPath };
+    } catch (error) {
+      return { error: formatUnknownErrorMessage(error) };
+    }
+  };
 
-    const result = await processFile(entry.path, args, signal);
+  const applyResult = (result: {
+    matches: number;
+    changed: boolean;
+    error?: string;
+    path: string;
+  }): void => {
     if (result.matches > 0) {
       totalMatches += result.matches;
       filesChanged++;
     }
+
+    if (result.error) {
+      failedFiles++;
+      recordFailure(failures, { path: result.path, error: result.error });
+    }
+  };
+
+  for await (const entry of entries) {
+    if (signal?.aborted) break;
+
+    const resolved = await resolveValidPath(entry.path);
+    if ('error' in resolved) {
+      failedFiles++;
+      recordFailure(failures, { path: entry.path, error: resolved.error });
+      continue;
+    }
+
+    const result = await processFile(resolved.path, args, signal);
+    applyResult({ ...result, path: resolved.path });
   }
 
+  const failureSuffix = failedFiles > 0 ? ` (${failedFiles} failed)` : '';
+
   return buildToolResponse(
-    `Found ${totalMatches} matches in ${filesChanged} files.${args.dryRun ? ' (Dry run)' : ''}`,
+    `Found ${totalMatches} matches in ${filesChanged} files${failureSuffix}.${args.dryRun ? ' (Dry run)' : ''}`,
     {
       ok: true,
       matches: totalMatches,
       filesChanged,
+      ...(failedFiles > 0 ? { failedFiles } : {}),
+      ...(failures.length > 0 ? { failures } : {}),
       dryRun: args.dryRun,
     }
   );

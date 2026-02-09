@@ -8,7 +8,7 @@ These instructions are available as a resource (internal://instructions) or prom
 
 - Domain: Filesystem operations via an MCP server, enabling LLMs to interact with the filesystem securely and efficiently.
 - Primary Resources: Files, Directories, Search Results, File Metadata.
-- Tools: `ls`, `roots`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep` (READ); `mkdir`, `write`, `edit`, `mv`, `rm` (WRITE).
+- Tools: `ls`, `roots`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep`, `calculate_hash`, `diff_files` (READ); `mkdir`, `write`, `edit`, `mv`, `rm`, `apply_patch`, `search_and_replace` (WRITE).
 
 ---
 
@@ -63,6 +63,28 @@ These instructions are available as a resource (internal://instructions) or prom
 - Purpose: Read file text.
 - Input: `path`, `head` (lines), `startLine`/`endLine`.
 - Gotcha: Large files return `resourceUri`; read it or use pagination.
+
+`calculate_hash`
+
+- Purpose: Compute a SHA-256 hash for a file.
+- Input: `path` (file).
+
+`diff_files`
+
+- Purpose: Create a unified diff between two files.
+- Input: `original`, `modified`, optional `context`, `ignoreWhitespace`, `stripTrailingCr`.
+- Gotcha: Large diffs may be returned via `resourceUri`.
+
+`apply_patch`
+
+- Purpose: Apply a unified diff patch to a file.
+- Input: `path`, `patch`, optional `fuzzy`/`fuzzFactor`, `autoConvertLineEndings`, `dryRun`.
+
+`search_and_replace`
+
+- Purpose: Replace text across files matching a glob.
+- Input: `filePattern`, `searchPattern`, `replacement`, optional `isRegex`, `dryRun`.
+- Gotcha: Review `failedFiles` and `failures` for partial errors.
 
 `edit`
 

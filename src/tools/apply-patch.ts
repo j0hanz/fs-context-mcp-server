@@ -1,9 +1,11 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { applyPatch } from 'diff';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
 import type { z } from 'zod';
+
+import { applyPatch } from 'diff';
 
 import { ErrorCode, McpError } from '../lib/errors.js';
 import { atomicWriteFile, createTimedAbortSignal } from '../lib/fs-helpers.js';
@@ -36,8 +38,11 @@ async function handleApplyPatch(
   const validPath = await validateExistingPath(args.path, signal);
   const content = await fs.readFile(validPath, { encoding: 'utf-8', signal });
 
+  const fuzzFactor = args.fuzzFactor ?? (args.fuzzy ? 2 : 0);
+
   const patched = applyPatch(content, args.patch, {
-    fuzzFactor: args.fuzzy ? 2 : 0,
+    fuzzFactor,
+    autoConvertLineEndings: args.autoConvertLineEndings,
   });
 
   if (patched === false) {
