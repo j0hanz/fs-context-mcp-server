@@ -37,10 +37,14 @@ import {
 import { createToolTaskHandler } from './task-support.js';
 
 const SEARCH_AND_REPLACE_TOOL = {
-  name: 'search_and_replace',
+  title: 'Search and Replace',
   description: 'Search and replace text across multiple files.',
   inputSchema: SearchAndReplaceInputSchema,
   outputSchema: SearchAndReplaceOutputSchema,
+  annotations: {
+    readOnlyHint: false,
+    openWorldHint: false,
+  },
 } as const;
 
 const MAX_FAILURES = 20;
@@ -225,13 +229,14 @@ export function registerSearchAndReplaceTool(
       args.path ? { path: args.path } : {}
     );
 
+  const { isInitialized } = options;
+
   const wrappedHandler = wrapToolHandler(handler, {
+    guard: isInitialized,
     progressMessage: (args) => {
       return `replace: ${args.filePattern}`;
     },
   });
-
-  const { isInitialized } = options;
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 
   const { experimental } = server as unknown as {

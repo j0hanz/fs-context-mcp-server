@@ -30,6 +30,11 @@ const CREATE_DIRECTORY_TOOL = {
   description: 'Create a new directory at the specified path (recursive)',
   inputSchema: CreateDirectoryInputSchema,
   outputSchema: CreateDirectoryOutputSchema,
+  annotations: {
+    readOnlyHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
 } as const;
 
 async function handleCreateDirectory(

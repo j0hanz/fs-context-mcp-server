@@ -26,6 +26,9 @@ export function registerInstructionResource(
       title: 'Server Instructions',
       description: 'Guidance for using the fs-context MCP tools effectively.',
       mimeType: 'text/markdown',
+      annotations: {
+        audience: ['assistant'],
+      },
       ...(iconInfo
         ? {
             icons: [
@@ -62,6 +65,9 @@ export function registerResultResources(
       description:
         'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.',
       mimeType: 'text/plain',
+      annotations: {
+        audience: ['assistant'],
+      },
       ...(iconInfo
         ? {
             icons: [

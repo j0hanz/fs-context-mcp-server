@@ -27,6 +27,11 @@ const DELETE_FILE_TOOL = {
   description: 'Delete a file or directory.',
   inputSchema: DeleteFileInputSchema,
   outputSchema: DeleteFileOutputSchema,
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: false,
+  },
 } as const;
 
 async function handleDeleteFile(

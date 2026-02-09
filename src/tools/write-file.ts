@@ -32,6 +32,11 @@ const WRITE_FILE_TOOL = {
     'Write content to a file. Creates the file if it does not exist.',
   inputSchema: WriteFileInputSchema,
   outputSchema: WriteFileOutputSchema,
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: false,
+  },
 } as const;
 
 async function handleWriteFile(

@@ -29,6 +29,10 @@ const EDIT_FILE_TOOL = {
     'Replaces the first occurrence of each `oldText`.',
   inputSchema: EditFileInputSchema,
   outputSchema: EditFileOutputSchema,
+  annotations: {
+    readOnlyHint: false,
+    openWorldHint: false,
+  },
 } as const;
 
 function applyEdits(

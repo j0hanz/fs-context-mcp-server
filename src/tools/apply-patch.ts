@@ -25,10 +25,14 @@ import {
 } from './shared.js';
 
 const APPLY_PATCH_TOOL = {
-  name: 'apply_patch',
+  title: 'Apply Patch',
   description: 'Apply a unified patch to a file.',
   inputSchema: ApplyPatchInputSchema,
   outputSchema: ApplyPatchOutputSchema,
+  annotations: {
+    readOnlyHint: false,
+    openWorldHint: false,
+  },
 } as const;
 
 async function handleApplyPatch(

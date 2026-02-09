@@ -30,6 +30,11 @@ const MOVE_FILE_TOOL = {
   description: 'Move or rename a file or directory.',
   inputSchema: MoveFileInputSchema,
   outputSchema: MoveFileOutputSchema,
+  annotations: {
+    readOnlyHint: false,
+    destructiveHint: true,
+    openWorldHint: false,
+  },
 } as const;
 
 async function handleMoveFile(

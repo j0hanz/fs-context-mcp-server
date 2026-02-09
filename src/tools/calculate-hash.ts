@@ -27,10 +27,15 @@ import {
 } from './shared.js';
 
 const CALCULATE_HASH_TOOL = {
-  name: 'calculate_hash',
+  title: 'Calculate Hash',
   description: 'Calculate SHA-256 hash of a file.',
   inputSchema: CalculateHashInputSchema,
   outputSchema: CalculateHashOutputSchema,
+  annotations: {
+    readOnlyHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
 } as const;
 
 async function handleCalculateHash(

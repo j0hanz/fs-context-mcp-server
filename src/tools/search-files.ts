@@ -127,11 +127,12 @@ export function registerSearchFilesTool(
       { path: args.path ?? '.' }
     );
 
+  const { isInitialized } = options;
+
   const wrappedHandler = wrapToolHandler(handler, {
+    guard: isInitialized,
     progressMessage: (args) => `find: ${args.pattern}`,
   });
-
-  const { isInitialized } = options;
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 
   const { experimental } = server as unknown as {

@@ -27,10 +27,15 @@ import {
 } from './shared.js';
 
 const DIFF_FILES_TOOL = {
-  name: 'diff_files',
+  title: 'Diff Files',
   description: 'Generate a unified diff between two files.',
   inputSchema: DiffFilesInputSchema,
   outputSchema: DiffFilesOutputSchema,
+  annotations: {
+    readOnlyHint: true,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
 } as const;
 
 async function handleDiffFiles(
