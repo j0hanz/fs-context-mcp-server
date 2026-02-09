@@ -1,6 +1,6 @@
 import * as crypto from 'node:crypto';
-import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { createReadStream } from 'node:fs';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -38,8 +38,14 @@ async function handleCalculateHash(
   signal?: AbortSignal
 ): Promise<ToolResponse<z.infer<typeof CalculateHashOutputSchema>>> {
   const validPath = await validateExistingPath(args.path, signal);
-  const content = await fs.readFile(validPath, { signal });
-  const hash = crypto.createHash('sha256').update(content).digest('hex');
+  const hashOp = crypto.createHash('sha256');
+  const stream = createReadStream(validPath, { signal });
+
+  for await (const chunk of stream) {
+    hashOp.update(chunk as Buffer | string);
+  }
+
+  const hash = hashOp.digest('hex');
 
   return buildToolResponse(hash, {
     ok: true,
