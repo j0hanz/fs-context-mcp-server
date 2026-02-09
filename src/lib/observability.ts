@@ -78,6 +78,32 @@ interface PerfDiagnosticsEvent {
   detail?: unknown;
 }
 
+// --- Metrics State ---
+
+export interface ToolMetrics {
+  calls: number;
+  errors: number;
+  totalDurationMs: number;
+}
+
+const globalMetrics = new Map<string, ToolMetrics>();
+
+export function getToolMetrics(): Record<string, ToolMetrics> {
+  return Object.fromEntries(globalMetrics);
+}
+
+function updateMetrics(tool: string, ok: boolean, durationMs: number): void {
+  const current = globalMetrics.get(tool) ?? {
+    calls: 0,
+    errors: 0,
+    totalDurationMs: 0,
+  };
+  current.calls++;
+  if (!ok) current.errors++;
+  current.totalDurationMs += durationMs;
+  globalMetrics.set(tool, current);
+}
+
 // --- Channels & Observability State ---
 
 const CHANNELS = {
@@ -351,6 +377,9 @@ async function runAndObserve<T>(
     if (pubPerf && eluStart)
       publishPerfEnd(tool, durationMs, eluStart, loopMonitor);
     if (pubTool) publishToolEnd(tool, ok, durationMs, errorMsg);
+
+    updateMetrics(tool, ok, durationMs);
+
     if (logErrors && !ok) logError(tool, durationMs, errorMsg);
   }
 
@@ -388,7 +417,20 @@ export async function withToolDiagnostics<T>(
     const pubTool = CHANNELS.tool.hasSubscribers;
     const pubPerf = CHANNELS.perf.hasSubscribers;
 
-    if (!pubTool && !pubPerf) return await run();
+    if (!pubTool && !pubPerf) {
+      const start = performance.now();
+      try {
+        const res = await run();
+        const duration = performance.now() - start;
+        const { ok } = extractOutcome(res);
+        updateMetrics(tool, ok, duration);
+        return res;
+      } catch (e) {
+        const duration = performance.now() - start;
+        updateMetrics(tool, false, duration);
+        throw e;
+      }
+    }
 
     return await runAndObserve(
       tool,
