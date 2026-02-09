@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -109,8 +110,10 @@ export function registerEditFileTool(
     withDefaultIcons({ ...EDIT_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) =>
-        `edit: ${args.path} (${args.edits.length} edits)`,
+      progressMessage: (args) => {
+        const name = path.basename(args.path);
+        return `edit: ${name} → ${args.edits.length} edits`;
+      },
     })
   );
 }

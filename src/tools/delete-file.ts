@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -109,7 +110,7 @@ export function registerDeleteFileTool(
     withDefaultIcons({ ...DELETE_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `rm: ${args.path}`,
+      progressMessage: (args) => `rm: ${path.basename(args.path)}`,
     })
   );
 }

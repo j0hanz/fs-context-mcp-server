@@ -88,7 +88,7 @@ export function registerWriteFileTool(
     withDefaultIcons({ ...WRITE_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `write: ${args.path}`,
+      progressMessage: (args) => `write: ${path.basename(args.path)}`,
     })
   );
 }

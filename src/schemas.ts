@@ -26,10 +26,7 @@ const DESC_PATH_REQUIRED =
 
 const PathSchemaBase = z
   .string()
-  .max(
-    MAX_PATH_LENGTH,
-    `Path too long (max ${MAX_PATH_LENGTH} chars)`
-  );
+  .max(MAX_PATH_LENGTH, `Path too long (max ${MAX_PATH_LENGTH} chars)`);
 
 const OptionalPathSchema = PathSchemaBase.optional();
 
@@ -122,10 +119,7 @@ const FileInfoSchema = z.object({
   path: z.string().describe('Absolute path'),
   type: FileTypeSchema.describe('Type'),
   size: z.number().describe('Size (bytes)'),
-  tokenEstimate: z
-    .number()
-    .optional()
-    .describe('Est. tokens (size/4)'),
+  tokenEstimate: z.number().optional().describe('Est. tokens (size/4)'),
   created: z.string().describe('Created'),
   modified: z.string().describe('Modified'),
   accessed: z.string().describe('Accessed'),
@@ -158,9 +152,7 @@ export const ListDirectoryInputSchema = z.strictObject({
     .boolean()
     .optional()
     .default(false)
-    .describe(
-      'Include ignored items (node_modules, .git, etc).'
-    ),
+    .describe('Include ignored items (node_modules, .git, etc).'),
 });
 
 export const ListAllowedDirectoriesInputSchema = z
@@ -174,12 +166,9 @@ export const SearchFilesInputSchema = z.strictObject({
     .min(1, 'Pattern required')
     .max(1000, 'Max 1000 chars')
     .refine((val) => isSafeGlobPattern(val), {
-      error:
-        'Invalid glob or unsafe path (absolute/.. forbidden)',
+      error: 'Invalid glob or unsafe path (absolute/.. forbidden)',
     })
-    .describe(
-      'Glob pattern (e.g. "**/*.ts", "src/*.js")'
-    ),
+    .describe('Glob pattern (e.g. "**/*.ts", "src/*.js")'),
   maxResults: z
     .number()
     .int({ error: 'Must be integer' })
@@ -192,9 +181,7 @@ export const SearchFilesInputSchema = z.strictObject({
     .boolean()
     .optional()
     .default(false)
-    .describe(
-      'Include ignored items (node_modules, etc).'
-    ),
+    .describe('Include ignored items (node_modules, etc).'),
 });
 
 export const TreeInputSchema = z.strictObject({
@@ -224,9 +211,7 @@ export const TreeInputSchema = z.strictObject({
     .boolean()
     .optional()
     .default(false)
-    .describe(
-      'Include ignored items. Disables .gitignore.'
-    ),
+    .describe('Include ignored items. Disables .gitignore.'),
 });
 
 export const SearchContentInputSchema = z.strictObject({
@@ -235,16 +220,12 @@ export const SearchContentInputSchema = z.strictObject({
     .string()
     .min(1, 'Pattern required')
     .max(1000, 'Max 1000 chars')
-    .describe(
-      'Search text or regex (if isRegex=true)'
-    ),
+    .describe('Search text or regex (if isRegex=true)'),
   isRegex: z
     .boolean()
     .optional()
     .default(false)
-    .describe(
-      'Treat pattern as regex'
-    ),
+    .describe('Treat pattern as regex'),
   includeHidden: z
     .boolean()
     .optional()
@@ -254,9 +235,7 @@ export const SearchContentInputSchema = z.strictObject({
 
 export const ReadFileInputSchema = ReadRangeInputSchema.extend({
   path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
-  head: HeadLinesSchema.describe(
-    'Read first N lines (preview)'
-  ),
+  head: HeadLinesSchema.describe('Read first N lines (preview)'),
   startLine: LineNumberSchema.optional().describe(
     'Start line (1-based, inclusive)'
   ),
@@ -272,9 +251,7 @@ export const ReadMultipleFilesInputSchema = ReadRangeInputSchema.extend({
     .array(RequiredPathSchema)
     .min(1, 'Min 1 path required')
     .max(100, 'Max 100 files')
-    .describe(
-      'Files to read. e.g. ["src/index.ts"]'
-    ),
+    .describe('Files to read. e.g. ["src/index.ts"]'),
   head: HeadLinesSchema.describe('Read first N lines of each file'),
   startLine: LineNumberSchema.optional().describe(
     'Start line (1-based, inclusive) per file'
@@ -468,9 +445,7 @@ export const EditFileOutputSchema = z.object({
 
 export const MoveFileInputSchema = z.strictObject({
   source: RequiredPathSchema.describe('Path to move'),
-  destination: RequiredPathSchema.describe(
-    'New path'
-  ),
+  destination: RequiredPathSchema.describe('New path'),
 });
 
 export const MoveFileOutputSchema = z.object({

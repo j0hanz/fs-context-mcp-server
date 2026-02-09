@@ -104,7 +104,8 @@ export function registerMoveFileTool(
     withDefaultIcons({ ...MOVE_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `mv: ${args.source} -> ${args.destination}`,
+      progressMessage: (args) =>
+        `mv: ${path.basename(args.source)} -> ${path.basename(args.destination)}`,
     })
   );
 }
