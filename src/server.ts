@@ -8,6 +8,10 @@ import {
   parseArgs as parseNodeArgs,
 } from 'node:util';
 
+import {
+  InMemoryTaskMessageQueue,
+  InMemoryTaskStore,
+} from '@modelcontextprotocol/sdk/experimental/tasks/stores/in-memory.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -39,6 +43,7 @@ import {
   setAllowedDirectoriesResolved,
 } from './lib/path-validation.js';
 import { createInMemoryResourceStore } from './lib/resource-store.js';
+import { registerGetHelpPrompt } from './prompts.js';
 import {
   registerInstructionResource,
   registerResultResources,
@@ -448,13 +453,23 @@ export async function createServer(
 ): Promise<McpServer> {
   const resourceStore = createInMemoryResourceStore();
   const localIcon = await getLocalIconInfo();
+  const taskStore = new InMemoryTaskStore();
+  const taskMessageQueue = new InMemoryTaskMessageQueue();
 
   const serverConfig: ConstructorParameters<typeof McpServer>[1] = {
     capabilities: {
       logging: {},
       resources: {},
       tools: {},
+      prompts: { listChanged: true },
+      tasks: {
+        list: {},
+        cancel: {},
+        requests: { tools: { call: {} } },
+      },
     },
+    taskStore,
+    taskMessageQueue,
   };
   if (serverInstructions) {
     serverConfig.instructions = serverInstructions;
@@ -482,6 +497,7 @@ export async function createServer(
   rootsManagers.set(server, rootsManager);
 
   registerInstructionResource(server, serverInstructions, localIcon);
+  registerGetHelpPrompt(server, serverInstructions);
   registerResultResources(server, resourceStore, localIcon);
   registerAllTools(server, {
     resourceStore,

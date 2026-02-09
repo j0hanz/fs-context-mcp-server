@@ -83,7 +83,20 @@ The server is configured primarily via command-line arguments.
 
 ### Environment Variables
 
-Missing info. (No explicit environment variables found in configuration handling).
+| Variable                          | Default         | Description                                                             |
+| :-------------------------------- | :-------------- | :---------------------------------------------------------------------- |
+| `MAX_SEARCH_SIZE`                 | `1048576`       | Max file size (bytes) for `grep`/search content. Min 100 KB, max 10 MB. |
+| `MAX_FILE_SIZE`                   | `10485760`      | Max file size (bytes) for `read`/`read_many`. Min 1 MB, max 100 MB.     |
+| `MAX_READ_MANY_TOTAL_SIZE`        | `524288`        | Max total bytes returned by `read_many`. Min 10 KB, max 100 MB.         |
+| `DEFAULT_SEARCH_TIMEOUT`          | `5000`          | Timeout (ms) for search operations. Min 100 ms, max 60 s.               |
+| `FS_CONTEXT_ALLOW_SENSITIVE`      | `false`         | Allow access to sensitive files (set to `1`/`true` to allow).           |
+| `FS_CONTEXT_DENYLIST`             | (empty)         | Additional denylist patterns (comma or newline separated).              |
+| `FS_CONTEXT_ALLOWLIST`            | (empty)         | Allowlist patterns that override the denylist.                          |
+| `FS_CONTEXT_SEARCH_WORKERS`       | `min(cores, 8)` | Worker threads for content search (0-16).                               |
+| `FS_CONTEXT_SEARCH_WORKERS_DEBUG` | `0`             | Log worker debug details when set to `1`.                               |
+| `FS_CONTEXT_DIAGNOSTICS`          | `0`             | Enable diagnostics channels when set to `1`.                            |
+| `FS_CONTEXT_DIAGNOSTICS_DETAIL`   | `0`             | Diagnostics detail level: 0=off, 1=hashed paths, 2=full paths.          |
+| `FS_CONTEXT_TOOL_LOG_ERRORS`      | `0`             | Emit tool error diagnostics when enabled.                               |
 
 ## MCP Surface
 
@@ -280,6 +293,18 @@ Delete a file or directory.
 | :------------------------- | :------------------ |
 | `internal://instructions`  | Server Instructions |
 | `fs-context://result/{id}` | Cached Tool Result  |
+
+Tool responses may include a `resource_link` or a `resourceUri` when output is too large to inline. Fetch the full payload with `resources/read` using the provided URI. Cached results are ephemeral and may not appear in `resources/list`.
+
+### Prompts
+
+| Prompt     | Description                                          |
+| :--------- | :--------------------------------------------------- |
+| `get-help` | Returns the server instructions for quick reference. |
+
+### Tasks
+
+Long-running tools (`grep`, `find`, `search_and_replace`) support task-augmented calls. When `task` is provided to `tools/call`, the server returns a task id that can be polled with `tasks/get` and resolved via `tasks/result`. Include `_meta.progressToken` on requests to receive `notifications/progress` updates. Task data is stored in memory and is cleared when the server restarts.
 
 ## Client Configuration Examples
 

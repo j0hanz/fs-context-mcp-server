@@ -34,6 +34,7 @@ import {
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler } from './task-support.js';
 
 const SEARCH_AND_REPLACE_TOOL = {
   name: 'search_and_replace',
@@ -224,14 +225,40 @@ export function registerSearchAndReplaceTool(
       args.path ? { path: args.path } : {}
     );
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    progressMessage: (args) => {
+      return `replace: ${args.filePattern}`;
+    },
+  });
+
+  const { isInitialized } = options;
+  const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
+
+  const { experimental } = server as unknown as {
+    experimental?: {
+      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
+    };
+  };
+  const { tasks } = experimental ?? {};
+
+  if (tasks?.registerToolTask) {
+    tasks.registerToolTask(
+      'search_and_replace',
+      withDefaultIcons(
+        {
+          ...SEARCH_AND_REPLACE_TOOL,
+          execution: { taskSupport: 'optional' },
+        },
+        options.iconInfo
+      ),
+      createToolTaskHandler(wrappedHandler, taskOptions)
+    );
+    return;
+  }
+
   server.registerTool(
     'search_and_replace',
     withDefaultIcons({ ...SEARCH_AND_REPLACE_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        return `replace: ${args.filePattern}`;
-      },
-    })
+    wrappedHandler
   );
 }

@@ -26,6 +26,7 @@ import {
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler } from './task-support.js';
 
 const SEARCH_FILES_TOOL = {
   title: 'Find Files',
@@ -126,12 +127,38 @@ export function registerSearchFilesTool(
       { path: args.path ?? '.' }
     );
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    progressMessage: (args) => `find: ${args.pattern}`,
+  });
+
+  const { isInitialized } = options;
+  const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
+
+  const { experimental } = server as unknown as {
+    experimental?: {
+      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
+    };
+  };
+  const { tasks } = experimental ?? {};
+
+  if (tasks?.registerToolTask) {
+    tasks.registerToolTask(
+      'find',
+      withDefaultIcons(
+        {
+          ...SEARCH_FILES_TOOL,
+          execution: { taskSupport: 'optional' },
+        },
+        options.iconInfo
+      ),
+      createToolTaskHandler(wrappedHandler, taskOptions)
+    );
+    return;
+  }
+
   server.registerTool(
     'find',
     withDefaultIcons({ ...SEARCH_FILES_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => `find: ${args.pattern}`,
-    })
+    wrappedHandler
   );
 }

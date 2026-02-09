@@ -12,6 +12,31 @@ These instructions are available as a resource (internal://instructions) or prom
 
 ---
 
+## PROMPTS
+
+- `get-help`: Returns these instructions for quick recall.
+
+---
+
+## RESOURCES & RESOURCE LINKS
+
+- `internal://instructions`: This document.
+- `fs-context://result/{id}`: Cached large output (ephemeral).
+- If a tool response includes a `resourceUri` or `resource_link`, call `resources/read` with the URI to fetch the full payload.
+
+---
+
+## PROGRESS & TASKS
+
+- Include `_meta.progressToken` in requests to receive `notifications/progress` updates for long-running tools.
+- Task-augmented tool calls are supported for `grep`, `find`, and `search_and_replace`:
+  - Send `tools/call` with `task` to get a task id.
+  - Poll `tasks/get` and fetch results via `tasks/result`.
+  - Use `tasks/cancel` to abort.
+  - Task data is stored in memory and cleared on restart.
+
+---
+
 ## THE "GOLDEN PATH" WORKFLOWS (CRITICAL)
 
 ### WORKFLOW A: DISCOVERY & NAVIGATION
@@ -102,8 +127,3 @@ These instructions are available as a resource (internal://instructions) or prom
 - `E_INVALID_PATTERN`: Fix glob/regex syntax.
 
 ---
-
-## RESOURCES
-
-- `internal://instructions`: This document.
-- `fs-context://result/{id}`: Cached large output (ephemeral).

@@ -72,9 +72,9 @@ export const DEFAULT_READ_MANY_MAX_TOTAL_SIZE = parseEnvInt(
 );
 export const DEFAULT_SEARCH_TIMEOUT_MS = parseEnvInt(
   'DEFAULT_SEARCH_TIMEOUT',
-  30000,
+  5000,
   100,
-  3600000
+  60000
 );
 
 const ALLOW_SENSITIVE_FILES = parseEnvBool('FS_CONTEXT_ALLOW_SENSITIVE', false);

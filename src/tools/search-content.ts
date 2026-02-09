@@ -27,6 +27,7 @@ import {
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler } from './task-support.js';
 
 const MAX_INLINE_MATCHES = 50;
 
@@ -225,24 +226,51 @@ export function registerSearchContentTool(
       { path: args.path ?? '.' }
     );
 
+  const { isInitialized } = options;
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: isInitialized,
+    progressMessage: (args) => `grep: ${args.pattern}`,
+    completionMessage: (
+      args: z.infer<typeof SearchContentInputSchema>,
+      result: ToolResult<z.infer<typeof SearchContentOutputSchema>>
+    ) => {
+      if ('isError' in result && result.isError) return undefined;
+      const { structuredContent: sc } = result as ToolResponse<
+        z.infer<typeof SearchContentOutputSchema>
+      >;
+      const suffix =
+        sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
+      return `grep: ${args.pattern} → ${suffix}`;
+    },
+  });
+
+  const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
+
+  const { experimental } = server as unknown as {
+    experimental?: {
+      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
+    };
+  };
+  const { tasks } = experimental ?? {};
+
+  if (tasks?.registerToolTask) {
+    tasks.registerToolTask(
+      'grep',
+      withDefaultIcons(
+        {
+          ...SEARCH_CONTENT_TOOL,
+          execution: { taskSupport: 'optional' },
+        },
+        options.iconInfo
+      ),
+      createToolTaskHandler(wrappedHandler, taskOptions)
+    );
+    return;
+  }
+
   server.registerTool(
     'grep',
     withDefaultIcons({ ...SEARCH_CONTENT_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => `grep: ${args.pattern}`,
-      completionMessage: (
-        args: z.infer<typeof SearchContentInputSchema>,
-        result: ToolResult<z.infer<typeof SearchContentOutputSchema>>
-      ) => {
-        if ('isError' in result && result.isError) return undefined;
-        const { structuredContent: sc } = result as ToolResponse<
-          z.infer<typeof SearchContentOutputSchema>
-        >;
-        const suffix =
-          sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
-        return `grep: ${args.pattern} → ${suffix}`;
-      },
-    })
+    wrappedHandler
   );
 }
