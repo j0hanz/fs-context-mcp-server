@@ -130,8 +130,7 @@ async function handleSearchAndReplace(
   const entries = globEntries({
     cwd: root,
     pattern: args.filePattern,
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    excludePatterns: args.excludePatterns ?? [],
+    excludePatterns: args.excludePatterns,
     includeHidden: false,
     baseNameMatch: false,
     caseSensitiveMatch: true, // Default to sensitive for file paths
