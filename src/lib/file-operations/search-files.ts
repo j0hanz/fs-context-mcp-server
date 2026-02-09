@@ -233,6 +233,11 @@ async function collectFromStream(
     }
 
     const entryType = resolveEntryType(entry.dirent);
+
+    if (!shouldIncludeEntry(entryType, normalized)) {
+      continue;
+    }
+
     const isAccessible = await isEntryAccessible(
       entry,
       entryType,

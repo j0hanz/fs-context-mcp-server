@@ -142,10 +142,18 @@ function buildLiteralMatcher(
   pattern: string,
   options: MatcherOptions
 ): Matcher {
-  // Optimization (RT-001): Use Regex for case-insensitive search to avoid O(N*L) allocations (toLowerCase)
   if (!options.caseSensitive) {
     const final = escapeLiteral(pattern);
-    return buildRegexMatcher(final, false);
+    const regex = new RegExp(final, 'gi');
+    return (line: string): number => {
+      regex.lastIndex = 0;
+      let count = 0;
+      while (regex.exec(line) !== null) {
+        count++;
+        if (regex.lastIndex === 0) regex.lastIndex++;
+      }
+      return count;
+    };
   }
 
   // Fast path for case-sensitive literal
@@ -241,15 +249,24 @@ class ContextBuffer {
 
   snapshotBefore(): string[] {
     if (this.size === 0) return [];
+    const result: string[] = [];
+
     if (this.size < this.capacity) {
-      return this.buffer.slice(0, this.size);
+      for (let i = 0; i < this.size; i++) {
+        const item = this.buffer[i];
+        if (item !== undefined) result.push(item);
+      }
+      return result;
     }
-    // Full buffer: return ordered from oldest to newest
-    // Oldest is at 'head', newest is at 'head - 1'
-    return [
-      ...this.buffer.slice(this.head, this.capacity),
-      ...this.buffer.slice(0, this.head),
-    ];
+    for (let i = this.head; i < this.capacity; i++) {
+      const item = this.buffer[i];
+      if (item !== undefined) result.push(item);
+    }
+    for (let i = 0; i < this.head; i++) {
+      const item = this.buffer[i];
+      if (item !== undefined) result.push(item);
+    }
+    return result;
   }
 
   scheduleAfter(): string[] {
