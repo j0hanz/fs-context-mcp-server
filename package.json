@@ -62,6 +62,7 @@
   "homepage": "https://github.com/j0hanz/fs-context-mcp-server#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "diff": "^8.0.3",
     "ignore": "^7.0.5",
     "re2": "^1.23.2",
     "safe-regex2": "^5.0.0",
@@ -70,6 +71,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "@types/diff": "^7.0.2",
     "@types/node": "^24",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",

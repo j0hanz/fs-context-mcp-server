@@ -1,12 +1,16 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
+import { registerApplyPatchTool } from './tools/apply-patch.js';
+import { registerCalculateHashTool } from './tools/calculate-hash.js';
 import { registerCreateDirectoryTool } from './tools/create-directory.js';
 import { registerDeleteFileTool } from './tools/delete-file.js';
+import { registerDiffFilesTool } from './tools/diff-files.js';
 import { registerEditFileTool } from './tools/edit-file.js';
 import { registerListDirectoryTool } from './tools/list-directory.js';
 import { registerMoveFileTool } from './tools/move-file.js';
 import { registerReadMultipleFilesTool } from './tools/read-multiple.js';
 import { registerReadFileTool } from './tools/read.js';
+import { registerSearchAndReplaceTool } from './tools/replace-in-files.js';
 import { registerListAllowedDirectoriesTool } from './tools/roots.js';
 import { registerSearchContentTool } from './tools/search-content.js';
 import { registerSearchFilesTool } from './tools/search-files.js';
@@ -36,4 +40,8 @@ export function registerAllTools(
   registerEditFileTool(server, options);
   registerMoveFileTool(server, options);
   registerDeleteFileTool(server, options);
+  registerCalculateHashTool(server, options);
+  registerDiffFilesTool(server, options);
+  registerApplyPatchTool(server, options);
+  registerSearchAndReplaceTool(server, options);
 }

@@ -474,3 +474,60 @@ export const DeleteFileOutputSchema = z.object({
   path: z.string().optional(),
   error: ErrorSchema.optional(),
 });
+
+export const CalculateHashInputSchema = z.strictObject({
+  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
+});
+
+export const CalculateHashOutputSchema = z.object({
+  ok: z.boolean(),
+  path: z.string().optional(),
+  hash: z.string().optional().describe('SHA-256 hash'),
+  error: ErrorSchema.optional(),
+});
+
+export const DiffFilesInputSchema = z.strictObject({
+  original: RequiredPathSchema.describe('Path to original file'),
+  modified: RequiredPathSchema.describe('Path to modified file'),
+});
+
+export const DiffFilesOutputSchema = z.object({
+  ok: z.boolean(),
+  diff: z.string().optional().describe('Unified diff content'),
+  error: ErrorSchema.optional(),
+});
+
+export const ApplyPatchInputSchema = z.strictObject({
+  path: RequiredPathSchema.describe('Path to file to patch'),
+  patch: z.string().describe('Unified diff content to apply'),
+  fuzzy: z.boolean().optional().default(false).describe('Allow fuzzy patching'),
+  dryRun: z.boolean().optional().default(false).describe('Check only'),
+});
+
+export const ApplyPatchOutputSchema = z.object({
+  ok: z.boolean(),
+  path: z.string().optional(),
+  applied: z.boolean().optional(),
+  error: ErrorSchema.optional(),
+});
+
+export const SearchAndReplaceInputSchema = z.strictObject({
+  path: OptionalPathSchema.describe(DESC_PATH_ROOT),
+  filePattern: z
+    .string()
+    .min(1, 'Pattern required')
+    .describe('Glob pattern (e.g. "**/*.ts")'),
+  excludePatterns: z.array(z.string()).optional().default([]),
+  searchPattern: z.string().min(1, 'Search pattern required'),
+  replacement: z.string().describe('Replacement text'),
+  isRegex: z.boolean().optional().default(false),
+  dryRun: z.boolean().optional().default(false),
+});
+
+export const SearchAndReplaceOutputSchema = z.object({
+  ok: z.boolean(),
+  matches: z.number().optional().describe('Total matches found'),
+  filesChanged: z.number().optional().describe('Files modified'),
+  dryRun: z.boolean().optional(),
+  error: ErrorSchema.optional(),
+});
