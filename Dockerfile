@@ -9,7 +9,7 @@ WORKDIR /app
 # Install dependencies first (layer caching)
 # --ignore-scripts avoids triggering `prepare` (build) before source is copied
 COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts && npm rebuild
 
 # Copy source and build
 COPY src/ ./src/
