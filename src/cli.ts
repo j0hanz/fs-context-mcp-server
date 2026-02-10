@@ -4,7 +4,7 @@ import { getSystemErrorMessage, getSystemErrorName } from 'node:util';
 
 import { z } from 'zod';
 
-import { Command, CommanderError } from 'commander';
+import { Command, CommanderError, InvalidArgumentError } from 'commander';
 
 import packageJsonRaw from '../package.json' with { type: 'json' };
 import {
@@ -15,6 +15,7 @@ import {
 
 const PackageJsonSchema = z.object({ version: z.string() });
 const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
+const IS_WINDOWS = process.platform === 'win32';
 
 export class CliExitError extends Error {
   readonly exitCode: number;
@@ -28,50 +29,48 @@ export class CliExitError extends Error {
 
 function validateCliPath(inputPath: string): void {
   if (inputPath.includes('\0')) {
-    throw new Error('Error: Path contains null bytes');
+    throw new InvalidArgumentError('Path contains null bytes.');
   }
 
   if (isWindowsDriveRelativePath(inputPath)) {
-    throw new Error(
-      'Error: Windows drive-relative paths are not allowed. Use C:\\path or C:/path instead of C:path.'
+    throw new InvalidArgumentError(
+      'Windows drive-relative paths are not allowed. Use C:\\path or C:/path instead of C:path.'
     );
   }
 
   const reserved = getReservedDeviceNameForPath(inputPath);
   if (reserved) {
-    throw new Error(
-      `Error: Windows reserved device name not allowed: ${reserved}`
+    throw new InvalidArgumentError(
+      `Windows reserved device name not allowed: ${reserved}.`
     );
   }
 }
 
-function isCliError(error: unknown): error is Error {
-  return error instanceof Error && error.message.startsWith('Error:');
+function getNodeErrorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const { code } = error as Record<string, unknown>;
+  return typeof code === 'string' ? code : undefined;
+}
+
+function getNodeErrorErrno(error: unknown): number | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const { errno } = error as Record<string, unknown>;
+  return typeof errno === 'number' ? errno : undefined;
 }
 
 function normalizeDirectoryError(error: unknown, inputPath: string): Error {
-  if (isCliError(error)) return error;
-
-  const code =
-    error instanceof Error &&
-    'code' in error &&
-    typeof (error as { code?: unknown }).code === 'string'
-      ? String((error as { code?: unknown }).code)
-      : undefined;
-
-  const errno =
-    error instanceof Error &&
-    'errno' in error &&
-    typeof (error as { errno?: unknown }).errno === 'number'
-      ? (error as { errno?: unknown }).errno
-      : undefined;
+  const code = getNodeErrorCode(error);
+  const errno = getNodeErrorErrno(error);
+  if (error instanceof Error && code === undefined && errno === undefined) {
+    return error;
+  }
 
   if (typeof errno === 'number') {
     try {
       const name = getSystemErrorName(errno);
       const message = getSystemErrorMessage(errno);
       return new Error(
-        `Error: Cannot access directory ${inputPath} (${name}: ${message})`
+        `Cannot access directory ${inputPath} (${name}: ${message})`
       );
     } catch {
       // Fall through to best-effort formatting.
@@ -79,19 +78,18 @@ function normalizeDirectoryError(error: unknown, inputPath: string): Error {
   }
 
   if (code) {
-    return new Error(`Error: Cannot access directory ${inputPath} (${code})`);
+    return new Error(`Cannot access directory ${inputPath} (${code})`);
   }
 
-  return new Error(`Error: Cannot access directory ${inputPath}`);
+  return new Error(`Cannot access directory ${inputPath}`);
 }
 
 function assertDirectory(stats: Stats, inputPath: string): void {
   if (stats.isDirectory()) return;
-  throw new Error(`Error: ${inputPath} is not a directory`);
+  throw new Error(`${inputPath} is not a directory`);
 }
 
 async function validateDirectoryPath(inputPath: string): Promise<string> {
-  validateCliPath(inputPath);
   const normalized = normalizePath(inputPath);
 
   try {
@@ -109,6 +107,24 @@ async function normalizeCliDirectories(
   return Promise.all(args.map(validateDirectoryPath));
 }
 
+function parseAllowedDirArgument(value: string, previous: unknown): string[] {
+  validateCliPath(value);
+
+  const values = Array.isArray(previous)
+    ? previous.filter((item): item is string => typeof item === 'string')
+    : [];
+
+  return [...values, value];
+}
+
+function getParsedAllowedDirs(cli: Command): string[] {
+  const [allowedDirs] = cli.processedArgs as unknown[];
+  if (!Array.isArray(allowedDirs)) return [];
+  return allowedDirs.filter(
+    (candidate: unknown): candidate is string => typeof candidate === 'string'
+  );
+}
+
 function createCliProgram(output: string[]): Command {
   const cli = new Command();
   cli
@@ -119,7 +135,8 @@ function createCliProgram(output: string[]): Command {
     )
     .argument(
       '[allowedDirs...]',
-      'Directories the MCP server can access on disk'
+      'Directories the MCP server can access on disk',
+      parseAllowedDirArgument
     )
     .option(
       '--allow_cwd, --allow-cwd',
@@ -137,6 +154,8 @@ Examples:
 `
     );
 
+  cli.allowUnknownOption(false);
+  cli.allowExcessArguments(false);
   cli.showHelpAfterError('(run with --help for usage)');
   cli.showSuggestionAfterError(true);
   cli.exitOverride();
@@ -161,6 +180,25 @@ function formatCliOutput(output: readonly string[], fallback: string): string {
   return fallback.trimEnd();
 }
 
+function normalizeCliExitMessage(error: unknown): string {
+  const rawMessage = error instanceof Error ? error.message : String(error);
+  return rawMessage.startsWith('Error:') ? rawMessage : `Error: ${rawMessage}`;
+}
+
+function deduplicateAllowedDirectories(dirs: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const deduplicated: string[] = [];
+
+  for (const dir of dirs) {
+    const key = IS_WINDOWS ? dir.toLowerCase() : dir;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduplicated.push(dir);
+  }
+
+  return deduplicated;
+}
+
 export interface ParseArgsResult {
   allowedDirs: string[];
   allowCwd: boolean;
@@ -183,10 +221,17 @@ export async function parseArgs(): Promise<ParseArgsResult> {
 
   const options = cli.opts<{ allowCwd?: boolean }>();
   const allowCwd = options.allowCwd === true;
-  const positionals = cli.args;
-  const allowedDirs =
-    positionals.length > 0 ? await normalizeCliDirectories(positionals) : [];
-  const deduplicatedDirs = Array.from(new Set(allowedDirs));
+  const positionals = getParsedAllowedDirs(cli);
+
+  let allowedDirs: string[] = [];
+  try {
+    allowedDirs =
+      positionals.length > 0 ? await normalizeCliDirectories(positionals) : [];
+  } catch (error: unknown) {
+    throw new CliExitError(normalizeCliExitMessage(error), 1);
+  }
+
+  const deduplicatedDirs = deduplicateAllowedDirectories(allowedDirs);
 
   return { allowedDirs: deduplicatedDirs, allowCwd };
 }

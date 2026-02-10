@@ -58,6 +58,11 @@ const GLOB_MAGIC_RE = /[*?[\]{}!]/u;
 const DEFAULT_MAX_HIDDEN_DEPTH = 10;
 const SEP = '/';
 const WIN_SEP = '\\';
+const DOT_CHAR_CODE = 46;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
 
 function toPosixSlashes(value: string): string {
   return value.includes(WIN_SEP) ? value.replace(/\\/gu, SEP) : value;
@@ -127,8 +132,7 @@ function addDotfileCandidates(
 
   if (firstCandidateIndex !== -1) {
     const original = remainderSegments[firstCandidateIndex];
-    // NOTE: Fixes the original bitwise-AND bug that prevented dotfile candidates.
-    if (original && original.charCodeAt(0) !== 46 /* . */) {
+    if (original && original.charCodeAt(0) !== DOT_CHAR_CODE) {
       const newSegments = remainderSegments.slice();
       newSegments[firstCandidateIndex] = `.${original}`;
       patterns.add(`${prefix}${newSegments.join(SEP)}`);
@@ -146,7 +150,7 @@ function addGlobstarCandidates(
   for (let depth = 0; depth <= maxDepth; depth++) {
     const depthPrefix = depth > 0 ? '*/'.repeat(depth) : '';
     patterns.add(`${prefix}${depthPrefix}.*/**/${afterGlobstar}`);
-    if (afterGlobstar && afterGlobstar.charCodeAt(0) !== 46 /* . */) {
+    if (afterGlobstar && afterGlobstar.charCodeAt(0) !== DOT_CHAR_CODE) {
       patterns.add(`${prefix}${depthPrefix}.${afterGlobstar}`);
     }
   }
@@ -275,11 +279,13 @@ function getRelativeDepth(relativePath: string): number {
 }
 
 function isGlobDirentLike(value: unknown): value is GlobDirentLike {
+  if (!isRecord(value)) return false;
+  if (typeof value.name !== 'string') return false;
+  const candidate = value as Partial<DirentLike>;
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    'name' in value &&
-    typeof (value as { name: unknown }).name === 'string'
+    typeof candidate.isDirectory === 'function' &&
+    typeof candidate.isFile === 'function' &&
+    typeof candidate.isSymbolicLink === 'function'
   );
 }
 
@@ -288,7 +294,6 @@ function resolveDirentBase(
   parentPath: string | undefined
 ): string {
   if (!parentPath) return cwd;
-  // If parentPath is relative, interpret it relative to cwd (not process.cwd()).
   return path.isAbsolute(parentPath)
     ? parentPath
     : path.resolve(cwd, parentPath);
@@ -298,7 +303,6 @@ function resolveStringMatchPath(cwd: string, match: string): string {
   return path.isAbsolute(match) ? match : path.resolve(cwd, match);
 }
 
-// Helper to yield entries for directory entries (Dirent)
 function* processDirentMatch(
   match: GlobDirentLike,
   cwd: string,
@@ -321,7 +325,6 @@ function* processDirentMatch(
   yield { path: absolutePath, dirent: match };
 }
 
-// Helper to resolve string matches (Parallelizable)
 async function resolveStringMatch(
   match: string,
   cwd: string,
@@ -332,7 +335,6 @@ async function resolveStringMatch(
   returnStats: boolean,
   suppressErrors: boolean
 ): Promise<GlobEntry | null> {
-  // Optimization: check depth on the relative string BEFORE resolving absolute path
   if (maxDepth !== undefined) {
     const depth = getRelativeDepth(match);
     if (depth > maxDepth) return null;

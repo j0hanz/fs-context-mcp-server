@@ -345,7 +345,7 @@ export function registerSearchAndReplaceTool(
               const finalCurrent = (sc.processedFiles ?? 0) + 1;
               notifyProgress(extra, {
                 current: finalCurrent,
-                message: `🛠 search_and_replace: ${args.filePattern} → ${String(sc.filesChanged ?? 0)} files`,
+                message: `🛠 search_and_replace: ${args.filePattern} ➟ ${String(sc.filesChanged ?? 0)} files`,
               });
               return result;
             } finally {

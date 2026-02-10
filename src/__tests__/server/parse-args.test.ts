@@ -56,6 +56,20 @@ await it('parseArgs de-duplicates repeated allowed directories', async () => {
   }
 });
 
+await it('parseArgs de-duplicates Windows paths case-insensitively', async () => {
+  if (os.platform() !== 'win32') return;
+
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-args-'));
+  try {
+    const result = await withArgv([tempDir, tempDir.toUpperCase()], () =>
+      parseArgs()
+    );
+    assert.deepStrictEqual(result.allowedDirs, [normalizePath(tempDir)]);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 await it('parseArgs rejects Windows drive-relative paths', async () => {
   if (os.platform() !== 'win32') return;
   await assert.rejects(
@@ -106,4 +120,43 @@ await it('parseArgs rejects unknown options with CLI exit code', async () => {
       return true;
     }
   );
+});
+
+await it('parseArgs returns clean CLI exit for missing directories', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-args-missing-'));
+  const missingDir = path.join(tempDir, 'missing');
+
+  try {
+    await assert.rejects(
+      withArgv([missingDir], () => parseArgs()),
+      (error: unknown): boolean => {
+        assert.ok(error instanceof CliExitError);
+        assert.strictEqual(error.exitCode, 1);
+        assert.match(error.message, /cannot access directory/i);
+        return true;
+      }
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+await it('parseArgs returns clean CLI exit for file paths', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-args-file-'));
+  const tempFile = path.join(tempDir, 'file.txt');
+
+  try {
+    await fs.writeFile(tempFile, 'hello');
+    await assert.rejects(
+      withArgv([tempFile], () => parseArgs()),
+      (error: unknown): boolean => {
+        assert.ok(error instanceof CliExitError);
+        assert.strictEqual(error.exitCode, 1);
+        assert.match(error.message, /not a directory/i);
+        return true;
+      }
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
 });
