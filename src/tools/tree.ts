@@ -13,6 +13,7 @@ import { TreeInputSchema, TreeOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  getExperimentalTaskRegistration,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -112,12 +113,7 @@ export function registerTreeTool(
     ? { guard: options.isInitialized }
     : undefined;
 
-  const { experimental } = server as unknown as {
-    experimental?: {
-      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
-    };
-  };
-  const { tasks } = experimental ?? {};
+  const tasks = getExperimentalTaskRegistration(server);
 
   if (tasks?.registerToolTask) {
     tasks.registerToolTask(

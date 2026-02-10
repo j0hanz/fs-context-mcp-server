@@ -16,6 +16,7 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  getExperimentalTaskRegistration,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -156,12 +157,7 @@ export function registerGetMultipleFileInfoTool(
     ? { guard: options.isInitialized }
     : undefined;
 
-  const { experimental } = server as unknown as {
-    experimental?: {
-      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
-    };
-  };
-  const { tasks } = experimental ?? {};
+  const tasks = getExperimentalTaskRegistration(server);
 
   if (tasks?.registerToolTask) {
     tasks.registerToolTask(

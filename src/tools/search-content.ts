@@ -19,6 +19,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   createProgressReporter,
+  getExperimentalTaskRegistration,
   notifyProgress,
   resolvePathOrRoot,
   type ToolExtra,
@@ -281,12 +282,7 @@ export function registerSearchContentTool(
 
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 
-  const { experimental } = server as unknown as {
-    experimental?: {
-      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
-    };
-  };
-  const { tasks } = experimental ?? {};
+  const tasks = getExperimentalTaskRegistration(server);
 
   if (tasks?.registerToolTask) {
     tasks.registerToolTask(

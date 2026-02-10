@@ -1,5 +1,6 @@
 import { inspect } from 'node:util';
 
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {
   ContentBlock,
   Icon,
@@ -192,7 +193,7 @@ export function withDefaultIcons<T extends object>(
   tool: T,
   iconInfo: IconInfo | undefined
 ): T & { icons?: Icon[] } {
-  if (!iconInfo) return tool as T & { icons?: Icon[] };
+  if (!iconInfo) return tool;
 
   const existingIcons = (tool as { icons?: Icon[] }).icons;
   if (existingIcons && existingIcons.length > 0) {
@@ -207,7 +208,7 @@ export function withDefaultIcons<T extends object>(
         mimeType: iconInfo.mimeType,
       },
     ],
-  } as unknown as T & { icons?: Icon[] };
+  };
 }
 
 export interface ToolRegistrationOptions {
@@ -215,6 +216,22 @@ export interface ToolRegistrationOptions {
   isInitialized?: () => boolean;
   serverIcon?: string;
   iconInfo?: IconInfo;
+}
+
+export interface ExperimentalTaskRegistration {
+  registerToolTask?: (...args: unknown[]) => unknown;
+}
+
+export function getExperimentalTaskRegistration(
+  server: McpServer
+): ExperimentalTaskRegistration | undefined {
+  const { experimental } = server as { experimental?: unknown };
+  if (!experimental || typeof experimental !== 'object') return undefined;
+
+  const { tasks } = experimental as { tasks?: unknown };
+  if (!tasks || typeof tasks !== 'object') return undefined;
+
+  return tasks as ExperimentalTaskRegistration;
 }
 
 const NOT_INITIALIZED_ERROR = new McpError(

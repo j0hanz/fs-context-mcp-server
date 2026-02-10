@@ -224,6 +224,76 @@ async function tryValidateFile(
   }
 }
 
+async function validateBatch(
+  tasks: { filePath: string; index: number }[],
+  signal?: AbortSignal
+): Promise<Map<number, ValidatedFileInfo>> {
+  if (tasks.length === 0) return new Map<number, ValidatedFileInfo>();
+
+  const { results } = await processInParallel(
+    tasks,
+    async (task) => await tryValidateFile(task.filePath, task.index, signal),
+    PARALLEL_CONCURRENCY,
+    signal
+  );
+
+  const infos = new Map<number, ValidatedFileInfo>();
+  for (const info of results) {
+    if (!info) continue;
+    infos.set(info.index, info);
+  }
+  return infos;
+}
+
+async function applyBudgetForRange(options: {
+  batchStart: number;
+  batchEnd: number;
+  filePaths: readonly string[];
+  totalFiles: number;
+  maxTotalSize: number;
+  maxSize: number;
+  validated: Map<number, ValidatedFileInfo>;
+  skippedBudget: Set<number>;
+  totalSize: number;
+  signal?: AbortSignal;
+}): Promise<{ totalSize: number; exceeded: boolean }> {
+  const {
+    batchStart,
+    batchEnd,
+    filePaths,
+    totalFiles,
+    maxTotalSize,
+    maxSize,
+    validated,
+    skippedBudget,
+    signal,
+    totalSize: startingTotalSize,
+  } = options;
+  let totalSize = startingTotalSize;
+
+  for (let index = batchStart; index < batchEnd; index += 1) {
+    const filePath = filePaths[index];
+    if (!filePath) continue;
+    const info = await resolveValidatedInfo(filePath, index, validated, signal);
+    if (!info) continue;
+
+    const { exceeded, totalSize: nextTotalSize } = applyBudget(
+      totalSize,
+      estimateReadSize(info.stats, maxSize),
+      maxTotalSize,
+      index,
+      totalFiles,
+      skippedBudget
+    );
+    if (exceeded) {
+      return { totalSize, exceeded: true };
+    }
+    totalSize = nextTotalSize;
+  }
+
+  return { totalSize, exceeded: false };
+}
+
 async function collectFileBudget(
   filePaths: readonly string[],
   maxTotalSize: number,
@@ -235,24 +305,43 @@ async function collectFileBudget(
 }> {
   const skippedBudget = new Set<number>();
   const validated = new Map<number, ValidatedFileInfo>();
-  const estimateSize = (stats: Stats): number =>
-    estimateReadSize(stats, maxSize);
   let totalSize = 0;
+  const totalFiles = filePaths.length;
 
-  for (let index = 0; index < filePaths.length; index += 1) {
-    const filePath = filePaths[index];
-    if (!filePath) continue;
-    const info = await resolveValidatedInfo(filePath, index, validated, signal);
-    if (!info) continue;
+  for (
+    let batchStart = 0;
+    batchStart < totalFiles;
+    batchStart += PARALLEL_CONCURRENCY
+  ) {
+    const batchTasks: { filePath: string; index: number }[] = [];
+    const batchEnd = Math.min(batchStart + PARALLEL_CONCURRENCY, totalFiles);
 
-    const { exceeded, totalSize: nextTotalSize } = applyBudget(
-      totalSize,
-      estimateSize(info.stats),
+    for (let index = batchStart; index < batchEnd; index += 1) {
+      const filePath = filePaths[index];
+      if (!filePath) continue;
+      if (validated.has(index)) continue;
+      batchTasks.push({ filePath, index });
+    }
+
+    const batchInfos = await validateBatch(batchTasks, signal);
+    for (const [index, info] of batchInfos) {
+      validated.set(index, info);
+    }
+
+    const budgetResult = await applyBudgetForRange({
+      batchStart,
+      batchEnd,
+      filePaths,
+      totalFiles,
       maxTotalSize,
-      index,
-      filePaths.length,
-      skippedBudget
-    );
+      maxSize,
+      validated,
+      skippedBudget,
+      totalSize,
+      ...(signal ? { signal } : {}),
+    });
+
+    const { exceeded, totalSize: nextTotalSize } = budgetResult;
     if (exceeded) {
       return { skippedBudget, validated };
     }
