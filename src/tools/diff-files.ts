@@ -7,8 +7,9 @@ import type { z } from 'zod';
 
 import { createTwoFilesPatch } from 'diff';
 
-import { ErrorCode } from '../lib/errors.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
+import { ErrorCode, McpError } from '../lib/errors.js';
+import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import { DiffFilesInputSchema, DiffFilesOutputSchema } from '../schemas.js';
@@ -38,15 +39,38 @@ const DIFF_FILES_TOOL = {
   },
 } as const;
 
+function assertDiffFileSizeWithinLimit(
+  filePath: string,
+  size: number,
+  maxFileSize: number
+): void {
+  if (size <= maxFileSize) return;
+  throw new McpError(
+    ErrorCode.E_TOO_LARGE,
+    `File too large for diff: ${filePath} (${size} bytes > ${maxFileSize} bytes).`,
+    filePath,
+    { size, maxFileSize }
+  );
+}
+
 async function handleDiffFiles(
   args: z.infer<typeof DiffFilesInputSchema>,
   signal?: AbortSignal,
   resourceStore?: ToolRegistrationOptions['resourceStore']
 ): Promise<ToolResponse<z.infer<typeof DiffFilesOutputSchema>>> {
+  const maxFileSize = args.maxFileSize ?? MAX_TEXT_FILE_SIZE;
   const [originalPath, modifiedPath] = await Promise.all([
     validateExistingPath(args.original, signal),
     validateExistingPath(args.modified, signal),
   ]);
+
+  const [originalStats, modifiedStats] = await Promise.all([
+    withAbort(fs.stat(originalPath), signal),
+    withAbort(fs.stat(modifiedPath), signal),
+  ]);
+
+  assertDiffFileSizeWithinLimit(originalPath, originalStats.size, maxFileSize);
+  assertDiffFileSizeWithinLimit(modifiedPath, modifiedStats.size, maxFileSize);
 
   const [originalContent, modifiedContent] = await Promise.all([
     fs.readFile(originalPath, { encoding: 'utf-8', signal }),

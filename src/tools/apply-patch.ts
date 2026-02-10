@@ -7,8 +7,13 @@ import type { z } from 'zod';
 
 import { applyPatch } from 'diff';
 
+import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode, McpError } from '../lib/errors.js';
-import { atomicWriteFile, createTimedAbortSignal } from '../lib/fs-helpers.js';
+import {
+  atomicWriteFile,
+  createTimedAbortSignal,
+  withAbort,
+} from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import { ApplyPatchInputSchema, ApplyPatchOutputSchema } from '../schemas.js';
@@ -35,11 +40,28 @@ const APPLY_PATCH_TOOL = {
   },
 } as const;
 
+function assertPatchTargetSizeWithinLimit(
+  filePath: string,
+  size: number,
+  maxFileSize: number
+): void {
+  if (size <= maxFileSize) return;
+  throw new McpError(
+    ErrorCode.E_TOO_LARGE,
+    `File too large for patch: ${filePath} (${size} bytes > ${maxFileSize} bytes).`,
+    filePath,
+    { size, maxFileSize }
+  );
+}
+
 async function handleApplyPatch(
   args: z.infer<typeof ApplyPatchInputSchema>,
   signal?: AbortSignal
 ): Promise<ToolResponse<z.infer<typeof ApplyPatchOutputSchema>>> {
+  const maxFileSize = args.maxFileSize ?? MAX_TEXT_FILE_SIZE;
   const validPath = await validateExistingPath(args.path, signal);
+  const stats = await withAbort(fs.stat(validPath), signal);
+  assertPatchTargetSizeWithinLimit(validPath, stats.size, maxFileSize);
   const content = await fs.readFile(validPath, { encoding: 'utf-8', signal });
 
   const fuzzFactor = args.fuzzFactor ?? (args.fuzzy ? 2 : 0);

@@ -75,5 +75,31 @@ void describe('treeDirectory', () => {
         `Expected connectors in ASCII tree output, got:\n${ascii}`
       );
     });
+
+    void it('treeDirectory does not duplicate sibling nodes', async () => {
+      const result = await treeDirectory(getTestDir(), { maxDepth: 6 });
+
+      interface Node {
+        relativePath: string;
+        children?: Node[];
+      }
+
+      const assertUniqueSiblings = (node: Node): void => {
+        const children = node.children ?? [];
+        const seen = new Set<string>();
+
+        for (const child of children) {
+          assert.equal(
+            seen.has(child.relativePath),
+            false,
+            `Duplicate child path detected: ${child.relativePath}`
+          );
+          seen.add(child.relativePath);
+          assertUniqueSiblings(child);
+        }
+      };
+
+      assertUniqueSiblings(result.tree as unknown as Node);
+    });
   });
 });

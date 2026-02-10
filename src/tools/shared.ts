@@ -222,16 +222,26 @@ export interface ExperimentalTaskRegistration {
   registerToolTask?: (...args: unknown[]) => unknown;
 }
 
+function isExperimentalTaskRegistration(
+  value: unknown
+): value is ExperimentalTaskRegistration {
+  if (!value || typeof value !== 'object') return false;
+  const { registerToolTask } = value as { registerToolTask?: unknown };
+  return (
+    registerToolTask === undefined || typeof registerToolTask === 'function'
+  );
+}
+
 export function getExperimentalTaskRegistration(
   server: McpServer
 ): ExperimentalTaskRegistration | undefined {
-  const { experimental } = server as { experimental?: unknown };
+  const serverWithExperimental = server as { experimental?: unknown };
+  const { experimental } = serverWithExperimental;
   if (!experimental || typeof experimental !== 'object') return undefined;
-
-  const { tasks } = experimental as { tasks?: unknown };
-  if (!tasks || typeof tasks !== 'object') return undefined;
-
-  return tasks as ExperimentalTaskRegistration;
+  const experimentalObject = experimental as { tasks?: unknown };
+  const { tasks } = experimentalObject;
+  if (!isExperimentalTaskRegistration(tasks)) return undefined;
+  return tasks;
 }
 
 const NOT_INITIALIZED_ERROR = new McpError(

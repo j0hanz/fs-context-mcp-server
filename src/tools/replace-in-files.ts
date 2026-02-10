@@ -7,13 +7,18 @@ import type { z } from 'zod';
 import RE2 from 're2';
 import safeRegex from 'safe-regex2';
 
+import { MAX_TEXT_FILE_SIZE, PARALLEL_CONCURRENCY } from '../lib/constants.js';
 import {
   ErrorCode,
   formatUnknownErrorMessage,
   McpError,
 } from '../lib/errors.js';
 import { globEntries } from '../lib/file-operations/glob-engine.js';
-import { atomicWriteFile, createTimedAbortSignal } from '../lib/fs-helpers.js';
+import {
+  atomicWriteFile,
+  createTimedAbortSignal,
+  withAbort,
+} from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import {
   validateExistingPath,
@@ -52,6 +57,7 @@ const SEARCH_AND_REPLACE_TOOL = {
 } as const;
 
 const MAX_FAILURES = 20;
+const REPLACE_CONCURRENCY = Math.min(PARALLEL_CONCURRENCY, 8);
 
 interface Failure {
   path: string;
@@ -97,10 +103,19 @@ function countLiteralMatches(content: string, searchPattern: string): number {
   return count;
 }
 
+function formatFileTooLargeError(
+  filePath: string,
+  size: number,
+  maxFileSize: number
+): string {
+  return `File too large: ${filePath} (${size} bytes > ${maxFileSize} bytes)`;
+}
+
 async function processEntry(
   entryPath: string,
   args: z.infer<typeof SearchAndReplaceInputSchema>,
   regex: RE2 | undefined,
+  maxFileSize: number,
   signal: AbortSignal | undefined,
   summary: ReplaceSummary
 ): Promise<void> {
@@ -117,6 +132,16 @@ async function processEntry(
   }
 
   try {
+    const stats = await withAbort(fs.stat(validPath), signal);
+    if (stats.size > maxFileSize) {
+      summary.failedFiles++;
+      recordFailure(summary.failures, {
+        path: validPath,
+        error: formatFileTooLargeError(validPath, stats.size, maxFileSize),
+      });
+      return;
+    }
+
     const content = await fs.readFile(validPath, {
       encoding: 'utf-8',
       signal,
@@ -152,6 +177,40 @@ async function processEntry(
       path: validPath,
       error: formatUnknownErrorMessage(error),
     });
+  }
+}
+
+async function processEntriesConcurrently(
+  entries: AsyncIterable<{ path: string }>,
+  options: {
+    signal: AbortSignal | undefined;
+    concurrency: number;
+    onEntry: () => void;
+    runEntry: (entryPath: string) => Promise<void>;
+  }
+): Promise<void> {
+  const pending = new Set<Promise<void>>();
+  const { signal, concurrency, onEntry, runEntry } = options;
+
+  const waitForSlot = async (): Promise<void> => {
+    if (pending.size < concurrency) return;
+    await Promise.race(pending);
+  };
+
+  for await (const entry of entries) {
+    if (signal?.aborted) break;
+    await waitForSlot();
+    onEntry();
+
+    const task = runEntry(entry.path);
+    pending.add(task);
+    void task.finally(() => {
+      pending.delete(task);
+    });
+  }
+
+  if (pending.size > 0) {
+    await Promise.allSettled([...pending]);
   }
 }
 
@@ -210,6 +269,7 @@ async function handleSearchAndReplace(
   signal?: AbortSignal,
   onProgress: (progress: { total?: number; current: number }) => void = () => {}
 ): Promise<ToolResponse<z.infer<typeof SearchAndReplaceOutputSchema>>> {
+  const maxFileSize = args.maxFileSize ?? MAX_TEXT_FILE_SIZE;
   const root = await resolveSearchRoot(args.path, signal);
   const regex = createReplacementRegex(args);
 
@@ -227,13 +287,16 @@ async function handleSearchAndReplace(
   });
 
   const summary = createReplaceSummary();
-
-  for await (const entry of entries) {
-    if (signal?.aborted) break;
-    summary.processedFiles++;
-    reportReplaceProgress(onProgress, summary.processedFiles);
-    await processEntry(entry.path, args, regex, signal, summary);
-  }
+  await processEntriesConcurrently(entries, {
+    signal,
+    concurrency: REPLACE_CONCURRENCY,
+    onEntry: () => {
+      summary.processedFiles++;
+      reportReplaceProgress(onProgress, summary.processedFiles);
+    },
+    runEntry: async (entryPath: string) =>
+      processEntry(entryPath, args, regex, maxFileSize, signal, summary),
+  });
 
   reportReplaceProgress(onProgress, summary.processedFiles, true);
 

@@ -210,7 +210,8 @@ async function resolveTreeEntry(
 function upsertChildNode(
   parent: TreeEntry,
   nodeByPath: Map<string, TreeEntry>,
-  resolved: { type: TreeEntryType; relativePosix: string; name: string }
+  resolved: { type: TreeEntryType; relativePosix: string; name: string },
+  childPathIndexByParent: WeakMap<TreeEntry, Set<string>>
 ): void {
   const ensureDirectoryShape = (node: TreeEntry): void => {
     if (node.type === 'directory') {
@@ -238,9 +239,15 @@ function upsertChildNode(
 
   const attachChild = (child: TreeEntry): void => {
     parent.children ??= [];
-    if (!parent.children.includes(child)) {
-      parent.children.push(child);
+    let seen = childPathIndexByParent.get(parent);
+    if (!seen) {
+      seen = new Set(parent.children.map((entry) => entry.relativePath));
+      childPathIndexByParent.set(parent, seen);
     }
+    const key = child.relativePath;
+    if (seen.has(key)) return;
+    seen.add(key);
+    parent.children.push(child);
   };
 
   const existing = nodeByPath.get(resolved.relativePosix);
@@ -332,6 +339,7 @@ export async function treeDirectory(
     };
 
     const nodeByPath = new Map<string, TreeEntry>();
+    const childPathIndexByParent = new WeakMap<TreeEntry, Set<string>>();
     let totalEntries = 0;
     let truncated = false;
 
@@ -377,7 +385,7 @@ export async function treeDirectory(
         resolved.relativePosix
       );
 
-      upsertChildNode(parent, nodeByPath, resolved);
+      upsertChildNode(parent, nodeByPath, resolved, childPathIndexByParent);
       totalEntries += 1;
     }
 

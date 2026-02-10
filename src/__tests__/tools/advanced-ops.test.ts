@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
+import { ErrorCode } from '../../config.js';
 import {
   getAllowedDirectories,
   setAllowedDirectoriesResolved,
@@ -80,6 +81,21 @@ await it('advanced operations integration test', async () => {
       assert.equal(result.isError, undefined);
       assert.ok(result.structuredContent.diff.includes('-bar'));
       assert.ok(result.structuredContent.diff.includes('+baz'));
+
+      const tooLarge = (await handler(
+        {
+          original: fileA,
+          modified: fileB,
+          maxFileSize: 1,
+        },
+        {}
+      )) as any;
+
+      assert.equal(tooLarge.isError, true);
+      assert.strictEqual(
+        tooLarge.structuredContent.error?.code,
+        ErrorCode.E_TOO_LARGE
+      );
     }
 
     // 3. Apply Patch
@@ -107,6 +123,22 @@ await it('advanced operations integration test', async () => {
 
       const content = await fs.readFile(fileC, 'utf-8');
       assert.strictEqual(content, 'foo\nbaz\n');
+
+      const tooLarge = (await handler(
+        {
+          path: fileC,
+          patch,
+          fuzzy: false,
+          maxFileSize: 1,
+        },
+        {}
+      )) as any;
+
+      assert.equal(tooLarge.isError, true);
+      assert.strictEqual(
+        tooLarge.structuredContent.error?.code,
+        ErrorCode.E_TOO_LARGE
+      );
     }
 
     // 4. Search and Replace
@@ -162,6 +194,29 @@ await it('advanced operations integration test', async () => {
       const c2 = await fs.readFile(path.join(subDir, 'f2.ts'), 'utf-8');
       assert.strictEqual(c1, 'const x = 2;');
       assert.strictEqual(c2, 'const y = 2;');
+
+      const tooLarge = (await handler(
+        {
+          path: tmpDir,
+          filePattern: '**/*.ts',
+          excludePatterns: [],
+          searchPattern: '2',
+          replacement: '3',
+          maxFileSize: 1,
+          dryRun: false,
+        },
+        {}
+      )) as any;
+
+      assert.equal(tooLarge.isError, undefined);
+      assert.strictEqual(tooLarge.structuredContent.failedFiles, 2);
+      assert.strictEqual(tooLarge.structuredContent.filesChanged, 0);
+
+      const unchangedAfterLimit = await fs.readFile(
+        path.join(subDir, 'f1.ts'),
+        'utf-8'
+      );
+      assert.strictEqual(unchangedAfterLimit, 'const x = 2;');
     }
   } finally {
     await setAllowedDirectoriesResolved(previousAllowed);

@@ -656,6 +656,13 @@ export const DiffFilesInputSchema = z.strictObject({
     .optional()
     .default(false)
     .describe('Strip trailing carriage returns before diffing'),
+  maxFileSize: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(100 * 1024 * 1024, 'Max: 104,857,600 (100 MiB)')
+    .optional()
+    .describe('Maximum bytes per input file to diff'),
 });
 
 export const DiffFilesOutputSchema = z.object({
@@ -682,6 +689,13 @@ export const ApplyPatchInputSchema = z.strictObject({
     .optional()
     .default(true)
     .describe('Auto-convert line endings to match target file'),
+  maxFileSize: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(100 * 1024 * 1024, 'Max: 104,857,600 (100 MiB)')
+    .optional()
+    .describe('Maximum bytes for the target file before patching'),
   dryRun: z.boolean().optional().default(false).describe('Check only'),
 });
 
@@ -706,6 +720,13 @@ export const SearchAndReplaceInputSchema = z.strictObject({
   searchPattern: z.string().min(1, 'Search pattern required'),
   replacement: z.string().describe('Replacement text'),
   isRegex: z.boolean().optional().default(false),
+  maxFileSize: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(100 * 1024 * 1024, 'Max: 104,857,600 (100 MiB)')
+    .optional()
+    .describe('Maximum bytes to read/replace per matched file'),
   dryRun: z.boolean().optional().default(false),
 });
 
