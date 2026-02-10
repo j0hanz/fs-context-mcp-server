@@ -87,7 +87,7 @@ async function handleReadFile(
     { name: `read:${path.basename(args.path)}`, mimeType: 'text/plain' }
   );
   if (!externalized) {
-    return buildToolResponse(result.content, structured);
+    return buildToolResponse(result.content, structured, [], resourceStore);
   }
 
   const { entry, preview } = externalized;
@@ -104,14 +104,19 @@ async function handleReadFile(
     preview,
   ].join('\n');
 
-  return buildToolResponse(text, structuredWithResource, [
-    buildResourceLink({
-      uri: entry.uri,
-      name: entry.name,
-      mimeType: entry.mimeType,
-      description: 'Full file contents',
-    }),
-  ]);
+  return buildToolResponse(
+    text,
+    structuredWithResource,
+    [
+      buildResourceLink({
+        uri: entry.uri,
+        name: entry.name,
+        mimeType: entry.mimeType,
+        description: 'Full file contents',
+      }),
+    ],
+    resourceStore
+  );
 }
 
 export function registerReadFileTool(

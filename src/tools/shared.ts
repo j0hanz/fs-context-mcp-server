@@ -67,7 +67,8 @@ export function buildResourceLink(params: {
 function buildContentBlock<T>(
   text: string,
   structuredContent: T,
-  extraContent: ContentBlock[] = []
+  extraContent: ContentBlock[] = [],
+  resourceStore?: ResourceStore
 ): { content: ContentBlock[]; structuredContent: T } {
   let json: string;
   try {
@@ -86,12 +87,26 @@ function buildContentBlock<T>(
       preview,
     });
   }
+
+  const externalized = maybeExternalizeTextContent(resourceStore, json, {
+    name: 'tool:structuredContent',
+    mimeType: 'application/json',
+  });
+
+  const jsonContent: ContentBlock[] = externalized
+    ? [
+        { type: 'text', text: externalized.preview },
+        buildResourceLink({
+          uri: externalized.entry.uri,
+          name: externalized.entry.name,
+          mimeType: externalized.entry.mimeType,
+          description: 'Full structuredContent JSON',
+        }),
+      ]
+    : [{ type: 'text', text: json }];
+
   return {
-    content: [
-      { type: 'text', text },
-      ...extraContent,
-      { type: 'text', text: json },
-    ],
+    content: [{ type: 'text', text }, ...extraContent, ...jsonContent],
     structuredContent,
   };
 }
@@ -118,12 +133,18 @@ function resolveDetailedError(
 export function buildToolResponse<T>(
   text: string,
   structuredContent: T,
-  extraContent: ContentBlock[] = []
+  extraContent: ContentBlock[] = [],
+  resourceStore?: ResourceStore
 ): {
   content: ContentBlock[];
   structuredContent: T;
 } {
-  return buildContentBlock(text, structuredContent, extraContent);
+  return buildContentBlock(
+    text,
+    structuredContent,
+    extraContent,
+    resourceStore
+  );
 }
 
 export type ToolResponse<T> = ReturnType<typeof buildToolResponse<T>> &
