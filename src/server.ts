@@ -2,11 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import type { Stats } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import {
-  getSystemErrorMessage,
-  getSystemErrorName,
-  parseArgs as parseNodeArgs,
-} from 'node:util';
+import { getSystemErrorMessage, getSystemErrorName } from 'node:util';
 
 import {
   InMemoryTaskMessageQueue,
@@ -25,6 +21,8 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { z } from 'zod';
+
+import { Command, CommanderError } from 'commander';
 
 import packageJsonRaw from '../package.json' with { type: 'json' };
 import { formatUnknownErrorMessage } from './lib/errors.js';
@@ -54,6 +52,19 @@ import type { IconInfo } from './tools/shared.js';
 interface ParseArgsResult {
   allowedDirs: string[];
   allowCwd: boolean;
+}
+
+const PackageJsonSchema = z.object({ version: z.string() });
+const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
+
+export class CliExitError extends Error {
+  readonly exitCode: number;
+
+  constructor(message: string, exitCode: number) {
+    super(message);
+    this.name = 'CliExitError';
+    this.exitCode = exitCode;
+  }
 }
 
 function validateCliPath(inputPath: string): void {
@@ -146,24 +157,72 @@ function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
     .map(normalizePath);
 }
 
-export async function parseArgs(): Promise<ParseArgsResult> {
-  const { values, positionals } = parseNodeArgs({
-    args: process.argv.slice(2),
-    strict: true,
-    allowPositionals: true,
-    options: {
-      'allow-cwd': {
-        type: 'boolean',
-        default: false,
-      },
-    } as const,
+function createCliProgram(output: string[]): Command {
+  const cli = new Command();
+  cli
+    .name('fs-context-mcp')
+    .usage('[options] [allowedDirs...]')
+    .description(
+      'MCP filesystem server. Positional directories define allowed access roots.'
+    )
+    .argument(
+      '[allowedDirs...]',
+      'Directories the MCP server can access on disk'
+    )
+    .option(
+      '--allow_cwd, --allow-cwd',
+      'Allow the current working directory as an additional root'
+    )
+    .helpOption('-h, --help', 'Display command help')
+    .version(SERVER_VERSION, '-v, --version', 'Display server version');
+
+  cli.showHelpAfterError('(run with --help for usage)');
+  cli.showSuggestionAfterError(true);
+  cli.exitOverride();
+  cli.configureOutput({
+    writeOut(text: string): void {
+      output.push(text);
+    },
+    writeErr(text: string): void {
+      output.push(text);
+    },
+    outputError(text: string, write: (str: string) => void): void {
+      write(text);
+    },
   });
 
-  const allowCwd = values['allow-cwd'];
+  return cli;
+}
+
+function formatCliOutput(output: readonly string[], fallback: string): string {
+  const joined = output.join('').trimEnd();
+  if (joined.length > 0) return joined;
+  return fallback.trimEnd();
+}
+
+export async function parseArgs(): Promise<ParseArgsResult> {
+  const output: string[] = [];
+  const cli = createCliProgram(output);
+  try {
+    cli.parse(process.argv, { from: 'node' });
+  } catch (error: unknown) {
+    if (error instanceof CommanderError) {
+      throw new CliExitError(
+        formatCliOutput(output, error.message),
+        error.exitCode
+      );
+    }
+    throw error;
+  }
+
+  const options = cli.opts<{ allowCwd?: boolean }>();
+  const allowCwd = options.allowCwd === true;
+  const positionals = cli.args;
   const allowedDirs =
     positionals.length > 0 ? await normalizeCliDirectories(positionals) : [];
+  const deduplicatedDirs = Array.from(new Set(allowedDirs));
 
-  return { allowedDirs, allowCwd };
+  return { allowedDirs: deduplicatedDirs, allowCwd };
 }
 
 interface ServerOptions {
@@ -412,9 +471,6 @@ async function isRootWithinBaseline(
     return false;
   }
 }
-
-const PackageJsonSchema = z.object({ version: z.string() });
-const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 let serverInstructions = `

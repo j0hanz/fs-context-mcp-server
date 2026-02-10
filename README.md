@@ -76,10 +76,12 @@ The server is configured primarily via command-line arguments.
 
 ### CLI Arguments
 
-| Argument      | Description                                                                  |
-| :------------ | :--------------------------------------------------------------------------- |
-| `allowedDirs` | Positional arguments specifying which directories the server can access.     |
-| `--allow-cwd` | Flag to automatically add the current working directory to the allowed list. |
+| Argument                     | Description                                                                  |
+| :--------------------------- | :--------------------------------------------------------------------------- |
+| `allowedDirs`                | Positional arguments specifying which directories the server can access.     |
+| `--allow-cwd`, `--allow_cwd` | Flag to automatically add the current working directory to the allowed list. |
+| `-h`, `--help`               | Show CLI usage and exit.                                                     |
+| `-v`, `--version`            | Show server version and exit.                                                |
 
 ### Environment Variables
 

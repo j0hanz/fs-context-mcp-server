@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 
 import { normalizePath } from '../../lib/path-validation.js';
-import { parseArgs } from '../../server.js';
+import { CliExitError, parseArgs } from '../../server.js';
 
 const originalArgv = process.argv.slice();
 
@@ -30,10 +30,26 @@ await it('parseArgs respects --allow-cwd', async () => {
   assert.deepStrictEqual(result.allowedDirs, []);
 });
 
+await it('parseArgs supports --allow_cwd alias', async () => {
+  const result = await withArgv(['--allow_cwd'], () => parseArgs());
+  assert.strictEqual(result.allowCwd, true);
+  assert.deepStrictEqual(result.allowedDirs, []);
+});
+
 await it('parseArgs normalizes allowed directories', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-args-'));
   try {
     const result = await withArgv([tempDir], () => parseArgs());
+    assert.deepStrictEqual(result.allowedDirs, [normalizePath(tempDir)]);
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+await it('parseArgs de-duplicates repeated allowed directories', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-args-'));
+  try {
+    const result = await withArgv([tempDir, tempDir], () => parseArgs());
     assert.deepStrictEqual(result.allowedDirs, [normalizePath(tempDir)]);
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
@@ -53,5 +69,41 @@ await it('parseArgs rejects Windows reserved device names', async () => {
   await assert.rejects(
     withArgv(['CON'], () => parseArgs()),
     /reserved/i
+  );
+});
+
+await it('parseArgs handles --help as a clean CLI exit', async () => {
+  await assert.rejects(
+    withArgv(['--help'], () => parseArgs()),
+    (error: unknown): boolean => {
+      assert.ok(error instanceof CliExitError);
+      assert.strictEqual(error.exitCode, 0);
+      assert.match(error.message, /Usage:/);
+      return true;
+    }
+  );
+});
+
+await it('parseArgs handles --version as a clean CLI exit', async () => {
+  await assert.rejects(
+    withArgv(['--version'], () => parseArgs()),
+    (error: unknown): boolean => {
+      assert.ok(error instanceof CliExitError);
+      assert.strictEqual(error.exitCode, 0);
+      assert.match(error.message, /\d+\.\d+\.\d+/);
+      return true;
+    }
+  );
+});
+
+await it('parseArgs rejects unknown options with CLI exit code', async () => {
+  await assert.rejects(
+    withArgv(['--does-not-exist'], () => parseArgs()),
+    (error: unknown): boolean => {
+      assert.ok(error instanceof CliExitError);
+      assert.ok(error.exitCode > 0);
+      assert.match(error.message, /unknown option/i);
+      return true;
+    }
   );
 });

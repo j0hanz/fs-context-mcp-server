@@ -7,7 +7,12 @@ import { DEFAULT_SEARCH_TIMEOUT_MS } from './lib/constants.js';
 import { formatUnknownErrorMessage } from './lib/errors.js';
 import { createTimedAbortSignal } from './lib/fs-helpers.js';
 import { setAllowedDirectoriesResolved } from './lib/path-validation.js';
-import { createServer, parseArgs, startServer } from './server.js';
+import {
+  CliExitError,
+  createServer,
+  parseArgs,
+  startServer,
+} from './server.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 let activeServer: McpServer | undefined;
@@ -40,7 +45,21 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const { allowedDirs, allowCwd } = await parseArgs();
+  let allowedDirs: string[];
+  let allowCwd: boolean;
+  try {
+    const parsed = await parseArgs();
+    ({ allowedDirs, allowCwd } = parsed);
+  } catch (error: unknown) {
+    if (error instanceof CliExitError) {
+      if (error.message.length > 0) {
+        console.error(error.message);
+      }
+      process.exitCode = error.exitCode;
+      return;
+    }
+    throw error;
+  }
 
   if (allowedDirs.length > 0) {
     const { signal, cleanup } = createTimedAbortSignal(
@@ -53,6 +72,9 @@ async function main(): Promise<void> {
       cleanup();
     }
     console.error('Allowed directories (from CLI):');
+    for (const dir of allowedDirs) {
+      console.error(`- ${dir}`);
+    }
   } else {
     console.error(
       `No directories specified via CLI. Will use MCP Roots${allowCwd ? ' or current working directory' : ''}.`
