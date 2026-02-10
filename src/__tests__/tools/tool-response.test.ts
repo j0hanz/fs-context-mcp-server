@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
 import { ErrorCode } from '../../lib/errors.js';
+import { ToolErrorResponseSchema } from '../../schemas.js';
 import { buildToolErrorResponse, buildToolResponse } from '../../tools.js';
 
 void it('buildToolResponse includes JSON content matching structuredContent', () => {
@@ -32,4 +33,10 @@ void it('buildToolErrorResponse includes JSON content matching structuredContent
   assert.ok(jsonContent);
   const parsed = JSON.parse((jsonContent as { text: string }).text) as unknown;
   assert.deepStrictEqual(parsed, result.structuredContent);
+
+  // Validate against schema
+  const validation = ToolErrorResponseSchema.safeParse(
+    result.structuredContent
+  );
+  assert.strictEqual(validation.success, true);
 });

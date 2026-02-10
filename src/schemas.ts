@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { ErrorCode } from './config.js';
+
 function isSafeGlobPattern(value: string): boolean {
   if (value.length === 0) return false;
   if (value.includes('**/**/**')) return false;
@@ -65,11 +67,18 @@ const TreeEntrySchema: z.ZodType<TreeEntry> = z.lazy(() =>
   })
 );
 
-const ErrorSchema = z.object({
-  code: z.string().describe('Error code (e.g. E_NOT_FOUND)'),
+export const ErrorSchema = z.object({
+  code: z
+    .enum(Object.values(ErrorCode) as [string, ...string[]])
+    .describe('Error code (e.g. E_NOT_FOUND)'),
   message: z.string().describe('Human-readable message'),
   path: z.string().optional().describe('Relevant path'),
   suggestion: z.string().optional().describe('Fix suggestion'),
+});
+
+export const ToolErrorResponseSchema = z.strictObject({
+  ok: z.literal(false).describe('Operation failed'),
+  error: ErrorSchema.describe('Error details'),
 });
 
 const HeadLinesSchema = z

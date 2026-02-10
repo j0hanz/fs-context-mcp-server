@@ -6,6 +6,8 @@ import type {
   ProgressNotificationParams,
 } from '@modelcontextprotocol/sdk/types.js';
 
+import type { z } from 'zod';
+
 import {
   createDetailedError,
   ErrorCode,
@@ -15,6 +17,7 @@ import {
 } from '../lib/errors.js';
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import type { ResourceStore } from '../lib/resource-store.js';
+import type { ToolErrorResponseSchema } from '../schemas.js';
 
 const MAX_INLINE_CONTENT_CHARS = 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
@@ -126,15 +129,7 @@ export function buildToolResponse<T>(
 export type ToolResponse<T> = ReturnType<typeof buildToolResponse<T>> &
   Record<string, unknown>;
 
-interface ToolErrorStructuredContent extends Record<string, unknown> {
-  ok: false;
-  error: {
-    code: string;
-    message: string;
-    path?: string;
-    suggestion?: string;
-  };
-}
+type ToolErrorStructuredContent = z.infer<typeof ToolErrorResponseSchema>;
 
 interface ToolErrorResponse extends Record<string, unknown> {
   content: ContentBlock[];
