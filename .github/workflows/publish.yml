@@ -56,7 +56,14 @@ jobs:
       # Trusted Publishing: No NODE_AUTH_TOKEN needed!
       # npm automatically uses OIDC for authentication
       - name: Publish to npm (Trusted Publishing)
-        run: npm publish --access public --provenance
+        run: |
+          npm publish --access public --provenance || {
+            if npm view "@j0hanz/filesystem-mcp@${{ steps.version.outputs.version }}" version > /dev/null 2>&1; then
+              echo "⚠️ Version ${{ steps.version.outputs.version }} already published — skipping."
+            else
+              exit 1
+            fi
+          }
 
       - name: Create workflow summary
         run: |
