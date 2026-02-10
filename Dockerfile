@@ -7,8 +7,9 @@ RUN apk add --no-cache python3 make g++
 WORKDIR /app
 
 # Install dependencies first (layer caching)
+# --ignore-scripts avoids triggering `prepare` (build) before source is copied
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source and build
 COPY src/ ./src/
