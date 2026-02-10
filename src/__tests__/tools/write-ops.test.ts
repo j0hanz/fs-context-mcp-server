@@ -68,6 +68,27 @@ await it('write operations integration test', async () => {
       assert.strictEqual(content, 'Hello MCP');
     }
 
+    // 3b. Edit File (unmatched)
+    {
+      const { fakeServer, getHandler } = createSingleToolCapture();
+      registerEditFileTool(fakeServer);
+      const handler = getHandler();
+      const filePath = path.join(tmpDir, 'test.txt');
+      const result = (await handler(
+        {
+          path: filePath,
+          edits: [{ oldText: 'Missing', newText: 'Nope' }],
+        },
+        {}
+      )) as any;
+      assert.equal(result.isError, undefined);
+      assert.deepStrictEqual(result.structuredContent.unmatchedEdits, [
+        'Missing',
+      ]);
+      const content = await fs.readFile(filePath, 'utf-8');
+      assert.strictEqual(content, 'Hello MCP');
+    }
+
     // 4. Move File
     {
       const { fakeServer, getHandler } = createSingleToolCapture();

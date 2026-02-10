@@ -54,6 +54,19 @@ function assertPatchTargetSizeWithinLimit(
   );
 }
 
+function assertPatchHasHunks(patch: string): void {
+  if (!patch.trim()) {
+    throw new McpError(ErrorCode.E_INVALID_INPUT, 'Patch content is empty.');
+  }
+  const hasHunk = /@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/u.test(patch);
+  if (!hasHunk) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      'Patch must include unified hunk headers (e.g., @@ -1,2 +1,2 @@).'
+    );
+  }
+}
+
 async function handleApplyPatch(
   args: z.infer<typeof ApplyPatchInputSchema>,
   signal?: AbortSignal
@@ -65,6 +78,8 @@ async function handleApplyPatch(
   const content = await fs.readFile(validPath, { encoding: 'utf-8', signal });
 
   const fuzzFactor = args.fuzzFactor ?? (args.fuzzy ? 2 : 0);
+
+  assertPatchHasHunks(args.patch);
 
   const patched = applyPatch(content, args.patch, {
     fuzzFactor,

@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -58,6 +59,7 @@ const SEARCH_AND_REPLACE_TOOL = {
 
 const MAX_FAILURES = 20;
 const REPLACE_CONCURRENCY = Math.min(PARALLEL_CONCURRENCY, 8);
+const MAX_CHANGED_FILES = 100;
 
 interface Failure {
   path: string;
@@ -67,6 +69,19 @@ interface Failure {
 function recordFailure(failures: Failure[], failure: Failure): void {
   if (failures.length >= MAX_FAILURES) return;
   failures.push(failure);
+}
+
+function recordChangedFile(
+  summary: ReplaceSummary,
+  filePath: string,
+  matchCount: number
+): void {
+  const relativePath = path.relative(summary.root, filePath);
+  if (summary.changedFiles.length < MAX_CHANGED_FILES) {
+    summary.changedFiles.push({ path: relativePath, matches: matchCount });
+    return;
+  }
+  summary.changedFilesTruncated = true;
 }
 
 function createRegexMatcher(pattern: string): RE2 {
@@ -156,6 +171,8 @@ async function processEntry(
       summary.totalMatches += matchCount;
       summary.filesChanged++;
 
+      recordChangedFile(summary, validPath, matchCount);
+
       if (!args.dryRun) {
         let newContent: string;
         if (args.isRegex && regex) {
@@ -215,20 +232,26 @@ async function processEntriesConcurrently(
 }
 
 interface ReplaceSummary {
+  root: string;
   totalMatches: number;
   filesChanged: number;
   failedFiles: number;
   processedFiles: number;
   failures: Failure[];
+  changedFiles: { path: string; matches: number }[];
+  changedFilesTruncated: boolean;
 }
 
-function createReplaceSummary(): ReplaceSummary {
+function createReplaceSummary(root: string): ReplaceSummary {
   return {
+    root,
     totalMatches: 0,
     filesChanged: 0,
     failedFiles: 0,
     processedFiles: 0,
     failures: [],
+    changedFiles: [],
+    changedFilesTruncated: false,
   };
 }
 
@@ -286,7 +309,7 @@ async function handleSearchAndReplace(
     suppressErrors: true,
   });
 
-  const summary = createReplaceSummary();
+  const summary = createReplaceSummary(root);
   await processEntriesConcurrently(entries, {
     signal,
     concurrency: REPLACE_CONCURRENCY,
@@ -312,6 +335,10 @@ async function handleSearchAndReplace(
       processedFiles: summary.processedFiles,
       ...(summary.failedFiles > 0 ? { failedFiles: summary.failedFiles } : {}),
       ...(summary.failures.length > 0 ? { failures: summary.failures } : {}),
+      ...(summary.changedFiles.length > 0
+        ? { changedFiles: summary.changedFiles }
+        : {}),
+      ...(summary.changedFilesTruncated ? { changedFilesTruncated: true } : {}),
       dryRun: args.dryRun,
     }
   );

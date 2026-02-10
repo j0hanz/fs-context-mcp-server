@@ -4,7 +4,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
-import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
+import {
+  DEFAULT_READ_MANY_MAX_TOTAL_SIZE,
+  DEFAULT_SEARCH_TIMEOUT_MS,
+} from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations/read-multiple-files.js';
 import { createTimedAbortSignal } from '../lib/fs-helpers.js';
@@ -63,31 +66,52 @@ async function handleReadMultipleFiles(
   }
   const results = await readMultipleFiles(args.paths, options);
 
+  const maxTotalSize = DEFAULT_READ_MANY_MAX_TOTAL_SIZE;
+
   type ReadManyResult = Awaited<ReturnType<typeof readMultipleFiles>>[number];
-  type ReadManyResultWithResource = ReadManyResult & { resourceUri?: string };
+  type ReadManyResultWithResource = ReadManyResult & {
+    resourceUri?: string;
+    truncationReason?: 'head' | 'range' | 'externalized';
+    maxTotalSize?: number;
+  };
 
-  const mappedResults: ReadManyResultWithResource[] = results.map(
-    (result): ReadManyResultWithResource => {
-      if (!result.content) {
-        return result;
-      }
-      const externalized = maybeExternalizeTextContent(
-        resourceStore,
-        result.content,
-        { name: `read:${path.basename(result.path)}`, mimeType: 'text/plain' }
-      );
-      if (!externalized) {
-        return result;
-      }
-
-      return {
-        ...result,
-        content: externalized.preview,
-        truncated: true,
-        resourceUri: externalized.entry.uri,
-      };
+  const mappedResults: ReadManyResultWithResource[] = results.map((result) => {
+    let baseTruncationReason: 'head' | 'range' | undefined;
+    if (result.truncated && result.readMode === 'head') {
+      baseTruncationReason = 'head';
+    } else if (result.truncated && result.readMode === 'range') {
+      baseTruncationReason = 'range';
     }
-  );
+
+    const baseResult: ReadManyResultWithResource = {
+      ...result,
+      maxTotalSize,
+      ...(baseTruncationReason
+        ? { truncationReason: baseTruncationReason }
+        : {}),
+    };
+
+    if (!result.content) {
+      return baseResult;
+    }
+
+    const externalized = maybeExternalizeTextContent(
+      resourceStore,
+      result.content,
+      { name: `read:${path.basename(result.path)}`, mimeType: 'text/plain' }
+    );
+    if (!externalized) {
+      return baseResult;
+    }
+
+    return {
+      ...baseResult,
+      content: externalized.preview,
+      truncated: true,
+      resourceUri: externalized.entry.uri,
+      truncationReason: 'externalized',
+    };
+  });
 
   const structured: z.infer<typeof ReadMultipleFilesOutputSchema> = {
     ok: true,
@@ -103,6 +127,8 @@ async function handleReadMultipleFiles(
       linesRead: result.linesRead,
       hasMoreLines: result.hasMoreLines,
       totalLines: result.totalLines,
+      truncationReason: result.truncationReason,
+      maxTotalSize: result.maxTotalSize,
       error: result.error,
     })),
     summary: {

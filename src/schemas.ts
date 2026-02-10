@@ -396,6 +396,11 @@ export const GetMultipleFileInfoInputSchema = z.strictObject({
 export const ListAllowedDirectoriesOutputSchema = z.object({
   ok: z.boolean(),
   directories: z.array(z.string()).optional().describe('Allowed directories'),
+  rootsCount: z.number().optional().describe('Number of roots'),
+  hasMultipleRoots: z
+    .boolean()
+    .optional()
+    .describe('Multiple roots configured'),
   error: ErrorSchema.optional(),
 });
 
@@ -435,6 +440,8 @@ const SearchSummarySchema = z.object({
 
 export const SearchFilesOutputSchema = SearchSummarySchema.extend({
   ok: z.boolean(),
+  root: z.string().optional().describe('Search root'),
+  pattern: z.string().optional().describe('Glob pattern used'),
   results: z
     .array(
       z.object({
@@ -452,6 +459,11 @@ export const SearchFilesOutputSchema = SearchSummarySchema.extend({
 
 export const SearchContentOutputSchema = SearchSummarySchema.extend({
   ok: z.boolean(),
+  patternType: z
+    .enum(['literal', 'regex'])
+    .optional()
+    .describe('Pattern interpretation'),
+  caseSensitive: z.boolean().optional().describe('Case-sensitive matching'),
   matches: z
     .array(
       z.object({
@@ -511,6 +523,11 @@ export const ReadFileOutputSchema = ReadResultSchema.extend({
 
 const ReadMultipleFileResultSchema = ReadResultSchema.extend({
   path: z.string().describe('File path'),
+  truncationReason: z
+    .enum(['head', 'range', 'externalized'])
+    .optional()
+    .describe('Why content was truncated'),
+  maxTotalSize: z.number().optional().describe('Max total size budget'),
   error: z.string().optional().describe('Error message'),
 });
 
@@ -585,6 +602,10 @@ export const EditFileOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
   appliedEdits: z.number().optional(),
+  unmatchedEdits: z
+    .array(z.string())
+    .optional()
+    .describe('Edits that could not be applied'),
   error: ErrorSchema.optional(),
 });
 
@@ -668,6 +689,7 @@ export const DiffFilesInputSchema = z.strictObject({
 export const DiffFilesOutputSchema = z.object({
   ok: z.boolean(),
   diff: z.string().optional().describe('Unified diff content'),
+  isIdentical: z.boolean().optional().describe('True if files are identical'),
   truncated: z.boolean().optional().describe('Diff content truncated?'),
   resourceUri: z.string().optional().describe('Full diff content URI'),
   error: ErrorSchema.optional(),
@@ -745,6 +767,19 @@ export const SearchAndReplaceOutputSchema = z.object({
     )
     .optional()
     .describe('Sample of per-file errors'),
+  changedFiles: z
+    .array(
+      z.object({
+        path: z.string().describe('File path'),
+        matches: z.number().describe('Matches in file'),
+      })
+    )
+    .optional()
+    .describe('Sample of changed files'),
+  changedFilesTruncated: z
+    .boolean()
+    .optional()
+    .describe('Changed file list truncated'),
   dryRun: z.boolean().optional(),
   error: ErrorSchema.optional(),
 });

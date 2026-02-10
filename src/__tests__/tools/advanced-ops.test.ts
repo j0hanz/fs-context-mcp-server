@@ -82,6 +82,15 @@ await it('advanced operations integration test', async () => {
       assert.ok(result.structuredContent.diff.includes('-bar'));
       assert.ok(result.structuredContent.diff.includes('+baz'));
 
+      const identical = (await handler(
+        { original: fileA, modified: fileA },
+        {}
+      )) as any;
+
+      assert.equal(identical.isError, undefined);
+      assert.strictEqual(identical.structuredContent.isIdentical, true);
+      assert.strictEqual(identical.structuredContent.diff, '');
+
       const tooLarge = (await handler(
         {
           original: fileA,
@@ -167,6 +176,15 @@ await it('advanced operations integration test', async () => {
 
       assert.equal(dryResult.isError, undefined);
       assert.strictEqual(dryResult.structuredContent.filesChanged, 2);
+
+      const changedFiles = dryResult.structuredContent.changedFiles as
+        | Array<{ matches: number }>
+        | undefined;
+      assert.ok(changedFiles);
+      assert.strictEqual(changedFiles.length, 2);
+      for (const entry of changedFiles) {
+        assert.strictEqual(entry.matches, 1);
+      }
 
       const contentCheck = await fs.readFile(
         path.join(subDir, 'f1.ts'),

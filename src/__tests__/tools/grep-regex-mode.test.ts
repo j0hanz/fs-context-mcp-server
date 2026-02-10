@@ -24,12 +24,16 @@ void describe('grep tool pattern semantics', () => {
         ok: boolean;
         matches?: unknown[];
         totalMatches?: number;
+        patternType?: string;
+        caseSensitive?: boolean;
       };
 
       assert.equal(structured.ok, true);
       assert.equal(Array.isArray(structured.matches), true);
       assert.equal(structured.matches?.length ?? -1, 0);
       assert.equal(structured.totalMatches ?? -1, 0);
+      assert.equal(structured.patternType, 'literal');
+      assert.equal(structured.caseSensitive, false);
     });
 
     void it('enables regex matching when isRegex=true', async () => {
@@ -50,11 +54,15 @@ void describe('grep tool pattern semantics', () => {
         ok: boolean;
         matches?: Array<{ file: string; line: number; content: string }>;
         totalMatches?: number;
+        patternType?: string;
+        caseSensitive?: boolean;
       };
 
       assert.equal(structured.ok, true);
       assert.ok((structured.matches?.length ?? 0) >= 1);
       assert.ok((structured.totalMatches ?? 0) >= 1);
+      assert.equal(structured.patternType, 'regex');
+      assert.equal(structured.caseSensitive, false);
       const first = structured.matches?.[0];
       assert.ok(first);
       assert.equal(typeof first.file, 'string');

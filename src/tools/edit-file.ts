@@ -5,7 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
-import { ErrorCode, McpError } from '../lib/errors.js';
+import { ErrorCode } from '../lib/errors.js';
 import { atomicWriteFile, createTimedAbortSignal } from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validateExistingPath } from '../lib/path-validation.js';
@@ -35,23 +35,30 @@ const EDIT_FILE_TOOL = {
   },
 } as const;
 
+interface EditResult {
+  content: string;
+  appliedEdits: number;
+  unmatchedEdits: string[];
+}
+
 function applyEdits(
   content: string,
   edits: z.infer<typeof EditFileInputSchema>['edits']
-): string {
+): EditResult {
   let newContent = content;
-  for (let i = 0; i < edits.length; i++) {
-    const edit = edits[i];
-    if (!edit) continue;
+  let appliedEdits = 0;
+  const unmatchedEdits: string[] = [];
+
+  for (const edit of edits) {
     if (!newContent.includes(edit.oldText)) {
-      throw new McpError(
-        ErrorCode.E_INVALID_INPUT,
-        `Edit ${i + 1}/${edits.length}: could not find text to replace: "${edit.oldText}"`
-      );
+      unmatchedEdits.push(edit.oldText);
+      continue;
     }
     newContent = newContent.replace(edit.oldText, edit.newText);
+    appliedEdits += 1;
   }
-  return newContent;
+
+  return { content: newContent, appliedEdits, unmatchedEdits };
 }
 
 async function handleEditFile(
@@ -61,26 +68,36 @@ async function handleEditFile(
   const validPath = await validateExistingPath(args.path, signal);
   const content = await fs.readFile(validPath, { encoding: 'utf-8', signal });
 
-  const newContent = applyEdits(content, args.edits);
+  const {
+    content: newContent,
+    appliedEdits,
+    unmatchedEdits,
+  } = applyEdits(content, args.edits);
+
+  const structured = {
+    ok: true,
+    path: validPath,
+    appliedEdits,
+    ...(unmatchedEdits.length > 0 ? { unmatchedEdits } : {}),
+  };
 
   if (args.dryRun) {
-    return buildToolResponse('Dry run successful. Edits would be applied.', {
-      ok: true,
-      path: validPath,
-      appliedEdits: args.edits.length,
-    });
+    return buildToolResponse(
+      `Dry run complete. ${appliedEdits} edits would be applied.`,
+      structured
+    );
   }
 
-  await atomicWriteFile(validPath, newContent, { encoding: 'utf-8', signal });
+  if (appliedEdits > 0) {
+    await atomicWriteFile(validPath, newContent, { encoding: 'utf-8', signal });
+  }
 
-  return buildToolResponse(
-    `Successfully applied ${args.edits.length} edits to ${args.path}`,
-    {
-      ok: true,
-      path: validPath,
-      appliedEdits: args.edits.length,
-    }
-  );
+  const message =
+    appliedEdits === 0
+      ? `No edits applied to ${args.path}`
+      : `Successfully applied ${appliedEdits} edits to ${args.path}`;
+
+  return buildToolResponse(message, structured);
 }
 
 export function registerEditFileTool(

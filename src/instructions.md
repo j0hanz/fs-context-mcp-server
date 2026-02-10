@@ -73,22 +73,30 @@ These instructions are available as a resource (internal://instructions) or prom
 - Input: `path` (optional, default root), `includeIgnored`, `includeHidden`, optional `pattern`, `maxDepth`, `maxEntries`, `sortBy`, `includeSymlinkTargets`.
 - Limits: Use `tree` for recursion (depth limited).
 
+`roots`
+
+- Purpose: List allowed workspace roots.
+- Output: Includes `rootsCount` and `hasMultipleRoots`.
+
 `find`
 
 - Purpose: Search file paths by glob.
 - Input: `pattern` (required), `path` (optional root), optional `includeHidden`, `includeIgnored`, `sortBy`, `maxDepth`, `maxFilesScanned`.
+- Output: Includes `root` and `pattern` for traceability.
 - Nuance: Respects `.gitignore` unless `includeIgnored=true`.
 
 `grep`
 
 - Purpose: Search file content.
 - Input: `pattern` (string/regex), optional `isRegex`, `caseSensitive`, `wholeWord`, `contextLines`, `filePattern`, `maxResults`, `maxFilesScanned`, `includeHidden`, `includeIgnored`.
+- Output: Includes `patternType` and `caseSensitive`.
 - Limits: Skips binaries/large files. Returns max 50 inline matches.
 
 `read` / `read_many`
 
 - Purpose: Read file text.
 - Input: `path`, `head` (lines), `startLine`/`endLine`.
+- Output: `read_many` includes per-file `maxTotalSize` and `truncationReason` when truncated.
 - Gotcha: Large files return `resourceUri`; read it or use pagination.
 
 `calculate_hash`
@@ -104,6 +112,7 @@ These instructions are available as a resource (internal://instructions) or prom
 
 - Purpose: Create a unified diff between two files.
 - Input: `original`, `modified`, optional `context`, `ignoreWhitespace`, `stripTrailingCr`.
+- Output: Includes `isIdentical` (diff may be empty when true).
 - Gotcha: Large diffs may be returned via `resourceUri`.
 
 `apply_patch`
@@ -115,12 +124,14 @@ These instructions are available as a resource (internal://instructions) or prom
 
 - Purpose: Replace text across files matching a glob.
 - Input: `filePattern`, `searchPattern`, `replacement`, optional `isRegex`, `dryRun`.
+- Output: Includes `changedFiles` with per-file match counts (may be truncated).
 - Gotcha: Review `processedFiles`, `failedFiles`, and `failures` for partial errors.
 
 `edit`
 
 - Purpose: Sequential string replacement.
 - Input: `edits` (array of {oldText, newText}).
+- Output: `unmatchedEdits` lists any `oldText` values not found.
 - Gotcha: `oldText` must match exactly. First occurrence only per edit.
 
 ---

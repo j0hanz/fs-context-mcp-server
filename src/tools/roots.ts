@@ -53,6 +53,8 @@ function handleListAllowedDirectories(): ToolResponse<
   const structured = {
     ok: true,
     directories: dirs,
+    rootsCount: dirs.length,
+    hasMultipleRoots: dirs.length > 1,
   } as const;
   return buildToolResponse(buildTextRoots(dirs), structured);
 }

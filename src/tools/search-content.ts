@@ -4,9 +4,15 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import RE2 from 're2';
+
 import { formatOperationSummary, joinLines } from '../config.js';
 import { DEFAULT_EXCLUDE_PATTERNS } from '../lib/constants.js';
-import { ErrorCode } from '../lib/errors.js';
+import {
+  ErrorCode,
+  formatUnknownErrorMessage,
+  McpError,
+} from '../lib/errors.js';
 import { searchContent } from '../lib/file-operations/search-content.js';
 import type { SearchContentOptions } from '../lib/file-operations/search-content.js';
 import { withToolDiagnostics } from '../lib/observability.js';
@@ -49,6 +55,17 @@ const SEARCH_CONTENT_TOOL = {
     openWorldHint: false,
   },
 } as const;
+
+function assertValidRegexPattern(pattern: string): void {
+  try {
+    new RE2(pattern);
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.E_INVALID_PATTERN,
+      `Invalid regex pattern: ${formatUnknownErrorMessage(error)}`
+    );
+  }
+}
 
 function buildSearchTextResult(
   result: Awaited<ReturnType<typeof searchContent>>,
@@ -106,11 +123,14 @@ function formatSearchMatchLine(match: NormalizedSearchMatch): string {
 
 function buildStructuredSearchResult(
   result: Awaited<ReturnType<typeof searchContent>>,
-  normalizedMatches: NormalizedSearchMatch[]
+  normalizedMatches: NormalizedSearchMatch[],
+  options: { patternType: 'literal' | 'regex'; caseSensitive: boolean }
 ): z.infer<typeof SearchContentOutputSchema> {
   const { summary } = result;
   return {
     ok: true,
+    patternType: options.patternType,
+    caseSensitive: options.caseSensitive,
     matches: normalizedMatches.map(buildSearchMatchPayload),
     totalMatches: summary.matches,
     truncated: summary.truncated,
@@ -161,6 +181,12 @@ async function handleSearchContent(
 ): Promise<ToolResponse<z.infer<typeof SearchContentOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
   const excludePatterns = args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS;
+  const patternType = args.isRegex ? 'regex' : 'literal';
+
+  if (args.isRegex) {
+    assertValidRegexPattern(args.pattern);
+  }
+
   const options: SearchContentOptions = {
     includeHidden: args.includeHidden,
     excludePatterns,
@@ -179,9 +205,25 @@ async function handleSearchContent(
     options.onProgress = onProgress;
   }
 
-  const result = await searchContent(basePath, args.pattern, options);
+  let result: Awaited<ReturnType<typeof searchContent>>;
+  try {
+    result = await searchContent(basePath, args.pattern, options);
+  } catch (error) {
+    if (error instanceof Error && /regular expression/i.test(error.message)) {
+      throw new McpError(ErrorCode.E_INVALID_PATTERN, error.message);
+    }
+    throw error;
+  }
+
   const normalizedMatches = normalizeSearchMatches(result);
-  const structuredFull = buildStructuredSearchResult(result, normalizedMatches);
+  const structuredFull = buildStructuredSearchResult(
+    result,
+    normalizedMatches,
+    {
+      patternType,
+      caseSensitive: args.caseSensitive,
+    }
+  );
   const needsExternalize = normalizedMatches.length > MAX_INLINE_MATCHES;
 
   if (!resourceStore || !needsExternalize) {
@@ -194,6 +236,8 @@ async function handleSearchContent(
   const previewMatches = normalizedMatches.slice(0, MAX_INLINE_MATCHES);
   const previewStructured: z.infer<typeof SearchContentOutputSchema> = {
     ok: true,
+    patternType,
+    caseSensitive: args.caseSensitive,
     matches: previewMatches.map(buildSearchMatchPayload),
     totalMatches: structuredFull.totalMatches,
     truncated: true,

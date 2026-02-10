@@ -91,15 +91,19 @@ async function handleDiffFiles(
     }
   );
 
-  const externalized = maybeExternalizeTextContent(resourceStore, patch, {
+  const isIdentical = !patch.includes('@@');
+  const diffText = isIdentical ? '' : patch;
+
+  const externalized = maybeExternalizeTextContent(resourceStore, diffText, {
     name: 'diff:patch',
     mimeType: 'text/x-diff',
   });
 
   if (!externalized) {
-    return buildToolResponse(patch, {
+    return buildToolResponse(isIdentical ? 'No differences' : diffText, {
       ok: true,
-      diff: patch,
+      diff: diffText,
+      isIdentical,
     });
   }
 
@@ -109,6 +113,7 @@ async function handleDiffFiles(
     {
       ok: true,
       diff: preview,
+      isIdentical,
       truncated: true,
       resourceUri: entry.uri,
     },
