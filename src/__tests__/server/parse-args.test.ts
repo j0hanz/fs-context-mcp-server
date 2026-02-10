@@ -4,8 +4,8 @@ import * as path from 'node:path';
 import assert from 'node:assert/strict';
 import { afterEach, it } from 'node:test';
 
+import { CliExitError, parseArgs } from '../../cli.js';
 import { normalizePath } from '../../lib/path-validation.js';
-import { CliExitError, parseArgs } from '../../server.js';
 
 const originalArgv = process.argv.slice();
 
