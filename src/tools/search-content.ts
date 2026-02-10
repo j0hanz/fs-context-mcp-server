@@ -247,7 +247,7 @@ export function registerSearchContentTool(
             const normalizedArgs = SearchContentInputSchema.parse(args);
             notifyProgress(extra, {
               current: 0,
-              message: `⟋ grep: ${normalizedArgs.pattern}`,
+              message: `⌕ grep: ${normalizedArgs.pattern}`,
             });
 
             const result = await handleSearchContent(
@@ -264,7 +264,7 @@ export function registerSearchContentTool(
 
             notifyProgress(extra, {
               current: finalCurrent,
-              message: `⟋ grep: ${normalizedArgs.pattern} → ${suffix}`,
+              message: `⌕ grep: ${normalizedArgs.pattern} → ${suffix}`,
             });
             return result;
           },
