@@ -232,14 +232,18 @@ class ContextBuffer {
   add(line: string): void {
     // 1. Fill Pending 'After' Contexts
     if (this.pending.length > 0) {
-      // iterate backwards to allow safe removal or use filter
+      let writeIndex = 0;
       for (const p of this.pending) {
         if (p.remaining > 0) {
           p.buffer.push(line);
           p.remaining--;
         }
+        if (p.remaining > 0) {
+          this.pending[writeIndex] = p;
+          writeIndex++;
+        }
       }
-      this.pending = this.pending.filter((p) => p.remaining > 0);
+      this.pending.length = writeIndex;
     }
 
     // 2. Maintain 'Before' Buffer
