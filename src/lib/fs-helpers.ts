@@ -244,23 +244,21 @@ function canStartNext<T, R>(state: ParallelState<T, R>): boolean {
   );
 }
 
-function createTask<T, R>(
+async function createTask<T, R>(
   item: T,
   index: number,
   state: ParallelState<T, R>
 ): Promise<void> {
-  return (async (): Promise<void> => {
-    try {
-      const result = await state.processor(item);
-      state.results.push(result);
-    } catch (reason) {
-      const error =
-        reason instanceof Error
-          ? reason
-          : new Error(formatUnknownErrorMessage(reason));
-      state.errors.push({ index, error });
-    }
-  })();
+  try {
+    const result = await state.processor(item);
+    state.results.push(result);
+  } catch (reason) {
+    const error =
+      reason instanceof Error
+        ? reason
+        : new Error(formatUnknownErrorMessage(reason));
+    state.errors.push({ index, error });
+  }
 }
 
 function queueNextTask<T, R>(state: ParallelState<T, R>): void {
@@ -289,18 +287,19 @@ async function drainTasks<T, R>(
   startNextTasks(state);
 
   while (state.inFlight.size > 0) {
-    const raceTargets = abortPromise
-      ? [...state.inFlight, abortPromise]
-      : [...state.inFlight];
-
-    await Promise.race(raceTargets);
+    if (abortPromise) {
+      const nextTask = Promise.race(state.inFlight);
+      await Promise.race([nextTask, abortPromise]);
+    } else {
+      await Promise.race(state.inFlight);
+    }
 
     if (state.aborted) break;
     startNextTasks(state);
   }
 
   if (state.inFlight.size > 0) {
-    await Promise.allSettled([...state.inFlight]);
+    await Promise.allSettled(state.inFlight);
   }
 }
 
