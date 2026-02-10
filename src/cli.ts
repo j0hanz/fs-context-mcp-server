@@ -128,7 +128,7 @@ function getParsedAllowedDirs(cli: Command): string[] {
 function createCliProgram(output: string[]): Command {
   const cli = new Command();
   cli
-    .name('fs-context-mcp')
+    .name('filesystem-mcp')
     .usage('[options] [allowedDirs...]')
     .description(
       'MCP filesystem server. Positional directories define allowed access roots.'
@@ -148,9 +148,9 @@ function createCliProgram(output: string[]): Command {
       'after',
       `
 Examples:
-  $ fs-context-mcp /path/to/allowed/dir
-  $ fs-context-mcp --allow-cwd
-  $ fs-context-mcp /project/src /project/tests --allow-cwd
+  $ filesystem-mcp /path/to/allowed/dir
+  $ filesystem-mcp --allow-cwd
+  $ filesystem-mcp /project/src /project/tests --allow-cwd
 `
     );
 

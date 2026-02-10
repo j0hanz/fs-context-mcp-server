@@ -11,7 +11,7 @@ export function registerGetHelpPrompt(
   instructions: string,
   iconInfo?: IconInfo
 ): void {
-  const description = 'Return the fs-context usage instructions.';
+  const description = 'Return the filesystem-mcp usage instructions.';
 
   server.registerPrompt(
     'get-help',

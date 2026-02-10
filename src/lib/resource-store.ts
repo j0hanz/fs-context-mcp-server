@@ -84,7 +84,7 @@ export function createInMemoryResourceStore(
     }
 
     const id = randomUUID();
-    const uri = `fs-context://result/${id}`;
+    const uri = `filesystem-mcp://result/${id}`;
     const hash = computeSha256(params.text);
 
     const entry: TextResourceEntry = {

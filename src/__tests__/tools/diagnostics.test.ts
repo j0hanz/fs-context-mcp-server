@@ -83,7 +83,7 @@ function assertPerfEvents(events: { tool?: unknown; elu?: unknown }[]): void {
 
 await it('publishes tool diagnostics events when enabled', async () => {
   const envSnapshot = enableDiagnosticsEnv();
-  const subscription = subscribeDiagnostics('fs-context:tool');
+  const subscription = subscribeDiagnostics('filesystem-mcp:tool');
 
   try {
     await invokeRootsTool();
@@ -97,7 +97,7 @@ await it('publishes tool diagnostics events when enabled', async () => {
 
 await it('publishes perf diagnostics events when enabled', async () => {
   const envSnapshot = enableDiagnosticsEnv();
-  const subscription = subscribeDiagnostics('fs-context:perf');
+  const subscription = subscribeDiagnostics('filesystem-mcp:perf');
 
   try {
     await invokeRootsTool();

@@ -26,15 +26,18 @@ function subscribeOpsTracing(): OpsTracingSubscription {
     publishedEnd.push(message);
   };
 
-  diagnosticsChannel.subscribe('tracing:fs-context:ops:start', onStart);
-  diagnosticsChannel.subscribe('tracing:fs-context:ops:end', onEnd);
+  diagnosticsChannel.subscribe('tracing:filesystem-mcp:ops:start', onStart);
+  diagnosticsChannel.subscribe('tracing:filesystem-mcp:ops:end', onEnd);
 
   return {
     publishedStart,
     publishedEnd,
     unsubscribe: () => {
-      diagnosticsChannel.unsubscribe('tracing:fs-context:ops:start', onStart);
-      diagnosticsChannel.unsubscribe('tracing:fs-context:ops:end', onEnd);
+      diagnosticsChannel.unsubscribe(
+        'tracing:filesystem-mcp:ops:start',
+        onStart
+      );
+      diagnosticsChannel.unsubscribe('tracing:filesystem-mcp:ops:end', onEnd);
     },
   };
 }

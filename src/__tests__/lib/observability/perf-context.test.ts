@@ -43,7 +43,7 @@ await it('startPerfMeasure includes tool context detail when available', async (
     published.push(message);
   };
 
-  diagnosticsChannel.subscribe('fs-context:perf', onMessage);
+  diagnosticsChannel.subscribe('filesystem-mcp:perf', onMessage);
 
   try {
     await withToolDiagnostics(
@@ -83,7 +83,7 @@ await it('startPerfMeasure includes tool context detail when available', async (
     assert.strictEqual(typeof measureEvent.detail['path'], 'string');
     assert.strictEqual((measureEvent.detail['path'] as string).length, 16);
   } finally {
-    diagnosticsChannel.unsubscribe('fs-context:perf', onMessage);
+    diagnosticsChannel.unsubscribe('filesystem-mcp:perf', onMessage);
     restoreDiagnosticsEnv(snapshot);
   }
 });

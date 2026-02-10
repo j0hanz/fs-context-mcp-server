@@ -1,14 +1,14 @@
-# FS-Context MCP Server
+# Filesystem MCP
 
-[![npm version](https://img.shields.io/npm/v/%40j0hanz%2Ffs-context-mcp)](https://www.npmjs.com/package/@j0hanz/fs-context-mcp) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-brightgreen)](https://nodejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.26+-purple)](https://modelcontextprotocol.io/)
+[![npm version](https://img.shields.io/npm/v/%40j0hanz%2Ffilesystem-mcp)](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT) [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D24-brightgreen)](https://nodejs.org/) [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)](https://www.typescriptlang.org/) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-1.26+-purple)](https://modelcontextprotocol.io/)
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install-0078d7?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22fs-context%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%7B%22name%22%3A%22fs-context%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffs-context-mcp%40latest%22%5D%7D) [![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install-f79a2e?logo=claude&logoColor=white)](https://modelcontextprotocol.io/quickstart/user#2-add-the-filesystem-server) [![Install in Cursor](https://img.shields.io/badge/Cursor-Install-000000?logo=cursor&logoColor=white)](https://cursor.com/deeplink/mcp-install?name=fs-context&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZnMtY29udGV4dC1tY3BAbGF0ZXN0Il19)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install-0078d7?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22filesystem-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-mcp%40latest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%7B%22name%22%3A%22filesystem-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-mcp%40latest%22%5D%7D) [![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install-f79a2e?logo=claude&logoColor=white)](https://modelcontextprotocol.io/quickstart/user#2-add-the-filesystem-server) [![Install in Cursor](https://img.shields.io/badge/Cursor-Install-000000?logo=cursor&logoColor=white)](https://cursor.com/deeplink/mcp-install?name=filesystem-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZmlsZXN5c3RlbS1tY3BAbGF0ZXN0Il19)
 
-Filesystem MCP Server that enables LLMs to interact with the local filesystem.
+MCP server that provides a secure interface for language models to perform filesystem operations.
 
 ## Overview
 
-The `fs-context-mcp` server provides a secure interface for language models to perform filesystem operations. By defining a set of tools that map to common file and directory actions, it allows LLMs to read, write, search, and manipulate files within specified allowed directories. This can be used for tasks like code analysis, content generation, data processing, and more, all while ensuring that the model's access is safely confined.
+The `filesystem-mcp` server provides a secure interface for language models to perform filesystem operations. By defining a set of tools that map to common file and directory actions, it allows LLMs to read, write, search, and manipulate files within specified allowed directories. This can be used for tasks like code analysis, content generation, data processing, and more, all while ensuring that the model's access is safely confined.
 
 ## Key Features
 
@@ -32,7 +32,7 @@ The `fs-context-mcp` server provides a secure interface for language models to p
 To run the server with access to your current directory:
 
 ```bash
-npx -y @j0hanz/fs-context-mcp .
+npx -y @j0hanz/filesystem-mcp .
 ```
 
 ## Installation
@@ -40,7 +40,7 @@ npx -y @j0hanz/fs-context-mcp .
 ### Using npx (Recommended)
 
 ```bash
-npx -y @j0hanz/fs-context-mcp <allowed-directory>
+npx -y @j0hanz/filesystem-mcp <allowed-directory>
 ```
 
 ### From Source
@@ -48,8 +48,8 @@ npx -y @j0hanz/fs-context-mcp <allowed-directory>
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/j0hanz/fs-context-mcp-server.git
-   cd fs-context-mcp-server
+   git clone https://github.com/j0hanz/filesystem-mcp.git
+   cd filesystem-mcp
    ```
 
 2. Install dependencies:
@@ -308,10 +308,10 @@ Delete a file or directory.
 
 ### Resources
 
-| Pattern                    | Description         |
-| :------------------------- | :------------------ |
-| `internal://instructions`  | Server Instructions |
-| `fs-context://result/{id}` | Cached Tool Result  |
+| Pattern                        | Description         |
+| :----------------------------- | :------------------ |
+| `internal://instructions`      | Server Instructions |
+| `filesystem-mcp://result/{id}` | Cached Tool Result  |
 
 Tool responses may include a `resource_link` or a `resourceUri` when output is too large to inline. Fetch the full payload with `resources/read` using the provided URI. Cached results are ephemeral and may not appear in `resources/list`.
 
@@ -340,11 +340,11 @@ Add to your `~/AppData/Roaming/Code/User/globalStorage/mcp-settings.json` (Windo
 ```json
 {
   "mcpServers": {
-    "fs-context": {
+    "filesystem-mcp": {
       "command": "npx",
       "args": [
         "-y",
-        "@j0hanz/fs-context-mcp",
+        "@j0hanz/filesystem-mcp",
         "c:\\path\\to\\allowed\\directory"
       ]
     }
@@ -362,11 +362,11 @@ Add to your `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "fs-context": {
+    "filesystem-mcp": {
       "command": "npx",
       "args": [
         "-y",
-        "@j0hanz/fs-context-mcp",
+        "@j0hanz/filesystem-mcp",
         "c:\\path\\to\\allowed\\directory"
       ]
     }
@@ -381,9 +381,9 @@ Add to your `claude_desktop_config.json`:
 
 Configure via the MCP settings panel:
 
-- Name: `fs-context`
+- Name: `filesystem-mcp`
 - Type: `command`
-- Command: `npx -y @j0hanz/fs-context-mcp c:\path\to\allowed\directory`
+- Command: `npx -y @j0hanz/filesystem-mcp c:\path\to\allowed\directory`
 
 </details>
 

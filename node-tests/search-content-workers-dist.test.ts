@@ -120,7 +120,7 @@ async function runSearchInChild(
 }
 
 test('dist searchContent uses worker pool when enabled', async () => {
-  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'fs-context-mcp-'));
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'filesystem-mcp-'));
   try {
     await writeFixtureFiles(tmp);
 

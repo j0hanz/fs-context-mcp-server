@@ -1,4 +1,4 @@
-# FS-CONTEXT INSTRUCTIONS
+# FILESYSTEM-OPS-MCP INSTRUCTIONS
 
 These instructions are available as a resource (internal://instructions) or prompt (get-help). Load them when unsure about tool usage.
 
@@ -21,7 +21,7 @@ These instructions are available as a resource (internal://instructions) or prom
 ## RESOURCES & RESOURCE LINKS
 
 - `internal://instructions`: This document.
-- `fs-context://result/{id}`: Cached large output (ephemeral).
+- `filesystem-mcp://result/{id}`: Cached large output (ephemeral).
 - If a tool response includes a `resourceUri` or `resource_link`, call `resources/read` with the URI to fetch the full payload.
 
 ---

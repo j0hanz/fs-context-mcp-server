@@ -69,7 +69,7 @@ interface ServerOptions {
 
 const ROOTS_TIMEOUT_MS = 5000;
 const ROOTS_DEBOUNCE_MS = 100;
-const MCP_LOGGER_NAME = 'fs-context';
+const MCP_LOGGER_NAME = 'filesystem-mcp';
 
 function canSendMcpLogs(server: McpServer): boolean {
   const capabilities = server.server.getClientCapabilities();
@@ -321,7 +321,7 @@ async function isRootWithinBaseline(
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 let serverInstructions = `
-FS-Context MCP Server Instructions
+Filesystem MCP Instructions
 (Detailed instructions failed to load - check logs)
 `;
 try {
@@ -381,8 +381,8 @@ export async function createServer(
 
   const server = new McpServer(
     {
-      name: 'fs-context-mcp',
-      title: 'FS Context MCP Server',
+      name: 'filesystem-mcp',
+      title: 'Filesystem MCP',
       version: SERVER_VERSION,
       ...(SERVER_DESCRIPTION ? { description: SERVER_DESCRIPTION } : {}),
       ...(SERVER_HOMEPAGE ? { websiteUrl: SERVER_HOMEPAGE } : {}),

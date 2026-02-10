@@ -1,4 +1,4 @@
-name: Publish to npm
+name: Publish
 
 on:
   release:
@@ -9,8 +9,8 @@ permissions:
   id-token: write
 
 jobs:
-  publish:
-    name: Build and Publish to npm
+  publish-npm:
+    name: Publish to npm
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -64,7 +64,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Package** | [\`@j0hanz/fs-context-mcp\`](https://www.npmjs.com/package/@j0hanz/fs-context-mcp) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Package** | [\`@j0hanz/filesystem-mcp\`](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) |" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Registry** | npmjs.com |" >> $GITHUB_STEP_SUMMARY
           echo "| **Auth** | 🔐 Trusted Publishing (OIDC) |" >> $GITHUB_STEP_SUMMARY
@@ -77,9 +77,9 @@ jobs:
           echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
           echo "{" >> $GITHUB_STEP_SUMMARY
           echo "  \"mcpServers\": {" >> $GITHUB_STEP_SUMMARY
-          echo "    \"fs-context\": {" >> $GITHUB_STEP_SUMMARY
+          echo "    \"filesystem-mcp\": {" >> $GITHUB_STEP_SUMMARY
           echo "      \"command\": \"npx\"," >> $GITHUB_STEP_SUMMARY
-          echo "      \"args\": [\"-y\", \"@j0hanz/fs-context-mcp@${{ steps.version.outputs.version }}\", \"/path/to/dir\"]" >> $GITHUB_STEP_SUMMARY
+          echo "      \"args\": [\"-y\", \"@j0hanz/filesystem-mcp@${{ steps.version.outputs.version }}\", \"/path/to/dir\"]" >> $GITHUB_STEP_SUMMARY
           echo "    }" >> $GITHUB_STEP_SUMMARY
           echo "  }" >> $GITHUB_STEP_SUMMARY
           echo "}" >> $GITHUB_STEP_SUMMARY
@@ -87,5 +87,51 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Direct installation:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "npm install -g @j0hanz/fs-context-mcp" >> $GITHUB_STEP_SUMMARY
+          echo "npm install -g @j0hanz/filesystem-mcp" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  publish-mcp:
+    name: Publish to MCP Registry
+    runs-on: ubuntu-latest
+    needs: publish-npm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Sync version from package.json to server.json
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Syncing version to: $VERSION"
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > tmp.json && mv tmp.json server.json
+          echo "Updated server.json:"
+          cat server.json
+
+      - name: Install MCP Publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Login to MCP Registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
+
+      - name: Create workflow summary
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "## 📡 Published to MCP Registry" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Server** | \`io.github.j0hanz/filesystem-mcp\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Registry** | [MCP Registry](https://registry.modelcontextprotocol.io) |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Auth** | 🔐 GitHub OIDC |" >> $GITHUB_STEP_SUMMARY
+          echo "| **npm Package** | [\`@j0hanz/filesystem-mcp\`](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) |" >> $GITHUB_STEP_SUMMARY

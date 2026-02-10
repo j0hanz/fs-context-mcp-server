@@ -5,7 +5,7 @@ import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 import { ErrorCode, McpError } from './lib/errors.js';
 import type { ResourceStore } from './lib/resource-store.js';
 
-const RESULT_TEMPLATE = new ResourceTemplate('fs-context://result/{id}', {
+const RESULT_TEMPLATE = new ResourceTemplate('filesystem-mcp://result/{id}', {
   list: undefined,
 });
 
@@ -20,11 +20,12 @@ export function registerInstructionResource(
   iconInfo?: IconInfo
 ): void {
   server.registerResource(
-    'fs-context-instructions',
+    'filesystem-mcp-instructions',
     'internal://instructions',
     {
       title: 'Server Instructions',
-      description: 'Guidance for using the fs-context MCP tools effectively.',
+      description:
+        'Guidance for using the filesystem-mcp MCP tools effectively.',
       mimeType: 'text/markdown',
       annotations: {
         audience: ['assistant'],
@@ -59,7 +60,7 @@ export function registerResultResources(
   iconInfo?: IconInfo
 ): void {
   server.registerResource(
-    'fs-context-result',
+    'filesystem-mcp-result',
     RESULT_TEMPLATE,
     {
       title: 'Cached Tool Result',

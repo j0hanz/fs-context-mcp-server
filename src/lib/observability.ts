@@ -107,13 +107,13 @@ function updateMetrics(tool: string, ok: boolean, durationMs: number): void {
 // --- Channels & Observability State ---
 
 const CHANNELS = {
-  tool: channel('fs-context:tool'),
-  perf: channel('fs-context:perf'),
-  ops: tracingChannel<unknown, OpsTraceContext>('fs-context:ops'),
+  tool: channel('filesystem-mcp:tool'),
+  perf: channel('filesystem-mcp:perf'),
+  ops: tracingChannel<unknown, OpsTraceContext>('filesystem-mcp:ops'),
 };
 
 const toolContext = new AsyncLocalStorage<ToolAsyncContext>({
-  name: 'fs-context:tool',
+  name: 'filesystem-mcp:tool',
 });
 
 let perfObserver: PerformanceObserver | undefined;
