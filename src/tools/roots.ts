@@ -77,7 +77,7 @@ export function registerListAllowedDirectoriesTool(
     withDefaultIcons({ ...LIST_ALLOWED_DIRECTORIES_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: () => '☰ roots',
+      progressMessage: () => '≣ roots',
     })
   );
 }
