@@ -106,7 +106,7 @@ export function registerApplyPatchTool(
       guard: options.isInitialized,
       progressMessage: (args) => {
         const name = path.basename(args.path);
-        return `patch: ${name}`;
+        return `⧉ apply_patch: ${name}`;
       },
     })
   );

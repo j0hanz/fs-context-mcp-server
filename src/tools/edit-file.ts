@@ -116,7 +116,7 @@ export function registerEditFileTool(
       guard: options.isInitialized,
       progressMessage: (args) => {
         const name = path.basename(args.path);
-        return `edit: ${name} → ${args.edits.length} edits`;
+        return `✎ edit: ${name} → ${args.edits.length} edits`;
       },
     })
   );

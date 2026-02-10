@@ -133,7 +133,7 @@ export function registerDiffFilesTool(
       progressMessage: (args) => {
         const name1 = path.basename(args.original);
         const name2 = path.basename(args.modified);
-        return `diff: ${name1} ↔ ${name2}`;
+        return `≠ diff_files: ${name1} ↔ ${name2}`;
       },
     })
   );

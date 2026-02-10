@@ -130,7 +130,7 @@ export function registerSearchFilesTool(
           async () => {
             notifyProgress(extra, {
               current: 0,
-              message: `find: ${args.pattern}`,
+              message: `⌕ find: ${args.pattern}`,
             });
 
             const { signal, cleanup } = createTimedAbortSignal(
@@ -152,7 +152,7 @@ export function registerSearchFilesTool(
 
               notifyProgress(extra, {
                 current: finalCurrent,
-                message: `find: ${args.pattern} → ${suffix}`,
+                message: `⌕ find: ${args.pattern} → ${suffix}`,
               });
               return result;
             } finally {

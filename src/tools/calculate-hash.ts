@@ -166,7 +166,7 @@ export function registerCalculateHashTool(
       guard: options.isInitialized,
       progressMessage: (args) => {
         const name = path.basename(args.path);
-        return `hashing: ${name}`;
+        return `⌗ calculate_hash: ${name}`;
       },
     })
   );
