@@ -27,24 +27,6 @@
           "isRepeated": true
         }
       ]
-    },
-    {
-      "registryType": "docker",
-      "identifier": "ghcr.io/j0hanz/filesystem-mcp",
-      "version": "1.0.1",
-      "transport": {
-        "type": "stdio"
-      },
-      "packageArguments": [
-        {
-          "type": "positional",
-          "valueHint": "directory",
-          "description": "Root directory path the MCP server is allowed to access (mount as volume to /projects/).",
-          "isRequired": true,
-          "format": "filepath",
-          "isRepeated": true
-        }
-      ]
     }
   ]
 }
