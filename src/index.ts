@@ -19,6 +19,7 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
   shutdownStarted = true;
 
   process.exitCode = exitCode;
+  let keepForceExitTimer = true;
 
   const timer = setTimeout(() => {
     console.error(`Shutdown timed out (${reason}), forcing exit.`);
@@ -29,14 +30,16 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
     if (activeServer) {
       await activeServer.close();
     }
+    keepForceExitTimer = false;
   } catch (error: unknown) {
     console.error(
       `Shutdown error (${reason}):`,
       formatUnknownErrorMessage(error)
     );
   } finally {
-    clearTimeout(timer);
-    process.exit(exitCode);
+    if (!keepForceExitTimer) {
+      clearTimeout(timer);
+    }
   }
 }
 

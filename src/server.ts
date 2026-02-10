@@ -136,12 +136,22 @@ class RootsManager {
       RootsListChangedNotificationSchema,
       () => {
         if (!this.clientInitialized) return;
-        if (this.rootsUpdateTimeout) clearTimeout(this.rootsUpdateTimeout);
-        this.rootsUpdateTimeout = setTimeout(() => {
-          void this.updateRootsFromClient(server);
-        }, ROOTS_DEBOUNCE_MS);
+        this.scheduleRootsUpdate(server);
       }
     );
+  }
+
+  private scheduleRootsUpdate(server: McpServer): void {
+    if (this.rootsUpdateTimeout) {
+      this.rootsUpdateTimeout.refresh();
+      return;
+    }
+
+    this.rootsUpdateTimeout = setTimeout(() => {
+      this.rootsUpdateTimeout = undefined;
+      void this.updateRootsFromClient(server);
+    }, ROOTS_DEBOUNCE_MS);
+    this.rootsUpdateTimeout.unref();
   }
 
   async recomputeAllowedDirectories(): Promise<void> {

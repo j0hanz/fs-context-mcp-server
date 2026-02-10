@@ -378,7 +378,7 @@ async function readProbe(
   handle: fsp.FileHandle,
   signal?: AbortSignal
 ): Promise<Buffer> {
-  const buffer = Buffer.allocUnsafe(BINARY_CHECK_BUFFER_SIZE);
+  const buffer = Buffer.alloc(BINARY_CHECK_BUFFER_SIZE);
   const { bytesRead } = await withAbort(
     handle.read(buffer, 0, BINARY_CHECK_BUFFER_SIZE, 0),
     signal

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { channel, tracingChannel } from 'node:diagnostics_channel';
 import {
   monitorEventLoopDelay,
@@ -186,7 +186,7 @@ function normalizePath(path: string | undefined): string | undefined {
   const { detail } = readConfig();
   if (!path || detail === 0) return undefined;
   if (detail === 2) return path;
-  return createHash('sha256').update(path).digest('hex').slice(0, 16);
+  return hash('sha256', path, 'hex').slice(0, 16);
 }
 
 function enrichWithToolContext(

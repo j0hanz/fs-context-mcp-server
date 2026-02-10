@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { hash, randomUUID } from 'node:crypto';
 
 import { ErrorCode, McpError } from './errors.js';
 
@@ -37,7 +37,7 @@ function estimateBytes(text: string): number {
 }
 
 function computeSha256(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex');
+  return hash('sha256', text, 'hex');
 }
 
 export function createInMemoryResourceStore(

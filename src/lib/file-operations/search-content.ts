@@ -536,7 +536,7 @@ const WORKER_SCRIPT_PATH = path.join(
 const WORKER_SCRIPT_URL = pathToFileURL(WORKER_SCRIPT_PATH);
 
 class SearchWorkerPool {
-  private workers: Worker[] = [];
+  private workers: (Worker | undefined)[];
   private pending = new Map<
     number,
     {
@@ -554,6 +554,44 @@ class SearchWorkerPool {
     private debug: boolean
   ) {
     if (size <= 0) throw new Error('Pool size must be positive');
+    this.workers = Array.from(
+      { length: size },
+      (): Worker | undefined => undefined
+    );
+  }
+
+  private normalizeWorkerError(error: unknown, fallbackMessage: string): Error {
+    if (error instanceof Error) {
+      return error;
+    }
+    return new Error(`${fallbackMessage}: ${formatUnknownErrorMessage(error)}`);
+  }
+
+  private rejectPendingForWorker(workerIndex: number, error: Error): void {
+    for (const [id, pendingRequest] of this.pending) {
+      if (pendingRequest.workerIndex !== workerIndex) {
+        continue;
+      }
+      this.pending.delete(id);
+      pendingRequest.reject(error);
+    }
+  }
+
+  private markWorkerAsUnavailable(
+    workerIndex: number,
+    expectedWorker: Worker
+  ): void {
+    if (this.closed) return;
+    if (this.workers[workerIndex] !== expectedWorker) return;
+    this.workers[workerIndex] = undefined;
+  }
+
+  private getWorker(workerIndex: number): Worker {
+    const existing = this.workers[workerIndex];
+    if (existing) return existing;
+    const worker = this.initWorker(workerIndex);
+    this.workers[workerIndex] = worker;
+    return worker;
   }
 
   private initWorker(index: number): Worker {
@@ -570,14 +608,29 @@ class SearchWorkerPool {
       else p.reject(new Error(msg.error));
     });
 
-    worker.on('error', (err) => {
-      // Fail all pending for this worker with the error
-      for (const [id, p] of this.pending) {
-        if (p.workerIndex === index) {
-          p.reject(err);
-          this.pending.delete(id);
-        }
-      }
+    worker.on('messageerror', (error: unknown) => {
+      const normalized = this.normalizeWorkerError(
+        error,
+        `Worker ${String(index)} failed to deserialize a message`
+      );
+      this.rejectPendingForWorker(index, normalized);
+      this.markWorkerAsUnavailable(index, worker);
+    });
+
+    worker.on('error', (error: Error) => {
+      this.rejectPendingForWorker(index, error);
+      this.markWorkerAsUnavailable(index, worker);
+    });
+
+    worker.on('exit', (exitCode: number) => {
+      if (this.closed) return;
+      this.rejectPendingForWorker(
+        index,
+        new Error(
+          `Worker ${String(index)} exited with code ${String(exitCode)}`
+        )
+      );
+      this.markWorkerAsUnavailable(index, worker);
     });
     worker.unref();
 
@@ -587,21 +640,28 @@ class SearchWorkerPool {
   scan(req: WorkerScanRequest): ScanTask {
     if (this.closed) throw new Error(ERROR_WORKER_POOL_CLOSED);
 
-    // Lazy init
-    if (this.workers.length < this.size) {
-      this.workers.push(this.initWorker(this.workers.length));
-    }
-
     const id = this.nextRequestId++;
-    const workerIndex = this.workerRoundRobin % this.workers.length;
-    const worker = this.workers[workerIndex];
-    if (!worker) throw new Error('Worker not available');
+    const workerIndex = this.workerRoundRobin % this.size;
+    const worker = this.getWorker(workerIndex);
 
     this.workerRoundRobin++;
 
     const promise = new Promise<WorkerScanResult>((resolve, reject) => {
       this.pending.set(id, { resolve, reject, workerIndex });
-      worker.postMessage({ type: 'scan', id, ...req } as ScanRequest);
+      try {
+        worker.postMessage({ type: 'scan', id, ...req } as ScanRequest);
+      } catch (error: unknown) {
+        this.pending.delete(id);
+        reject(
+          this.normalizeWorkerError(
+            error,
+            `Failed to post scan request ${String(id)} to worker ${String(
+              workerIndex
+            )}`
+          )
+        );
+        this.markWorkerAsUnavailable(workerIndex, worker);
+      }
     });
 
     return {
@@ -627,8 +687,14 @@ class SearchWorkerPool {
     for (const p of this.pending.values())
       p.reject(new Error(ERROR_WORKER_POOL_CLOSED));
     this.pending.clear();
-    await Promise.all(this.workers.map((w) => w.terminate()));
-    this.workers = [];
+    const workers = this.workers.filter(
+      (worker): worker is Worker => worker !== undefined
+    );
+    await Promise.all(workers.map((worker) => worker.terminate()));
+    this.workers = Array.from(
+      { length: this.size },
+      (): Worker | undefined => undefined
+    );
   }
 }
 

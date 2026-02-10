@@ -1,6 +1,6 @@
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -9,7 +9,11 @@ import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
 import { globEntries } from '../lib/file-operations/glob-engine.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import {
+  assertNotAborted,
+  createTimedAbortSignal,
+  withAbort,
+} from '../lib/fs-helpers.js';
 import { withToolDiagnostics } from '../lib/observability.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import {
@@ -28,6 +32,8 @@ import {
   wrapToolHandler,
 } from './shared.js';
 
+const WINDOWS_PATH_SEPARATOR = /\\/gu;
+
 const CALCULATE_HASH_TOOL = {
   title: 'Calculate Hash',
   description: 'Calculate SHA-256 hash of a file or directory.',
@@ -44,14 +50,44 @@ async function hashFile(
   filePath: string,
   signal?: AbortSignal
 ): Promise<string> {
-  const hashOp = crypto.createHash('sha256');
+  assertNotAborted(signal);
+  const hashOp = createHash('sha256');
   const stream = createReadStream(filePath, { signal });
 
   for await (const chunk of stream) {
     hashOp.update(chunk as Buffer | string);
+    assertNotAborted(signal);
   }
 
+  assertNotAborted(signal);
   return hashOp.digest('hex');
+}
+
+function toStableRelativePath(root: string, entryPath: string): string {
+  const relativePath = path.relative(root, entryPath);
+  return relativePath.includes(path.win32.sep)
+    ? relativePath.replace(WINDOWS_PATH_SEPARATOR, '/')
+    : relativePath;
+}
+
+function comparePaths(left: { path: string }, right: { path: string }): number {
+  if (left.path < right.path) return -1;
+  if (left.path > right.path) return 1;
+  return 0;
+}
+
+function updateCompositeHash(
+  hasher: ReturnType<typeof createHash>,
+  relativePath: string,
+  fileHash: string
+): void {
+  const relativePathBytes = Buffer.from(relativePath, 'utf8');
+  const pathLengthBytes = Buffer.alloc(4);
+  pathLengthBytes.writeUInt32BE(relativePathBytes.length, 0);
+
+  hasher.update(pathLengthBytes);
+  hasher.update(relativePathBytes);
+  hasher.update(Buffer.from(fileHash, 'hex'));
 }
 
 async function hashDirectory(
@@ -73,25 +109,24 @@ async function hashDirectory(
     stats: false,
     suppressErrors: true,
   })) {
-    if (signal?.aborted) {
-      throw new Error('Operation aborted');
-    }
+    assertNotAborted(signal);
 
     // entry.path is already absolute, no need to join
     const fileHash = await hashFile(entry.path, signal);
-    // Store relative path for deterministic sorting
-    const relativePath = path.relative(dirPath, entry.path);
+    // Use posix separators so hashes are stable across OS path separators.
+    const relativePath = toStableRelativePath(dirPath, entry.path);
     entries.push({ path: relativePath, hash: fileHash });
   }
 
-  // Sort by path for deterministic ordering
-  entries.sort((a, b) => a.path.localeCompare(b.path));
+  assertNotAborted(signal);
+  // Sort by path with byte-wise semantics for deterministic ordering.
+  entries.sort(comparePaths);
 
-  // Create composite hash: hash(path1 + hash1 + path2 + hash2 + ...)
-  const compositeHasher = crypto.createHash('sha256');
+  // Create composite hash using length-delimited paths and binary digests.
+  const compositeHasher = createHash('sha256');
   for (const { path: filePath, hash: fileHash } of entries) {
-    compositeHasher.update(filePath);
-    compositeHasher.update(fileHash);
+    updateCompositeHash(compositeHasher, filePath, fileHash);
+    assertNotAborted(signal);
   }
 
   return {
@@ -107,7 +142,7 @@ async function handleCalculateHash(
   const validPath = await validateExistingPath(args.path, signal);
 
   // Check if path is a directory or file
-  const stats = await fs.stat(validPath);
+  const stats = await withAbort(fs.stat(validPath), signal);
 
   if (stats.isDirectory()) {
     // Hash directory: composite hash of all files

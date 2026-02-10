@@ -36,6 +36,33 @@ await it('advanced operations integration test', async () => {
       );
     }
 
+    // 1b. Calculate Hash (directory)
+    {
+      const dirPath = path.join(tmpDir, 'hash-dir');
+      const nestedPath = path.join(dirPath, 'nested');
+      await fs.mkdir(nestedPath, { recursive: true });
+      await fs.writeFile(path.join(dirPath, 'b.txt'), 'b', 'utf-8');
+      await fs.writeFile(path.join(dirPath, 'a.txt'), 'a', 'utf-8');
+      await fs.writeFile(path.join(nestedPath, 'c.txt'), 'c', 'utf-8');
+
+      const { fakeServer, getHandler } = createSingleToolCapture();
+      registerCalculateHashTool(fakeServer);
+      const handler = getHandler();
+
+      const first = (await handler({ path: dirPath }, {})) as any;
+      const second = (await handler({ path: dirPath }, {})) as any;
+
+      assert.equal(first.isError, undefined);
+      assert.equal(second.isError, undefined);
+      assert.strictEqual(first.structuredContent.isDirectory, true);
+      assert.strictEqual(first.structuredContent.fileCount, 3);
+      assert.strictEqual(first.structuredContent.hash.length, 64);
+      assert.strictEqual(
+        first.structuredContent.hash,
+        second.structuredContent.hash
+      );
+    }
+
     // 2. Diff Files
     {
       const fileA = path.join(tmpDir, 'a.txt');
