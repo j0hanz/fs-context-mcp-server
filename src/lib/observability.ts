@@ -189,6 +189,25 @@ function normalizePath(path: string | undefined): string | undefined {
   return createHash('sha256').update(path).digest('hex').slice(0, 16);
 }
 
+function enrichWithToolContext(
+  detail?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  const current = toolContext.getStore();
+  if (!current) return detail;
+
+  const merged: Record<string, unknown> = { ...(detail ?? {}) };
+  if (!Object.hasOwn(merged, 'tool')) {
+    merged.tool = current.tool;
+  }
+
+  const normalizedPath = normalizePath(current.path);
+  if (normalizedPath && !Object.hasOwn(merged, 'path')) {
+    merged.path = normalizedPath;
+  }
+
+  return merged;
+}
+
 // --- Perf Helpers ---
 
 function toMs(nanos: number): number {
@@ -286,24 +305,28 @@ export function startPerfMeasure(
   const id = ++traceCounter;
   const startMark = `${name}:start:${id}`;
   const endMark = `${name}:end:${id}`;
+  const runInCapturedContext = AsyncLocalStorage.snapshot();
 
   performance.mark(startMark);
 
   return (ok?: boolean) => {
-    performance.mark(endMark);
-    const meta =
-      ok === undefined && !detail
-        ? undefined
-        : { ...(detail ?? {}), ...(ok !== undefined ? { ok } : {}) };
+    runInCapturedContext(() => {
+      performance.mark(endMark);
 
-    performance.measure(name, {
-      start: startMark,
-      end: endMark,
-      detail: meta,
+      let meta = enrichWithToolContext(detail);
+      if (ok !== undefined) {
+        meta = { ...(meta ?? {}), ok };
+      }
+
+      performance.measure(name, {
+        start: startMark,
+        end: endMark,
+        detail: meta,
+      });
+
+      performance.clearMarks(startMark);
+      performance.clearMarks(endMark);
     });
-
-    performance.clearMarks(startMark);
-    performance.clearMarks(endMark);
   };
 }
 

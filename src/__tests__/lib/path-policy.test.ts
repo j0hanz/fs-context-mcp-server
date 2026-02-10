@@ -13,6 +13,14 @@ void it('flags token patterns as sensitive', () => {
   assert.strictEqual(isSensitivePath('.mcpregistry_registry_token'), true);
 });
 
+void it('flags nested sensitive path patterns as sensitive', () => {
+  assert.strictEqual(
+    isSensitivePath('workspace/secrets/.aws/credentials'),
+    true
+  );
+  assert.strictEqual(isSensitivePath('workspace/.aws/config'), true);
+});
+
 void it('does not flag ordinary source files', () => {
   assert.strictEqual(isSensitivePath('src/index.ts'), false);
 });

@@ -98,6 +98,7 @@ await it('advanced operations integration test', async () => {
         {
           path: tmpDir,
           filePattern: '**/*.ts',
+          excludePatterns: [],
           searchPattern: '1',
           replacement: '2',
           dryRun: true,
@@ -119,6 +120,7 @@ await it('advanced operations integration test', async () => {
         {
           path: tmpDir,
           filePattern: '**/*.ts',
+          excludePatterns: [],
           searchPattern: '1',
           replacement: '2',
           dryRun: false,

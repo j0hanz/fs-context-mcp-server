@@ -42,6 +42,14 @@ function registerBinaryEdgeCases(getTestDir: () => string): void {
     assert.strictEqual(isBinary, false);
     await fs.rm(bomFile);
   });
+
+  void it('isProbablyBinary identifies invalid UTF-8 content as binary', async () => {
+    const invalidFile = path.join(getTestDir(), 'invalid-utf8.txt');
+    await fs.writeFile(invalidFile, Buffer.from([0xc3, 0x28, 0xa0, 0xa1]));
+    const isBinary = await isProbablyBinary(invalidFile);
+    assert.strictEqual(isBinary, true);
+    await fs.rm(invalidFile);
+  });
 }
 
 void describe('isProbablyBinary', () => {

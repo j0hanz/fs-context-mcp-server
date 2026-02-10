@@ -9,16 +9,34 @@ import { ErrorCode, McpError } from './errors.js';
 
 interface CompiledPattern {
   raw: string;
-  regex: RegExp;
+  globs: readonly string[];
   matchesPath: boolean;
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
-}
+const IS_WINDOWS = platform() === 'win32';
+const WINDOWS_ABSOLUTE_RE = /^[a-z]:\//iu;
 
 function normalizePathForMatch(input: string): string {
   return path.normalize(input).replace(/\\/gu, '/');
+}
+
+function normalizeForMatch(input: string): string {
+  const normalized = normalizePathForMatch(input);
+  return IS_WINDOWS ? normalized.toLowerCase() : normalized;
+}
+
+function compilePatternGlobs(normalizedPattern: string): readonly string[] {
+  const globs = new Set<string>([normalizedPattern]);
+  const isWindowsAbsolute = WINDOWS_ABSOLUTE_RE.test(normalizedPattern);
+
+  if (!normalizedPattern.startsWith('**/') && !isWindowsAbsolute) {
+    const withoutRoot = normalizedPattern.replace(/^\/+/u, '');
+    if (withoutRoot.length > 0) {
+      globs.add(`**/${withoutRoot}`);
+    }
+  }
+
+  return [...globs];
 }
 
 function compilePatterns(patterns: readonly string[]): CompiledPattern[] {
@@ -27,15 +45,13 @@ function compilePatterns(patterns: readonly string[]): CompiledPattern[] {
       .map((pattern) => pattern.trim())
       .filter((pattern) => pattern.length > 0)
   );
-  const flags = platform() === 'win32' ? 'i' : '';
+
   return [...unique].map((pattern) => {
-    const normalized = normalizePathForMatch(pattern);
+    const normalized = normalizeForMatch(pattern);
     const matchesPath = normalized.includes('/');
-    const escaped = escapeRegex(normalized).replace(/\*/gu, '.*');
-    const source = matchesPath ? escaped : `^${escaped}$`;
     return {
       raw: normalized,
-      regex: new RegExp(source, flags),
+      globs: matchesPath ? compilePatternGlobs(normalized) : [normalized],
       matchesPath,
     };
   });
@@ -52,7 +68,9 @@ function matchesAny(
   for (const pattern of patterns) {
     const candidates = pattern.matchesPath ? pathCandidates : nameCandidates;
     for (const candidate of candidates) {
-      if (pattern.regex.test(candidate)) return true;
+      for (const glob of pattern.globs) {
+        if (path.posix.matchesGlob(candidate, glob)) return true;
+      }
     }
   }
   return false;
@@ -64,9 +82,9 @@ export function isSensitivePath(
 ): boolean {
   if (DENY_PATTERNS.length === 0) return false;
 
-  const normalizedRequested = normalizePathForMatch(requestedPath);
+  const normalizedRequested = normalizeForMatch(requestedPath);
   const normalizedResolved = resolvedPath
-    ? normalizePathForMatch(resolvedPath)
+    ? normalizeForMatch(resolvedPath)
     : undefined;
 
   const pathCandidates = [
@@ -77,9 +95,9 @@ export function isSensitivePath(
   ];
 
   const nameCandidates = [
-    path.basename(normalizedRequested),
+    path.posix.basename(normalizedRequested),
     ...(normalizedResolved && normalizedResolved !== normalizedRequested
-      ? [path.basename(normalizedResolved)]
+      ? [path.posix.basename(normalizedResolved)]
       : []),
   ];
 

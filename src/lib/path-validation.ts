@@ -147,30 +147,32 @@ function getAllowedDirectoriesForRelativeResolution(): string[] {
     : [...allowedDirectoriesExpanded];
 }
 
-function isPathPrefix(rootComp: string, candidateComp: string): boolean {
-  if (candidateComp.length < rootComp.length) return false;
-  if (!candidateComp.startsWith(rootComp)) return false;
+function isPathInsideDirectory(
+  normalizedDirectory: string,
+  normalizedCandidate: string
+): boolean {
+  const root = normalizeForComparison(normalizedDirectory);
+  const candidate = normalizeForComparison(normalizedCandidate);
 
-  if (candidateComp.length === rootComp.length) return true;
+  if (root === candidate) return true;
 
-  // If root already ends with a separator, it is a valid prefix.
-  const rootLast = rootComp.charCodeAt(rootComp.length - 1);
-  if (rootLast === 47 || rootLast === 92) return true;
+  const relative = path.relative(root, candidate);
+  if (relative.length === 0) return true;
+  if (relative === '..') return false;
 
-  // Boundary check: "/foo" is not a prefix of "/foobar".
-  const boundary = candidateComp.charCodeAt(rootComp.length);
-  return boundary === 47 || boundary === 92;
+  return (
+    !relative.startsWith('..\\') &&
+    !relative.startsWith('../') &&
+    !path.isAbsolute(relative)
+  );
 }
 
 export function isPathWithinDirectories(
   normalizedPath: string,
   allowedDirs: readonly string[]
 ): boolean {
-  const candidate = normalizeForComparison(normalizedPath);
-
   for (const allowedDir of allowedDirs) {
-    const root = normalizeForComparison(allowedDir);
-    if (isPathPrefix(root, candidate)) return true;
+    if (isPathInsideDirectory(allowedDir, normalizedPath)) return true;
   }
 
   return false;

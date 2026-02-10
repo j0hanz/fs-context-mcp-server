@@ -1,5 +1,6 @@
 import * as fsp from 'node:fs/promises';
 import * as path from 'node:path';
+import { isUtf8 } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
@@ -360,15 +361,6 @@ async function readProbe(
   return buffer.subarray(0, bytesRead);
 }
 
-function hasUtf8Bom(slice: Buffer): boolean {
-  return (
-    slice.length >= 3 &&
-    slice[0] === 0xef &&
-    slice[1] === 0xbb &&
-    slice[2] === 0xbf
-  );
-}
-
 function hasUtf16Bom(slice: Buffer): boolean {
   return (
     slice.length >= 2 &&
@@ -399,8 +391,9 @@ export async function isProbablyBinary(
 
 function isBinarySlice(slice: Buffer): boolean {
   if (slice.length === 0) return false;
-  if (hasUtf8Bom(slice) || hasUtf16Bom(slice)) return false;
-  return slice.includes(0);
+  if (hasUtf16Bom(slice)) return false;
+  if (slice.includes(0)) return true;
+  return !isUtf8(slice);
 }
 
 type ReadMode = 'head' | 'full' | 'range';

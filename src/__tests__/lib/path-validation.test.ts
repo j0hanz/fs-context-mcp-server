@@ -7,6 +7,7 @@ import { after, before, describe, it } from 'node:test';
 import { normalizePath } from '../../lib/path-validation.js';
 import {
   getAllowedDirectories,
+  isPathWithinDirectories,
   isWindowsDriveRelativePath,
   setAllowedDirectoriesResolved,
   validateExistingPath,
@@ -117,6 +118,18 @@ function registerRejectedPathTests(getFixture: () => TestFixture): void {
       'non-existent-file.txt'
     );
     await assert.rejects(validateExistingPath(nonExistent));
+  });
+
+  void it('isPathWithinDirectories enforces path segment boundaries', () => {
+    const allowedRoot = normalizePath(path.join(getFixture().testDir, 'foo'));
+    const siblingPath = normalizePath(
+      path.join(getFixture().testDir, 'foobar', 'file.txt')
+    );
+
+    assert.strictEqual(
+      isPathWithinDirectories(siblingPath, [allowedRoot]),
+      false
+    );
   });
 }
 
