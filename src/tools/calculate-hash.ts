@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import type { BinaryToTextEncoding } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 
@@ -48,8 +49,19 @@ const CALCULATE_HASH_TOOL = {
 
 async function hashFile(
   filePath: string,
+  encoding: BinaryToTextEncoding,
   signal?: AbortSignal
-): Promise<string> {
+): Promise<string>;
+async function hashFile(
+  filePath: string,
+  encoding: undefined,
+  signal?: AbortSignal
+): Promise<Buffer>;
+async function hashFile(
+  filePath: string,
+  encoding: BinaryToTextEncoding | undefined,
+  signal?: AbortSignal
+): Promise<string | Buffer> {
   assertNotAborted(signal);
   const hashOp = createHash('sha256');
   const stream = createReadStream(filePath, { signal });
@@ -60,7 +72,7 @@ async function hashFile(
   }
 
   assertNotAborted(signal);
-  return hashOp.digest('hex');
+  return encoding === undefined ? hashOp.digest() : hashOp.digest(encoding);
 }
 
 function toStableRelativePath(root: string, entryPath: string): string {
@@ -78,16 +90,16 @@ function comparePaths(left: { path: string }, right: { path: string }): number {
 
 function updateCompositeHash(
   hasher: ReturnType<typeof createHash>,
+  pathLengthBytes: Buffer,
   relativePath: string,
-  fileHash: string
+  fileHash: Buffer
 ): void {
   const relativePathBytes = Buffer.from(relativePath, 'utf8');
-  const pathLengthBytes = Buffer.alloc(4);
   pathLengthBytes.writeUInt32BE(relativePathBytes.length, 0);
 
   hasher.update(pathLengthBytes);
   hasher.update(relativePathBytes);
-  hasher.update(Buffer.from(fileHash, 'hex'));
+  hasher.update(fileHash);
 }
 
 async function hashDirectory(
@@ -95,7 +107,7 @@ async function hashDirectory(
   signal?: AbortSignal
 ): Promise<{ hash: string; fileCount: number }> {
   // Enumerate all files in directory (respects .gitignore by default)
-  const entries: { path: string; hash: string }[] = [];
+  const entries: { path: string; hash: Buffer }[] = [];
 
   for await (const entry of globEntries({
     cwd: dirPath,
@@ -112,7 +124,7 @@ async function hashDirectory(
     assertNotAborted(signal);
 
     // entry.path is already absolute, no need to join
-    const fileHash = await hashFile(entry.path, signal);
+    const fileHash = await hashFile(entry.path, undefined, signal);
     // Use posix separators so hashes are stable across OS path separators.
     const relativePath = toStableRelativePath(dirPath, entry.path);
     entries.push({ path: relativePath, hash: fileHash });
@@ -124,8 +136,9 @@ async function hashDirectory(
 
   // Create composite hash using length-delimited paths and binary digests.
   const compositeHasher = createHash('sha256');
+  const pathLengthBytes = Buffer.allocUnsafe(4);
   for (const { path: filePath, hash: fileHash } of entries) {
-    updateCompositeHash(compositeHasher, filePath, fileHash);
+    updateCompositeHash(compositeHasher, pathLengthBytes, filePath, fileHash);
     assertNotAborted(signal);
   }
 
@@ -157,7 +170,7 @@ async function handleCalculateHash(
     });
   } else {
     // Hash single file
-    const hash = await hashFile(validPath, signal);
+    const hash = await hashFile(validPath, 'hex', signal);
 
     return buildToolResponse(hash, {
       ok: true,

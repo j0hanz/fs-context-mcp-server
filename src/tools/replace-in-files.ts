@@ -86,54 +86,72 @@ function countRegexMatches(content: string, regex: RE2): number {
   return count;
 }
 
-async function processFile(
-  filePath: string,
+function countLiteralMatches(content: string, searchPattern: string): number {
+  let count = 0;
+  let pos = content.indexOf(searchPattern);
+  const patternLength = searchPattern.length;
+  while (pos !== -1) {
+    count++;
+    pos = content.indexOf(searchPattern, pos + patternLength);
+  }
+  return count;
+}
+
+async function processEntry(
+  entryPath: string,
   args: z.infer<typeof SearchAndReplaceInputSchema>,
   regex: RE2 | undefined,
-  signal?: AbortSignal
-): Promise<{ matches: number; changed: boolean; error?: string }> {
+  signal: AbortSignal | undefined,
+  summary: ReplaceSummary
+): Promise<void> {
+  let validPath: string;
   try {
-    const content = await fs.readFile(filePath, {
+    validPath = await validatePathForWrite(entryPath, signal);
+  } catch (error) {
+    summary.failedFiles++;
+    recordFailure(summary.failures, {
+      path: entryPath,
+      error: formatUnknownErrorMessage(error),
+    });
+    return;
+  }
+
+  try {
+    const content = await fs.readFile(validPath, {
       encoding: 'utf-8',
       signal,
     });
-    let newContent = content;
-    let matchCount = 0;
 
-    if (args.isRegex && regex) {
-      matchCount = countRegexMatches(content, regex);
-      if (matchCount > 0) {
-        regex.lastIndex = 0;
-        newContent = content.replace(regex, args.replacement);
-      }
-    } else {
-      let pos = content.indexOf(args.searchPattern);
-      while (pos !== -1) {
-        matchCount++;
-        pos = content.indexOf(
-          args.searchPattern,
-          pos + args.searchPattern.length
-        );
-      }
-      if (matchCount > 0) {
-        newContent = content.replaceAll(args.searchPattern, args.replacement);
+    const matchCount =
+      args.isRegex && regex
+        ? countRegexMatches(content, regex)
+        : countLiteralMatches(content, args.searchPattern);
+
+    if (matchCount > 0) {
+      summary.totalMatches += matchCount;
+      summary.filesChanged++;
+
+      if (!args.dryRun) {
+        let newContent: string;
+        if (args.isRegex && regex) {
+          regex.lastIndex = 0;
+          newContent = content.replace(regex, args.replacement);
+        } else {
+          newContent = content.replaceAll(args.searchPattern, args.replacement);
+        }
+
+        await atomicWriteFile(validPath, newContent, {
+          encoding: 'utf-8',
+          signal,
+        });
       }
     }
-
-    if (matchCount > 0 && !args.dryRun) {
-      await atomicWriteFile(filePath, newContent, {
-        encoding: 'utf-8',
-        signal,
-      });
-    }
-
-    return { matches: matchCount, changed: matchCount > 0 };
   } catch (error) {
-    return {
-      matches: 0,
-      changed: false,
+    summary.failedFiles++;
+    recordFailure(summary.failures, {
+      path: validPath,
       error: formatUnknownErrorMessage(error),
-    };
+    });
   }
 }
 
@@ -178,52 +196,19 @@ function createReplacementRegex(
 }
 
 function reportReplaceProgress(
-  onProgress:
-    | ((progress: { total?: number; current: number }) => void)
-    | undefined,
+  onProgress: (progress: { total?: number; current: number }) => void,
   current: number,
   force = false
 ): void {
-  if (!onProgress || current === 0) return;
+  if (current === 0) return;
   if (!force && current % 25 !== 0) return;
   onProgress({ current });
-}
-
-async function processEntry(
-  entryPath: string,
-  args: z.infer<typeof SearchAndReplaceInputSchema>,
-  regex: RE2 | undefined,
-  signal: AbortSignal | undefined,
-  summary: ReplaceSummary
-): Promise<void> {
-  let validPath: string;
-  try {
-    validPath = await validatePathForWrite(entryPath, signal);
-  } catch (error) {
-    summary.failedFiles++;
-    recordFailure(summary.failures, {
-      path: entryPath,
-      error: formatUnknownErrorMessage(error),
-    });
-    return;
-  }
-
-  const result = await processFile(validPath, args, regex, signal);
-  if (result.matches > 0) {
-    summary.totalMatches += result.matches;
-    summary.filesChanged++;
-  }
-
-  if (result.error) {
-    summary.failedFiles++;
-    recordFailure(summary.failures, { path: validPath, error: result.error });
-  }
 }
 
 async function handleSearchAndReplace(
   args: z.infer<typeof SearchAndReplaceInputSchema>,
   signal?: AbortSignal,
-  onProgress?: (progress: { total?: number; current: number }) => void
+  onProgress: (progress: { total?: number; current: number }) => void = () => {}
 ): Promise<ToolResponse<z.infer<typeof SearchAndReplaceOutputSchema>>> {
   const root = await resolveSearchRoot(args.path, signal);
   const regex = createReplacementRegex(args);
