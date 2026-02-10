@@ -44,8 +44,16 @@ import {
 import { registerAllTools } from './tools.js';
 import type { IconInfo } from './tools/shared.js';
 
-const PackageJsonSchema = z.object({ version: z.string() });
-const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
+const PackageJsonSchema = z.object({
+  version: z.string(),
+  description: z.string().optional(),
+  homepage: z.string().optional(),
+});
+const {
+  version: SERVER_VERSION,
+  description: SERVER_DESCRIPTION,
+  homepage: SERVER_HOMEPAGE,
+} = PackageJsonSchema.parse(packageJsonRaw);
 
 function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
   return dirs
@@ -364,7 +372,10 @@ export async function createServer(
   const server = new McpServer(
     {
       name: 'fs-context-mcp',
+      title: 'FS Context MCP Server',
       version: SERVER_VERSION,
+      ...(SERVER_DESCRIPTION ? { description: SERVER_DESCRIPTION } : {}),
+      ...(SERVER_HOMEPAGE ? { websiteUrl: SERVER_HOMEPAGE } : {}),
       ...(localIcon
         ? {
             icons: [
@@ -383,7 +394,7 @@ export async function createServer(
   rootsManagers.set(server, rootsManager);
 
   registerInstructionResource(server, serverInstructions, localIcon);
-  registerGetHelpPrompt(server, serverInstructions);
+  registerGetHelpPrompt(server, serverInstructions, localIcon);
   registerResultResources(server, resourceStore, localIcon);
   registerCompletions(server);
   registerAllTools(server, {

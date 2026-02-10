@@ -28,6 +28,7 @@ export function registerInstructionResource(
       mimeType: 'text/markdown',
       annotations: {
         audience: ['assistant'],
+        priority: 0.8,
       },
       ...(iconInfo
         ? {
@@ -67,6 +68,7 @@ export function registerResultResources(
       mimeType: 'text/plain',
       annotations: {
         audience: ['assistant'],
+        priority: 0.3,
       },
       ...(iconInfo
         ? {

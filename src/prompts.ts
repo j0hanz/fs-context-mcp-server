@@ -1,9 +1,15 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { GetPromptResult } from '@modelcontextprotocol/sdk/types.js';
 
+interface IconInfo {
+  src: string;
+  mimeType: string;
+}
+
 export function registerGetHelpPrompt(
   server: McpServer,
-  instructions: string
+  instructions: string,
+  iconInfo?: IconInfo
 ): void {
   const description = 'Return the fs-context usage instructions.';
 
@@ -12,6 +18,16 @@ export function registerGetHelpPrompt(
     {
       title: 'Get Help',
       description,
+      ...(iconInfo
+        ? {
+            icons: [
+              {
+                src: iconInfo.src,
+                mimeType: iconInfo.mimeType,
+              },
+            ],
+          }
+        : {}),
     },
     (): GetPromptResult => ({
       description,
