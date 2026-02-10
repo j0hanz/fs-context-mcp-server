@@ -82,7 +82,7 @@ export function registerCreateDirectoryTool(
     withDefaultIcons({ ...CREATE_DIRECTORY_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `✚ mkdir: ${path.basename(args.path)}`,
+      progressMessage: (args) => `🛠 mkdir: ${path.basename(args.path)}`,
     })
   );
 }

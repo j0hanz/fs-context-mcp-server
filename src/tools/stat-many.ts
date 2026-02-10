@@ -149,7 +149,7 @@ export function registerGetMultipleFileInfoTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => `ⓘ+ stat_many: ${args.paths.length} paths`,
+    progressMessage: (args) => `🛈 stat_many: ${args.paths.length} paths`,
   });
 
   const taskOptions = options.isInitialized

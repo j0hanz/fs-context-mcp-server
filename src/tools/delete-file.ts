@@ -115,7 +115,7 @@ export function registerDeleteFileTool(
     withDefaultIcons({ ...DELETE_FILE_TOOL }, options.iconInfo),
     wrapToolHandler(handler, {
       guard: options.isInitialized,
-      progressMessage: (args) => `✘ rm: ${path.basename(args.path)}`,
+      progressMessage: (args) => `✖ rm: ${path.basename(args.path)}`,
     })
   );
 }

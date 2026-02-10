@@ -110,7 +110,7 @@ export function registerMoveFileTool(
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: (args) =>
-        `➔ mv: ${path.basename(args.source)} -> ${path.basename(args.destination)}`,
+        `🛠 mv: ${path.basename(args.source)} → ${path.basename(args.destination)}`,
     })
   );
 }
