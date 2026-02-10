@@ -1,6 +1,6 @@
 # Filesystem MCP
 
-![npm version](https://img.shields.io/npm/v/@j0hanz/filesystem-mcp) ![License](https://img.shields.io/npm/l/@j0hanz/filesystem-mcp) ![Node.js Version](https://img.shields.io/node/v/@j0hanz/filesystem-mcp)
+![npm version](https://img.shields.io/npm/v/@j0hanz/filesystem-mcp) ![License](https://img.shields.io/npm/l/@j0hanz/filesystem-mcp) ![Node.js Version](https://img.shields.io/node/v/@j0hanz/filesystem-mcp) ![Docker Image](https://ghcr-badge.egpl.dev/j0hanz/filesystem-mcp/latest_tag?trim=major&label=docker)
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install-0078d7?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22filesystem-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-mcp%40latest%22%5D%7D) [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install-24bfa5?logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%7B%22name%22%3A%22filesystem-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40j0hanz%2Ffilesystem-mcp%40latest%22%5D%7D) [![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install-f79a2e?logo=claude&logoColor=white)](https://modelcontextprotocol.io/quickstart/user#2-add-the-filesystem-server) [![Install in Cursor](https://img.shields.io/badge/Cursor-Install-000000?logo=cursor&logoColor=white)](https://cursor.com/deeplink/mcp-install?name=filesystem-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBqMGhhbnovZmlsZXN5c3RlbS1tY3BAbGF0ZXN0Il19)
 
@@ -55,6 +55,17 @@ npx -y @j0hanz/filesystem-mcp@latest "C:\path\to\allowed\directory"
 ```bash
 npx -y @j0hanz/filesystem-mcp@latest [options] [directories...]
 ```
+
+### Docker
+
+```bash
+docker run -i --rm \
+  -v /path/to/your/project:/projects/workspace:ro \
+  ghcr.io/j0hanz/filesystem-mcp:latest \
+  /projects/workspace
+```
+
+> Mount host directories as volumes to `/projects/` and pass the container paths as arguments.
 
 ### From Source
 
@@ -190,6 +201,29 @@ Add to your `.vscode/mcp.json`:
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@j0hanz/filesystem-mcp@latest", "${workspaceFolder}"]
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Docker (any MCP client)</strong></summary>
+
+Use the Docker image with any MCP client that supports stdio transport:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-v", "/path/to/project:/projects/workspace:ro",
+        "ghcr.io/j0hanz/filesystem-mcp:latest",
+        "/projects/workspace"
+      ]
     }
   }
 }

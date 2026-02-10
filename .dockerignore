@@ -1,0 +1,41 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+*.tsbuildinfo
+
+# Version control
+.git
+.gitignore
+
+# CI/CD & Editor
+.github
+.vscode
+.cursor
+
+# Tests
+src/__tests__
+node-tests
+coverage
+
+# Development
+.env
+.env.*
+.ts-trace
+
+# Docker (avoid recursive context)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation (not needed in image)
+*.md
+!README.md
+LICENSE
+CONTRIBUTING.md
+
+# Tooling configs
+eslint.config.mjs
+knip.json
+.prettierrc*
