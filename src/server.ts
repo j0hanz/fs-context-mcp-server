@@ -21,6 +21,7 @@ import type {
 import { z } from 'zod';
 
 import packageJsonRaw from '../package.json' with { type: 'json' };
+import { registerCompletions } from './completions.js';
 import { formatUnknownErrorMessage } from './lib/errors.js';
 import {
   assertNotAborted,
@@ -346,6 +347,7 @@ export async function createServer(
       resources: {},
       tools: {},
       prompts: { listChanged: true },
+      completions: {},
       tasks: {
         list: {},
         cancel: {},
@@ -383,6 +385,7 @@ export async function createServer(
   registerInstructionResource(server, serverInstructions, localIcon);
   registerGetHelpPrompt(server, serverInstructions);
   registerResultResources(server, resourceStore, localIcon);
+  registerCompletions(server);
   registerAllTools(server, {
     resourceStore,
     isInitialized: () => rootsManager.isInitialized(),
