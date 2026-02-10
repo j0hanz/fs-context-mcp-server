@@ -265,7 +265,7 @@ export const TreeInputSchema = z.strictObject({
     .max(50, 'Max: 50')
     .optional()
     .default(5)
-    .describe('Depth (0=root). Default: 5'),
+    .describe('Depth (0=root node only, no children). Default: 5'),
   maxEntries: z
     .number()
     .int({ error: 'Must be integer' })
@@ -628,6 +628,11 @@ export const CalculateHashOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
   hash: z.string().optional().describe('SHA-256 hash'),
+  isDirectory: z.boolean().optional().describe('True if path is a directory'),
+  fileCount: z
+    .number()
+    .optional()
+    .describe('Number of files hashed (directories only)'),
   error: ErrorSchema.optional(),
 });
 

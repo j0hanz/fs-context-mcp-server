@@ -91,8 +91,12 @@ These instructions are available as a resource (internal://instructions) or prom
 
 `calculate_hash`
 
-- Purpose: Compute a SHA-256 hash for a file.
-- Input: `path` (file).
+- Purpose: Compute a SHA-256 hash for a file or directory.
+- Input: `path` (file or directory).
+- Behavior: Auto-detects file vs directory using `fs.stat`.
+  - **Files**: Returns `{ hash, isDirectory: false }`.
+  - **Directories**: Returns `{ hash, isDirectory: true, fileCount }`. Uses deterministic hash-of-hashes pattern (lexicographically sorted paths, respects `.gitignore`).
+- Example: File → `979043bb...`, Directory with 20 files → `ace111aa...` (same hash on repeated calls).
 
 `diff_files`
 

@@ -28,7 +28,8 @@ const TREE_TOOL = {
   title: 'Tree',
   description:
     'Render a directory tree (bounded recursion). ' +
-    'Returns an ASCII tree for quick scanning and a structured JSON tree for programmatic use.',
+    'Returns an ASCII tree for quick scanning and a structured JSON tree for programmatic use. ' +
+    'Note: maxDepth=0 returns only the root node with empty children array.',
   inputSchema: TreeInputSchema,
   outputSchema: TreeOutputSchema,
   annotations: {
