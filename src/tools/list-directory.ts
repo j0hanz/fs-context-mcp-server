@@ -164,9 +164,9 @@ export function registerListDirectoryTool(
       guard: options.isInitialized,
       progressMessage: (args) => {
         if (args.path) {
-          return `☰ ls: ${path.basename(args.path)}`;
+          return `≣ ls: ${path.basename(args.path)}`;
         }
-        return '☰ ls';
+        return '≣ ls';
       },
     })
   );

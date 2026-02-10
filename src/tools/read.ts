@@ -152,9 +152,9 @@ export function registerReadFileTool(
         const name = path.basename(args.path);
         if (args.startLine !== undefined) {
           const end = args.endLine ?? '…';
-          return `◀ read: ${name} → ${args.startLine}-${end}`;
+          return `🕮 read: ${name} → ${args.startLine}-${end}`;
         }
-        return `◀ read: ${name}`;
+        return `🕮 read: ${name}`;
       },
     })
   );
