@@ -22,11 +22,18 @@ function createAbortError(message = 'Operation aborted'): Error {
   return new DOMException(message, 'AbortError');
 }
 
+function normalizeAbortReason(reason: unknown, message?: string): Error {
+  if (reason instanceof Error) return reason;
+  return createAbortError(message);
+}
+
 export function assertNotAborted(signal?: AbortSignal, message?: string): void {
-  if (!signal?.aborted) return;
-  const { reason } = signal as { reason?: unknown };
-  if (reason instanceof Error) throw reason;
-  throw createAbortError(message);
+  if (!signal) return;
+  try {
+    signal.throwIfAborted();
+  } catch (reason) {
+    throw normalizeAbortReason(reason, message);
+  }
 }
 
 function assertPositiveSafeIntegerOption(
@@ -55,8 +62,11 @@ function normalizeConcurrency(concurrency: number): number {
 }
 
 function getAbortError(signal: AbortSignal, message?: string): Error {
-  const { reason } = signal as { reason?: unknown };
-  if (reason instanceof Error) return reason;
+  try {
+    signal.throwIfAborted();
+  } catch (reason) {
+    return normalizeAbortReason(reason, message);
+  }
   return createAbortError(message);
 }
 
@@ -65,27 +75,47 @@ export function withAbort<T>(
   signal?: AbortSignal
 ): Promise<T> {
   if (!signal) return promise;
-  if (signal.aborted) throw getAbortError(signal);
+  assertNotAborted(signal);
 
   return new Promise<T>((resolve, reject) => {
+    let settled = false;
+
+    const finish = (run: () => void): void => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      run();
+    };
+
     const onAbort = (): void => {
-      reject(getAbortError(signal));
+      finish(() => {
+        reject(getAbortError(signal));
+      });
     };
 
     signal.addEventListener('abort', onAbort, { once: true });
 
+    try {
+      signal.throwIfAborted();
+    } catch {
+      onAbort();
+      return;
+    }
+
     promise
       .then((value) => {
-        signal.removeEventListener('abort', onAbort);
-        resolve(value);
+        finish(() => {
+          resolve(value);
+        });
       })
       .catch((error: unknown) => {
-        signal.removeEventListener('abort', onAbort);
-        reject(
-          error instanceof Error
-            ? error
-            : new Error(formatUnknownErrorMessage(error))
-        );
+        finish(() => {
+          reject(
+            error instanceof Error
+              ? error
+              : new Error(formatUnknownErrorMessage(error))
+          );
+        });
       });
   });
 }

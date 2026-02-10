@@ -1,4 +1,5 @@
-import { inspect } from 'node:util';
+import { constants as osConstants } from 'node:os';
+import { getSystemErrorName, inspect } from 'node:util';
 
 import { ErrorCode, joinLines } from '../config.js';
 
@@ -17,6 +18,47 @@ export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   if (!('code' in error)) return false;
   const { code } = error as { code?: unknown };
   return typeof code === 'string';
+}
+
+function getNodeErrno(error: unknown): number | undefined {
+  if (!(error instanceof Error)) return undefined;
+  if (!('errno' in error)) return undefined;
+  const { errno } = error as { errno?: unknown };
+  if (typeof errno !== 'number' || !Number.isInteger(errno)) return undefined;
+  return errno;
+}
+
+const ERRNO_CODE_BY_VALUE = new Map<number, string>();
+
+for (const [name, value] of Object.entries(osConstants.errno)) {
+  if (typeof value !== 'number') continue;
+  if (!ERRNO_CODE_BY_VALUE.has(value)) {
+    ERRNO_CODE_BY_VALUE.set(value, name);
+  }
+}
+
+const ERROR_CODE_RE = /^[A-Z][A-Z0-9_]+$/u;
+
+function getNodeErrorCodeFromErrno(errno: number): string | undefined {
+  const direct = ERRNO_CODE_BY_VALUE.get(errno);
+  if (direct) return direct;
+
+  const normalized = ERRNO_CODE_BY_VALUE.get(Math.abs(errno));
+  if (normalized) return normalized;
+
+  try {
+    const fromSystem = getSystemErrorName(errno);
+    return ERROR_CODE_RE.test(fromSystem) ? fromSystem : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getNodeErrorCodeLabel(error: unknown): string | undefined {
+  if (isNodeError(error)) return error.code;
+  const errno = getNodeErrno(error);
+  if (errno === undefined) return undefined;
+  return getNodeErrorCodeFromErrno(errno);
 }
 
 export function formatUnknownErrorMessage(error: unknown): string {
@@ -61,6 +103,54 @@ function isKnownNodeErrorCode(code: string): code is NodeErrorCode {
 
 function getNodeErrorCode(code: string): ErrorCode | undefined {
   return isKnownNodeErrorCode(code) ? NODE_ERROR_CODE_MAP[code] : undefined;
+}
+
+function walkErrorChain(
+  error: unknown,
+  visitor: (value: unknown) => boolean
+): boolean {
+  let current: unknown = error;
+  const visited = new Set<unknown>();
+
+  while (current !== undefined && current !== null && !visited.has(current)) {
+    if (visitor(current)) return true;
+    if (!(current instanceof Error)) break;
+
+    visited.add(current);
+
+    const next = (current as { cause?: unknown }).cause;
+    current = next;
+  }
+
+  return false;
+}
+
+function isAbortErrorSingle(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError') return true;
+
+  const code = getNodeErrorCodeLabel(error);
+  return code === 'ABORT_ERR';
+}
+
+export function isAbortError(error: unknown): boolean {
+  return walkErrorChain(error, isAbortErrorSingle);
+}
+
+function isTimeoutErrorSingle(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'TimeoutError') return true;
+  if (isAbortErrorSingle(error)) return true;
+
+  const code = getNodeErrorCodeLabel(error);
+  if (code === 'ETIMEDOUT') return true;
+
+  const message = error.message.toLowerCase();
+  return message.includes('timed out') || message.includes('timeout');
+}
+
+export function isTimeoutLikeError(error: unknown): boolean {
+  return walkErrorChain(error, isTimeoutErrorSingle);
 }
 
 export class McpError extends Error {
@@ -120,8 +210,9 @@ function getDirectErrorCode(error: unknown): ErrorCode | undefined {
   if (error instanceof McpError) {
     return error.code;
   }
-  if (isNodeError(error) && error.code) {
-    return getNodeErrorCode(error.code);
+  const code = getNodeErrorCodeLabel(error);
+  if (code) {
+    return getNodeErrorCode(code);
   }
   return undefined;
 }
@@ -144,15 +235,8 @@ function classifyMessageError(error: unknown): ErrorCode | undefined {
   return undefined;
 }
 
-function isTimeoutError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error.name === 'AbortError' || error.name === 'TimeoutError') return true;
-  const message = error.message.toLowerCase();
-  return message.includes('timed out') || message.includes('timeout');
-}
-
 function classifyError(error: unknown): ErrorCode {
-  if (isTimeoutError(error)) {
+  if (isTimeoutLikeError(error)) {
     return ErrorCode.E_TIMEOUT;
   }
   const direct = getDirectErrorCode(error);

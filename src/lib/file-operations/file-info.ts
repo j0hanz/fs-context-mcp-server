@@ -8,6 +8,7 @@ import type {
   MultipleFileInfoResult,
 } from '../../config.js';
 import { getMimeType, PARALLEL_CONCURRENCY } from '../constants.js';
+import { isAbortError } from '../errors.js';
 import {
   assertNotAborted,
   getFileType,
@@ -79,7 +80,7 @@ async function getSymlinkTarget(
   try {
     return await withAbort(fsp.readlink(pathToRead), signal);
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw error;
+    if (isAbortError(error)) throw error;
     return undefined;
   }
 }

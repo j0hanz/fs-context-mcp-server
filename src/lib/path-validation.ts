@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { Root } from '@modelcontextprotocol/sdk/types.js';
 
-import { ErrorCode, isNodeError, McpError } from './errors.js';
+import { ErrorCode, isAbortError, isNodeError, McpError } from './errors.js';
 import { assertNotAborted, withAbort } from './fs-helpers.js';
 
 const IS_WINDOWS = os.platform() === 'win32';
@@ -75,12 +75,6 @@ export function normalizePath(p: string): string {
 
 function normalizeForComparison(value: string): string {
   return IS_WINDOWS ? value.toLowerCase() : value;
-}
-
-function isAbortError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error.name === 'AbortError') return true;
-  return isNodeError(error) && error.code === 'ABORT_ERR';
 }
 
 function rethrowIfAborted(error: unknown): void {

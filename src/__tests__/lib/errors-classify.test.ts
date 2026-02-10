@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { constants as osConstants } from 'node:os';
 import { it } from 'node:test';
 
 import { createDetailedError, ErrorCode, McpError } from '../../lib/errors.js';
@@ -87,4 +88,33 @@ void it('createDetailedError uses McpError direct code', () => {
     new McpError(ErrorCode.E_TOO_LARGE, 'File too large', '/path/to/file')
   );
   assert.strictEqual(detailed.code, ErrorCode.E_TOO_LARGE);
+});
+
+void it('createDetailedError classifies timeout errors in cause chains', () => {
+  const timeoutCause = new Error('operation timed out');
+  timeoutCause.name = 'TimeoutError';
+  const wrapped = new Error('outer wrapper', { cause: timeoutCause });
+
+  const detailed = createDetailedError(wrapped);
+
+  assert.strictEqual(detailed.code, ErrorCode.E_TIMEOUT);
+});
+
+void it('createDetailedError classifies ABORT_ERR in cause chains as timeout', () => {
+  const abortCause = Object.assign(new Error('aborted'), { code: 'ABORT_ERR' });
+  const wrapped = new Error('outer wrapper', { cause: abortCause });
+
+  const detailed = createDetailedError(wrapped);
+
+  assert.strictEqual(detailed.code, ErrorCode.E_TIMEOUT);
+});
+
+void it('createDetailedError maps errno-only errors via system errno name', () => {
+  const enoent = osConstants.errno.ENOENT;
+  if (typeof enoent !== 'number') return;
+
+  const errnoOnly = Object.assign(new Error('missing'), { errno: enoent });
+  const detailed = createDetailedError(errnoOnly);
+
+  assert.strictEqual(detailed.code, ErrorCode.E_NOT_FOUND);
 });

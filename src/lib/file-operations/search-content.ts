@@ -17,7 +17,12 @@ import {
   MAX_SEARCHABLE_FILE_SIZE,
   SEARCH_WORKERS,
 } from '../constants.js';
-import { ErrorCode, formatUnknownErrorMessage, McpError } from '../errors.js';
+import {
+  ErrorCode,
+  formatUnknownErrorMessage,
+  isTimeoutLikeError,
+  McpError,
+} from '../errors.js';
 import {
   assertNotAborted,
   createTimedAbortSignal,
@@ -1030,16 +1035,7 @@ export async function searchContent(
 
     return buildSearchResult(root, pattern, opts.filePattern, matches, summary);
   } catch (error: unknown) {
-    const isTimeoutError = (err: Error): boolean =>
-      err.name === 'AbortError' || err.name === 'TimeoutError';
-
-    if (
-      error instanceof Error &&
-      (isTimeoutError(error) ||
-        (error instanceof McpError &&
-          error.cause instanceof Error &&
-          isTimeoutError(error.cause)))
-    ) {
+    if (isTimeoutLikeError(error)) {
       const timeoutSummary = createScanSummary();
       timeoutSummary.truncated = true;
       timeoutSummary.stoppedReason = 'timeout';
