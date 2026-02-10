@@ -116,22 +116,31 @@ List the workspace roots this server can access.
 
 List the immediate contents of a directory (non-recursive).
 
-| Parameter        | Type    | Required | Default | Description                                                     |
-| :--------------- | :------ | :------- | :------ | :-------------------------------------------------------------- |
-| `path`           | string  | No       | (root)  | Base directory for the operation.                               |
-| `includeHidden`  | boolean | No       | `false` | Include hidden files and directories (starting with .).         |
-| `includeIgnored` | boolean | No       | `false` | Include normally ignored directories (node_modules, dist, etc). |
+| Parameter               | Type    | Required | Default | Description                                                     |
+| :---------------------- | :------ | :------- | :------ | :-------------------------------------------------------------- |
+| `path`                  | string  | No       | (root)  | Base directory for the operation.                               |
+| `includeHidden`         | boolean | No       | `false` | Include hidden files and directories (starting with .).         |
+| `includeIgnored`        | boolean | No       | `false` | Include normally ignored directories (node_modules, dist, etc). |
+| `sortBy`                | string  | No       | `name`  | Sort by `name`, `size`, `modified`, or `type`.                  |
+| `maxDepth`              | number  | No       | -       | Max recursion depth when `pattern` is provided.                 |
+| `maxEntries`            | number  | No       | -       | Max entries before truncation.                                  |
+| `pattern`               | string  | No       | -       | Optional glob filter (for recursive listing).                   |
+| `includeSymlinkTargets` | boolean | No       | `false` | Include resolved symlink targets in output.                     |
 
 #### `find`
 
 Find files by glob pattern.
 
-| Parameter        | Type    | Required | Default | Description                                    |
-| :--------------- | :------ | :------- | :------ | :--------------------------------------------- |
-| `pattern`        | string  | Yes      | -       | Glob pattern to match files (e.g., `**/*.ts`). |
-| `path`           | string  | No       | (root)  | Base directory for the operation.              |
-| `maxResults`     | number  | No       | `100`   | Maximum matches to return.                     |
-| `includeIgnored` | boolean | No       | `false` | Include normally ignored directories.          |
+| Parameter         | Type    | Required | Default | Description                                    |
+| :---------------- | :------ | :------- | :------ | :--------------------------------------------- |
+| `pattern`         | string  | Yes      | -       | Glob pattern to match files (e.g., `**/*.ts`). |
+| `path`            | string  | No       | (root)  | Base directory for the operation.              |
+| `maxResults`      | number  | No       | `100`   | Maximum matches to return.                     |
+| `includeIgnored`  | boolean | No       | `false` | Include normally ignored directories.          |
+| `includeHidden`   | boolean | No       | `false` | Include hidden files and directories.          |
+| `sortBy`          | string  | No       | `path`  | Sort by `path`, `name`, `size`, or `modified`. |
+| `maxDepth`        | number  | No       | -       | Maximum directory depth to scan.               |
+| `maxFilesScanned` | number  | No       | -       | Hard cap on scanned files.                     |
 
 #### `tree`
 
@@ -187,12 +196,19 @@ Get metadata for multiple files or directories.
 
 Search for text within file contents.
 
-| Parameter       | Type    | Required | Default | Description                            |
-| :-------------- | :------ | :------- | :------ | :------------------------------------- |
-| `pattern`       | string  | Yes      | -       | Text to search for.                    |
-| `path`          | string  | No       | (root)  | Base directory for the operation.      |
-| `isRegex`       | boolean | No       | `false` | Treat pattern as a regular expression. |
-| `includeHidden` | boolean | No       | `false` | Include hidden files.                  |
+| Parameter         | Type    | Required | Default | Description                              |
+| :---------------- | :------ | :------- | :------ | :--------------------------------------- |
+| `pattern`         | string  | Yes      | -       | Text to search for.                      |
+| `path`            | string  | No       | (root)  | Base directory or file for the search.   |
+| `isRegex`         | boolean | No       | `false` | Treat pattern as a regular expression.   |
+| `caseSensitive`   | boolean | No       | `false` | Enable case-sensitive matching.          |
+| `wholeWord`       | boolean | No       | `false` | Match whole words only.                  |
+| `contextLines`    | number  | No       | `0`     | Include N lines before/after each match. |
+| `maxResults`      | number  | No       | `500`   | Maximum match rows to return.            |
+| `maxFilesScanned` | number  | No       | `20000` | Hard cap on scanned files.               |
+| `filePattern`     | string  | No       | `**/*`  | Glob filter for candidate files.         |
+| `includeHidden`   | boolean | No       | `false` | Include hidden files.                    |
+| `includeIgnored`  | boolean | No       | `false` | Include ignored directories.             |
 
 #### `calculate_hash`
 
@@ -231,7 +247,8 @@ Apply a unified patch to a file.
 
 Search and replace text across multiple files.
 
-Response includes `failedFiles` and a sample `failures` list when some files cannot be processed.
+Response includes `processedFiles`, `failedFiles`, and a sample `failures`
+list when some files cannot be processed.
 
 | Parameter         | Type    | Required | Default | Description                       |
 | :---------------- | :------ | :------- | :------ | :-------------------------------- |
@@ -306,7 +323,12 @@ Tool responses may include a `resource_link` or a `resourceUri` when output is t
 
 ### Tasks
 
-Long-running tools (`grep`, `find`, `search_and_replace`) support task-augmented calls. When `task` is provided to `tools/call`, the server returns a task id that can be polled with `tasks/get` and resolved via `tasks/result`. Include `_meta.progressToken` on requests to receive `notifications/progress` updates. Task data is stored in memory and is cleared when the server restarts.
+Long-running tools (`grep`, `find`, `search_and_replace`, `tree`, `read_many`,
+`stat_many`) support task-augmented calls. When `task` is provided to
+`tools/call`, the server returns a task id that can be polled with `tasks/get`
+and resolved via `tasks/result`. Include `_meta.progressToken` on requests to
+receive `notifications/progress` updates. Task data is stored in memory and is
+cleared when the server restarts.
 
 ## Client Configuration Examples
 

@@ -100,6 +100,15 @@ function buildStructuredListResult(
     path: resultPath,
     entries: entries.map(buildStructuredListEntry),
     totalEntries: summary.totalEntries,
+    truncated: summary.truncated,
+    entriesScanned: summary.entriesScanned,
+    entriesVisible: summary.entriesVisible,
+    totalFiles: summary.totalFiles,
+    totalDirectories: summary.totalDirectories,
+    maxDepthReached: summary.maxDepthReached,
+    stoppedReason: summary.stoppedReason,
+    skippedInaccessible: summary.skippedInaccessible,
+    symlinksNotFollowed: summary.symlinksNotFollowed,
   };
 }
 
@@ -111,6 +120,11 @@ async function handleListDirectory(
   const options: Parameters<typeof listDirectory>[1] = {
     includeHidden: args.includeHidden,
     excludePatterns: args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS,
+    sortBy: args.sortBy,
+    includeSymlinkTargets: args.includeSymlinkTargets,
+    ...(args.maxDepth !== undefined ? { maxDepth: args.maxDepth } : {}),
+    ...(args.maxEntries !== undefined ? { maxEntries: args.maxEntries } : {}),
+    ...(args.pattern !== undefined ? { pattern: args.pattern } : {}),
     ...(signal ? { signal } : {}),
   };
   const result = await listDirectory(dirPath, options);

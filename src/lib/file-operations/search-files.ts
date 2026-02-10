@@ -33,10 +33,11 @@ interface SearchFilesOptions {
   includeHidden?: boolean;
   respectGitignore?: boolean;
   signal?: AbortSignal;
+  onProgress?: (progress: { total?: number; current: number }) => void;
 }
 
 type NormalizedOptions = Required<
-  Omit<SearchFilesOptions, 'maxDepth' | 'sortBy' | 'signal'>
+  Omit<SearchFilesOptions, 'maxDepth' | 'sortBy' | 'signal' | 'onProgress'>
 > & {
   maxDepth?: number;
   sortBy: NonNullable<SearchFilesOptions['sortBy']>;
@@ -212,6 +213,17 @@ function handleEntry(
   }
 }
 
+function reportSearchFilesProgress(
+  onProgress: SearchFilesOptions['onProgress'],
+  current: number,
+  total: number,
+  force = false
+): void {
+  if (!onProgress || current === 0) return;
+  if (!force && current % 25 !== 0) return;
+  onProgress({ current, total });
+}
+
 async function collectFromStream(
   stream: AsyncIterable<SearchEntry>,
   root: string,
@@ -219,11 +231,17 @@ async function collectFromStream(
   normalized: NormalizedOptions,
   needsStats: boolean,
   state: CollectState,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<void> {
   for await (const entry of stream) {
     if (shouldStopCollecting(state, normalized, signal)) break;
     state.filesScanned++;
+    reportSearchFilesProgress(
+      onProgress,
+      state.filesScanned,
+      normalized.maxFilesScanned
+    );
 
     if (
       gitignoreMatcher &&
@@ -252,6 +270,13 @@ async function collectFromStream(
     handleEntry(entry, entryType, needsStats, normalized, state);
     if (state.truncated) break;
   }
+
+  reportSearchFilesProgress(
+    onProgress,
+    state.filesScanned,
+    normalized.maxFilesScanned,
+    true
+  );
 }
 
 async function isEntryAccessible(
@@ -281,7 +306,8 @@ async function collectSearchResults(
   pattern: string,
   excludePatterns: readonly string[],
   normalized: NormalizedOptions,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<CollectOutcome> {
   const needsStats = needsStatsForSort(normalized.sortBy);
   const stream = buildSearchStream(
@@ -304,7 +330,8 @@ async function collectSearchResults(
     normalized,
     needsStats,
     state,
-    signal
+    signal,
+    onProgress
   );
   return buildCollectResult(state);
 }
@@ -404,7 +431,8 @@ async function runSearchFiles(
   pattern: string,
   excludePatterns: readonly string[],
   normalized: NormalizedOptions,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<{ results: SearchResult[]; summary: SearchFilesResult['summary'] }> {
   const {
     results,
@@ -417,7 +445,8 @@ async function runSearchFiles(
     pattern,
     excludePatterns,
     normalized,
-    signal
+    signal,
+    onProgress
   );
 
   sortSearchResults(results, normalized.sortBy);
@@ -453,7 +482,8 @@ export async function searchFiles(
       pattern,
       excludePatterns,
       normalized,
-      signal
+      signal,
+      options.onProgress
     );
 
     return {

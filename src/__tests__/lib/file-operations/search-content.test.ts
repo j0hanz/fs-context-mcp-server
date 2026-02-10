@@ -14,6 +14,7 @@ function registerSearchContentBasics(getTestDir: () => string): void {
     const result = await searchContent(getTestDir(), 'hello');
     assert.ok(result.matches.length > 0);
     assert.ok(result.matches[0]?.file.includes('index.ts'));
+    assert.strictEqual(result.matches[0]?.line, 1);
     assert.strictEqual(result.matches[0]?.contextBefore, undefined);
     assert.strictEqual(result.matches[0]?.contextAfter, undefined);
   });

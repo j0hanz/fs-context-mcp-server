@@ -29,7 +29,7 @@ These instructions are available as a resource (internal://instructions) or prom
 ## PROGRESS & TASKS
 
 - Include `_meta.progressToken` in requests to receive `notifications/progress` updates for long-running tools.
-- Task-augmented tool calls are supported for `grep`, `find`, and `search_and_replace`:
+- Task-augmented tool calls are supported for `grep`, `find`, `search_and_replace`, `tree`, `read_many`, and `stat_many`:
   - Send `tools/call` with `task` to get a task id.
   - Poll `tasks/get` and fetch results via `tasks/result`.
   - Use `tasks/cancel` to abort.
@@ -68,19 +68,19 @@ These instructions are available as a resource (internal://instructions) or prom
 `ls`
 
 - Purpose: List directory contents (non-recursive).
-- Input: `path` (optional, default root), `includeIgnored` (bool).
+- Input: `path` (optional, default root), `includeIgnored`, `includeHidden`, optional `pattern`, `maxDepth`, `maxEntries`, `sortBy`, `includeSymlinkTargets`.
 - Limits: Use `tree` for recursion (depth limited).
 
 `find`
 
 - Purpose: Search file paths by glob.
-- Input: `pattern` (required), `path` (optional root).
+- Input: `pattern` (required), `path` (optional root), optional `includeHidden`, `includeIgnored`, `sortBy`, `maxDepth`, `maxFilesScanned`.
 - Nuance: Respects `.gitignore` unless `includeIgnored=true`.
 
 `grep`
 
 - Purpose: Search file content.
-- Input: `pattern` (string/regex), `isRegex` (bool).
+- Input: `pattern` (string/regex), optional `isRegex`, `caseSensitive`, `wholeWord`, `contextLines`, `filePattern`, `maxResults`, `maxFilesScanned`, `includeHidden`, `includeIgnored`.
 - Limits: Skips binaries/large files. Returns max 50 inline matches.
 
 `read` / `read_many`
@@ -109,7 +109,7 @@ These instructions are available as a resource (internal://instructions) or prom
 
 - Purpose: Replace text across files matching a glob.
 - Input: `filePattern`, `searchPattern`, `replacement`, optional `isRegex`, `dryRun`.
-- Gotcha: Review `failedFiles` and `failures` for partial errors.
+- Gotcha: Review `processedFiles`, `failedFiles`, and `failures` for partial errors.
 
 `edit`
 

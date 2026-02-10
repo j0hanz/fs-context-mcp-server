@@ -18,22 +18,89 @@ interface CompletionResult {
   hasMore?: boolean;
 }
 
-function getSearchContext(currentValue: string): {
+function hasTrailingSeparator(value: string): boolean {
+  return (
+    value.endsWith(path.sep) || value.endsWith('/') || value.endsWith('\\')
+  );
+}
+
+function isAbsolutePathInput(value: string): boolean {
+  return (
+    path.isAbsolute(value) ||
+    /^[A-Za-z]:[\\/]/u.test(value) ||
+    value.startsWith('\\\\')
+  );
+}
+
+function resolveFromBase(
+  base: string,
+  rawValue: string,
+  trailingSeparator: boolean
+): {
   searchDir: string;
   prefix: string;
 } {
-  const normalizedValue = normalizePath(currentValue);
-  if (
-    currentValue.endsWith(path.sep) ||
-    currentValue.endsWith('/') ||
-    currentValue.endsWith('\\')
-  ) {
+  const normalizedValue = normalizePath(path.resolve(base, rawValue));
+  if (trailingSeparator) {
     return { searchDir: normalizedValue, prefix: '' };
   }
   return {
     searchDir: path.dirname(normalizedValue),
     prefix: path.basename(normalizedValue),
   };
+}
+
+function resolveNamedRootContext(
+  currentValue: string,
+  allowed: string[]
+):
+  | {
+      searchDir: string;
+      prefix: string;
+    }
+  | undefined {
+  const normalizedInput = currentValue.replace(/\\/gu, '/');
+  const [rootName, ...rest] = normalizedInput.split('/');
+  if (!rootName) return undefined;
+
+  const root = allowed.find(
+    (candidate) =>
+      path.basename(candidate).toLowerCase() === rootName.toLowerCase()
+  );
+  if (!root) return undefined;
+
+  const trailingSeparator = hasTrailingSeparator(currentValue);
+  const remainder = rest.join(path.sep);
+  return resolveFromBase(root, remainder, trailingSeparator);
+}
+
+function getSearchContext(
+  currentValue: string,
+  allowed: string[]
+):
+  | {
+      searchDir: string;
+      prefix: string;
+    }
+  | undefined {
+  const trailingSeparator = hasTrailingSeparator(currentValue);
+
+  if (isAbsolutePathInput(currentValue)) {
+    return resolveFromBase(
+      path.parse(currentValue).root || path.sep,
+      currentValue,
+      trailingSeparator
+    );
+  }
+
+  if (allowed.length === 1) {
+    const base = allowed[0];
+    if (base) {
+      return resolveFromBase(base, currentValue, trailingSeparator);
+    }
+  }
+
+  return resolveNamedRootContext(currentValue, allowed);
 }
 
 async function findMatchesInDirectory(
@@ -61,6 +128,20 @@ async function findMatchesInDirectory(
     // Access denied or not found, ignore
   }
   return matches;
+}
+
+function findRootPrefixMatches(
+  currentValue: string,
+  allowed: string[]
+): string[] {
+  const normalizedInput = currentValue.replace(/\\/gu, '/');
+  const rootPrefix = (normalizedInput.split('/')[0] ?? '').toLowerCase();
+  if (!rootPrefix) {
+    return allowed.map((root) => `${root}${path.sep}`);
+  }
+  return allowed
+    .filter((root) => path.basename(root).toLowerCase().startsWith(rootPrefix))
+    .map((root) => `${root}${path.sep}`);
 }
 
 function findMatchingRoots(
@@ -97,11 +178,23 @@ export async function getPathCompletions(
     };
   }
 
-  const { searchDir, prefix } = getSearchContext(currentValue);
-
   try {
-    const dirMatches = await findMatchesInDirectory(searchDir, prefix, allowed);
-    const rootMatches = findMatchingRoots(searchDir, prefix, allowed);
+    const context = getSearchContext(currentValue, allowed);
+    if (!context) {
+      const rootMatches = findRootPrefixMatches(currentValue, allowed);
+      const sliced = rootMatches.slice(0, MAX_COMPLETION_ITEMS);
+      return {
+        values: sliced,
+        total: rootMatches.length,
+        hasMore: rootMatches.length > MAX_COMPLETION_ITEMS,
+      };
+    }
+
+    const { searchDir, prefix } = context;
+    const [dirMatches, rootMatches] = await Promise.all([
+      findMatchesInDirectory(searchDir, prefix, allowed),
+      Promise.resolve(findMatchingRoots(searchDir, prefix, allowed)),
+    ]);
 
     // Deduplicate and sort
     const uniqueMatches = Array.from(new Set([...dirMatches, ...rootMatches]));
@@ -147,8 +240,11 @@ export function registerCompletions(server: McpServer): void {
     const argName = argument.name.toLowerCase();
     const isPathArg =
       pathArguments.has(argName) ||
+      argName.endsWith('paths') ||
       argName.endsWith('path') ||
+      argName.endsWith('files') ||
       argName.endsWith('file') ||
+      argName.endsWith('dirs') ||
       argName.endsWith('dir');
 
     if (!isPathArg) {

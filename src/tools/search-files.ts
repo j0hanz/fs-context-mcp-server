@@ -17,6 +17,8 @@ import { SearchFilesInputSchema, SearchFilesOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  createProgressReporter,
+  notifyProgress,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -45,15 +47,29 @@ const SEARCH_FILES_TOOL = {
 
 async function handleSearchFiles(
   args: z.infer<typeof SearchFilesInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<ToolResponse<z.infer<typeof SearchFilesOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
   const excludePatterns = args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS;
-  const result = await searchFiles(basePath, args.pattern, excludePatterns, {
+  const searchOptions: Parameters<typeof searchFiles>[3] = {
     maxResults: args.maxResults,
+    includeHidden: args.includeHidden,
+    sortBy: args.sortBy,
     respectGitignore: !args.includeIgnored,
+    ...(args.maxDepth !== undefined ? { maxDepth: args.maxDepth } : {}),
+    ...(args.maxFilesScanned !== undefined
+      ? { maxFilesScanned: args.maxFilesScanned }
+      : {}),
+    ...(onProgress ? { onProgress } : {}),
     ...(signal ? { signal } : {}),
-  });
+  };
+  const result = await searchFiles(
+    basePath,
+    args.pattern,
+    excludePatterns,
+    searchOptions
+  );
   const relativeResults = result.results.map((entry) => ({
     path: path.relative(result.basePath, entry.path),
     size: entry.size,
@@ -64,6 +80,11 @@ async function handleSearchFiles(
     results: relativeResults,
     totalMatches: result.summary.matched,
     truncated: result.summary.truncated,
+    filesScanned: result.summary.filesScanned,
+    skippedInaccessible: result.summary.skippedInaccessible,
+    ...(result.summary.stoppedReason
+      ? { stoppedReason: result.summary.stoppedReason }
+      : {}),
   };
 
   let truncatedReason: string | undefined;
@@ -107,12 +128,33 @@ export function registerSearchFilesTool(
       () =>
         withToolErrorHandling(
           async () => {
+            notifyProgress(extra, {
+              current: 0,
+              message: `find: ${args.pattern}`,
+            });
+
             const { signal, cleanup } = createTimedAbortSignal(
               extra.signal,
               DEFAULT_SEARCH_TIMEOUT_MS
             );
             try {
-              return await handleSearchFiles(args, signal);
+              const result = await handleSearchFiles(
+                args,
+                signal,
+                createProgressReporter(extra)
+              );
+              const sc = result.structuredContent;
+              const suffix =
+                sc.ok && sc.totalMatches
+                  ? String(sc.totalMatches)
+                  : 'No matches';
+              const finalCurrent = (sc.filesScanned ?? 0) + 1;
+
+              notifyProgress(extra, {
+                current: finalCurrent,
+                message: `find: ${args.pattern} → ${suffix}`,
+              });
+              return result;
             } finally {
               cleanup();
             }
@@ -131,7 +173,6 @@ export function registerSearchFilesTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: isInitialized,
-    progressMessage: (args) => `find: ${args.pattern}`,
   });
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 

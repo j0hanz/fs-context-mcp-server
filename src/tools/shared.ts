@@ -285,6 +285,20 @@ export function createProgressReporter(
   };
 }
 
+export function notifyProgress(
+  extra: ToolExtra,
+  progress: { current: number; total?: number; message?: string }
+): void {
+  if (!canSendProgress(extra)) return;
+  const token = extra._meta.progressToken;
+  void sendProgressNotification(extra, {
+    progressToken: token,
+    progress: progress.current,
+    ...(progress.total !== undefined ? { total: progress.total } : {}),
+    ...(progress.message !== undefined ? { message: progress.message } : {}),
+  });
+}
+
 async function withProgress<T>(
   message: string,
   extra: ToolExtra,

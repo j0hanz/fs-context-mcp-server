@@ -26,6 +26,7 @@ import {
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler } from './task-support.js';
 
 const READ_MULTIPLE_FILES_TOOL = {
   title: 'Read Multiple Files',
@@ -168,12 +169,40 @@ export function registerReadMultipleFilesTool(
     );
   };
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => `read_many: ${args.paths.length} files`,
+  });
+
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+
+  const { experimental } = server as unknown as {
+    experimental?: {
+      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
+    };
+  };
+  const { tasks } = experimental ?? {};
+
+  if (tasks?.registerToolTask) {
+    tasks.registerToolTask(
+      'read_many',
+      withDefaultIcons(
+        {
+          ...READ_MULTIPLE_FILES_TOOL,
+          execution: { taskSupport: 'optional' },
+        },
+        options.iconInfo
+      ),
+      createToolTaskHandler(wrappedHandler, taskOptions)
+    );
+    return;
+  }
+
   server.registerTool(
     'read_many',
     withDefaultIcons({ ...READ_MULTIPLE_FILES_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => `read_many: ${args.paths.length} files`,
-    })
+    wrappedHandler
   );
 }

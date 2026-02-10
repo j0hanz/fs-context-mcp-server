@@ -308,7 +308,7 @@ async function readMatches(
 ): Promise<ContentMatch[]> {
   const matches: ContentMatch[] = [];
   const ctx = new ContextBuffer(options.contextLines);
-  let lineNumber = 0;
+  let lineNumber = 1;
 
   // Use for-await with readLines for memory efficiency
   const lines = handle.readLines({ encoding: 'utf-8', signal });
@@ -764,6 +764,17 @@ function processScanResult(
   }
 }
 
+function reportSearchProgress(
+  onProgress: SearchContentOptions['onProgress'],
+  current: number,
+  total: number,
+  force = false
+): void {
+  if (!onProgress || current === 0) return;
+  if (!force && current % 25 !== 0) return;
+  onProgress({ current, total });
+}
+
 async function waitForWinner(pending: Set<ScanTask>): Promise<{
   task: ScanTask;
   result: WorkerScanResult | undefined;
@@ -992,11 +1003,17 @@ export async function searchContent(
         if (isSensitivePath(entry.path, normalized)) continue;
 
         scanned++;
-        if (options.onProgress && scanned % 50 === 0)
-          options.onProgress({ current: scanned });
+        reportSearchProgress(options.onProgress, scanned, opts.maxFilesScanned);
 
         yield { resolvedPath: normalized, requestedPath: entry.path };
       }
+
+      reportSearchProgress(
+        options.onProgress,
+        scanned,
+        opts.maxFilesScanned,
+        true
+      );
     }
 
     // Choose Strategy

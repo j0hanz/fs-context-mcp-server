@@ -5,6 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { formatOperationSummary, joinLines } from '../config.js';
+import { DEFAULT_EXCLUDE_PATTERNS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchContent } from '../lib/file-operations/search-content.js';
 import type { SearchContentOptions } from '../lib/file-operations/search-content.js';
@@ -18,6 +19,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   createProgressReporter,
+  notifyProgress,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -57,10 +59,13 @@ function buildSearchTextResult(
 
   let truncatedReason: string | undefined;
   if (summary.truncated) {
-    truncatedReason =
-      summary.stoppedReason === 'timeout'
-        ? 'timeout'
-        : `max results (${summary.matches})`;
+    if (summary.stoppedReason === 'timeout') {
+      truncatedReason = 'timeout';
+    } else if (summary.stoppedReason === 'maxFiles') {
+      truncatedReason = `max files (${summary.filesScanned})`;
+    } else {
+      truncatedReason = `max results (${summary.matches})`;
+    }
   }
 
   const summaryOptions: Parameters<typeof formatOperationSummary>[0] = {
@@ -102,11 +107,19 @@ function buildStructuredSearchResult(
   result: Awaited<ReturnType<typeof searchContent>>,
   normalizedMatches: NormalizedSearchMatch[]
 ): z.infer<typeof SearchContentOutputSchema> {
+  const { summary } = result;
   return {
     ok: true,
     matches: normalizedMatches.map(buildSearchMatchPayload),
-    totalMatches: result.summary.matches,
-    truncated: result.summary.truncated,
+    totalMatches: summary.matches,
+    truncated: summary.truncated,
+    filesScanned: summary.filesScanned,
+    filesMatched: summary.filesMatched,
+    skippedTooLarge: summary.skippedTooLarge,
+    skippedBinary: summary.skippedBinary,
+    skippedInaccessible: summary.skippedInaccessible,
+    linesSkippedDueToRegexTimeout: summary.linesSkippedDueToRegexTimeout,
+    ...(summary.stoppedReason ? { stoppedReason: summary.stoppedReason } : {}),
   };
 }
 
@@ -146,8 +159,16 @@ async function handleSearchContent(
   onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<ToolResponse<z.infer<typeof SearchContentOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
+  const excludePatterns = args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS;
   const options: SearchContentOptions = {
     includeHidden: args.includeHidden,
+    excludePatterns,
+    filePattern: args.filePattern,
+    caseSensitive: args.caseSensitive,
+    wholeWord: args.wholeWord,
+    contextLines: args.contextLines,
+    maxResults: args.maxResults,
+    maxFilesScanned: args.maxFilesScanned,
     isLiteral: !args.isRegex,
   };
   if (signal) {
@@ -175,6 +196,15 @@ async function handleSearchContent(
     matches: previewMatches.map(buildSearchMatchPayload),
     totalMatches: structuredFull.totalMatches,
     truncated: true,
+    filesScanned: structuredFull.filesScanned,
+    filesMatched: structuredFull.filesMatched,
+    skippedTooLarge: structuredFull.skippedTooLarge,
+    skippedBinary: structuredFull.skippedBinary,
+    skippedInaccessible: structuredFull.skippedInaccessible,
+    linesSkippedDueToRegexTimeout: structuredFull.linesSkippedDueToRegexTimeout,
+    ...(structuredFull.stoppedReason
+      ? { stoppedReason: structuredFull.stoppedReason }
+      : {}),
     resourceUri: undefined,
   };
 
@@ -213,13 +243,31 @@ export function registerSearchContentTool(
       'grep',
       () =>
         withToolErrorHandling(
-          async () =>
-            handleSearchContent(
-              args,
+          async () => {
+            const normalizedArgs = SearchContentInputSchema.parse(args);
+            notifyProgress(extra, {
+              current: 0,
+              message: `grep: ${normalizedArgs.pattern}`,
+            });
+
+            const result = await handleSearchContent(
+              normalizedArgs,
               extra.signal,
               options.resourceStore,
               createProgressReporter(extra)
-            ),
+            );
+
+            const sc = result.structuredContent;
+            const suffix =
+              sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
+            const finalCurrent = (sc.filesScanned ?? 0) + 1;
+
+            notifyProgress(extra, {
+              current: finalCurrent,
+              message: `grep: ${normalizedArgs.pattern} → ${suffix}`,
+            });
+            return result;
+          },
           (error) =>
             buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
         ),
@@ -229,19 +277,6 @@ export function registerSearchContentTool(
   const { isInitialized } = options;
   const wrappedHandler = wrapToolHandler(handler, {
     guard: isInitialized,
-    progressMessage: (args) => `grep: ${args.pattern}`,
-    completionMessage: (
-      args: z.infer<typeof SearchContentInputSchema>,
-      result: ToolResult<z.infer<typeof SearchContentOutputSchema>>
-    ) => {
-      if ('isError' in result && result.isError) return undefined;
-      const { structuredContent: sc } = result as ToolResponse<
-        z.infer<typeof SearchContentOutputSchema>
-      >;
-      const suffix =
-        sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
-      return `grep: ${args.pattern} → ${suffix}`;
-    },
   });
 
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;

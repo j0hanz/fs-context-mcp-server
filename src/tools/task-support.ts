@@ -14,6 +14,7 @@ import type {
   CallToolResult,
   CreateTaskResult,
   GetTaskResult,
+  Result,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { ErrorCode, McpError } from '../lib/errors.js';
@@ -55,6 +56,60 @@ function getTaskId(extra: TaskToolExtra): string {
 
 function isErrorResult(result: ToolResult<unknown>): boolean {
   return 'isError' in result && result.isError === true;
+}
+
+const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+
+function getTaskStatus(task: unknown): string | undefined {
+  if (!task || typeof task !== 'object') return undefined;
+  const { status } = task as { status?: unknown };
+  return typeof status === 'string' ? status : undefined;
+}
+
+function isTerminalTaskStatus(status: string | undefined): boolean {
+  if (!status) return false;
+  return TERMINAL_TASK_STATUSES.has(status);
+}
+
+function isTerminalTaskStoreError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('terminal status') ||
+    normalized.includes('task not found')
+  );
+}
+
+async function getCurrentTaskStatus(
+  taskStore: RequestTaskStore,
+  taskId: string
+): Promise<string | undefined> {
+  try {
+    const task = await taskStore.getTask(taskId);
+    return getTaskStatus(task);
+  } catch {
+    return undefined;
+  }
+}
+
+async function tryStoreTaskResult(
+  taskStore: RequestTaskStore,
+  taskId: string,
+  status: 'completed' | 'failed',
+  result: Result
+): Promise<void> {
+  const beforeStatus = await getCurrentTaskStatus(taskStore, taskId);
+  if (isTerminalTaskStatus(beforeStatus)) return;
+
+  try {
+    await taskStore.storeTaskResult(taskId, status, result);
+  } catch (error) {
+    const afterStatus = await getCurrentTaskStatus(taskStore, taskId);
+    if (isTerminalTaskStatus(afterStatus) || isTerminalTaskStoreError(error)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export function createToolTaskHandler<Result>(
@@ -104,10 +159,14 @@ export function createToolTaskHandler<
       try {
         const result = await run(args, extra as TaskToolExtra);
         const status = isErrorResult(result) ? 'failed' : 'completed';
-        await taskStore.storeTaskResult(task.taskId, status, result);
+        await tryStoreTaskResult(taskStore, task.taskId, status, result);
       } catch (error) {
         const fallback = buildToolErrorResponse(error, ErrorCode.E_UNKNOWN);
-        await taskStore.storeTaskResult(task.taskId, 'failed', fallback);
+        try {
+          await tryStoreTaskResult(taskStore, task.taskId, 'failed', fallback);
+        } catch {
+          // Swallow to avoid unhandled rejections from background task writes.
+        }
       }
     })();
 

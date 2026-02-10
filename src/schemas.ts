@@ -35,6 +35,19 @@ const RequiredPathSchema = PathSchemaBase.min(1, 'Path required');
 const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 
 const TreeEntryTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
+const ListDirectorySortSchema = z.enum(['name', 'size', 'modified', 'type']);
+const SearchFilesSortSchema = z.enum(['name', 'size', 'modified', 'path']);
+const SearchFilesStopReasonSchema = z.enum([
+  'maxResults',
+  'maxFiles',
+  'timeout',
+]);
+const ListDirectoryStopReasonSchema = z.enum(['maxEntries', 'aborted']);
+const SearchContentStopReasonSchema = z.enum([
+  'maxResults',
+  'maxFiles',
+  'timeout',
+]);
 
 interface TreeEntry {
   name: string;
@@ -153,6 +166,34 @@ export const ListDirectoryInputSchema = z.strictObject({
     .optional()
     .default(false)
     .describe('Include ignored items (node_modules, .git, etc).'),
+  maxDepth: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(50, 'Max: 50')
+    .optional()
+    .describe('Max recursion depth when pattern is provided'),
+  maxEntries: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(20000, 'Max: 20,000')
+    .optional()
+    .describe('Maximum entries to return before truncation'),
+  sortBy: ListDirectorySortSchema.optional()
+    .default('name')
+    .describe('Sort field (name, size, modified, type)'),
+  pattern: z
+    .string()
+    .min(1, 'Pattern required')
+    .max(1000, 'Max 1000 chars')
+    .optional()
+    .describe('Optional glob pattern filter (e.g. "**/*.ts")'),
+  includeSymlinkTargets: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Resolve and include symlink targets in results'),
 });
 
 export const ListAllowedDirectoriesInputSchema = z
@@ -182,6 +223,28 @@ export const SearchFilesInputSchema = z.strictObject({
     .optional()
     .default(false)
     .describe('Include ignored items (node_modules, etc).'),
+  includeHidden: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Include hidden items (starting with .)'),
+  sortBy: SearchFilesSortSchema.optional()
+    .default('path')
+    .describe('Sort by path, name, size, or modified'),
+  maxDepth: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(0, 'Min: 0')
+    .max(100, 'Max: 100')
+    .optional()
+    .describe('Maximum directory depth to scan'),
+  maxFilesScanned: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(200000, 'Max: 200,000')
+    .optional()
+    .describe('Hard cap on files scanned'),
 });
 
 export const TreeInputSchema = z.strictObject({
@@ -226,11 +289,57 @@ export const SearchContentInputSchema = z.strictObject({
     .optional()
     .default(false)
     .describe('Treat pattern as regex'),
+  caseSensitive: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Case-sensitive matching'),
+  wholeWord: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Match whole words only'),
+  contextLines: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(0, 'Min: 0')
+    .max(50, 'Max: 50')
+    .optional()
+    .default(0)
+    .describe('Include N lines of context before/after matches'),
+  maxResults: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(0, 'Min: 0')
+    .max(10000, 'Max: 10,000')
+    .optional()
+    .default(500)
+    .describe('Maximum match rows to return'),
+  maxFilesScanned: z
+    .number()
+    .int({ error: 'Must be integer' })
+    .min(1, 'Min: 1')
+    .max(200000, 'Max: 200,000')
+    .optional()
+    .default(20000)
+    .describe('Hard cap on files scanned'),
+  filePattern: z
+    .string()
+    .min(1, 'Pattern required')
+    .max(1000, 'Max 1000 chars')
+    .optional()
+    .default('**/*')
+    .describe('Glob for candidate files (e.g. "**/*.ts")'),
   includeHidden: z
     .boolean()
     .optional()
     .default(false)
     .describe('Include hidden items (starting with .)'),
+  includeIgnored: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Include ignored items (node_modules, etc).'),
 });
 
 export const ReadFileInputSchema = ReadRangeInputSchema.extend({
@@ -296,6 +405,15 @@ export const ListDirectoryOutputSchema = z.object({
     )
     .optional(),
   totalEntries: z.number().optional(),
+  truncated: z.boolean().optional(),
+  entriesScanned: z.number().optional(),
+  entriesVisible: z.number().optional(),
+  totalFiles: z.number().optional(),
+  totalDirectories: z.number().optional(),
+  maxDepthReached: z.number().optional(),
+  stoppedReason: ListDirectoryStopReasonSchema.optional(),
+  skippedInaccessible: z.number().optional(),
+  symlinksNotFollowed: z.number().optional(),
   error: ErrorSchema.optional(),
 });
 
@@ -317,6 +435,10 @@ export const SearchFilesOutputSchema = SearchSummarySchema.extend({
       })
     )
     .optional(),
+  filesScanned: z.number().optional().describe('Files scanned'),
+  skippedInaccessible: z.number().optional().describe('Inaccessible files'),
+  stoppedReason:
+    SearchFilesStopReasonSchema.optional().describe('Why search stopped'),
 });
 
 export const SearchContentOutputSchema = SearchSummarySchema.extend({
@@ -333,6 +455,20 @@ export const SearchContentOutputSchema = SearchSummarySchema.extend({
       })
     )
     .optional(),
+  filesScanned: z.number().optional().describe('Files scanned'),
+  filesMatched: z.number().optional().describe('Files with matches'),
+  skippedTooLarge: z.number().optional().describe('Files skipped: too large'),
+  skippedBinary: z.number().optional().describe('Files skipped: binary'),
+  skippedInaccessible: z
+    .number()
+    .optional()
+    .describe('Files skipped: inaccessible'),
+  linesSkippedDueToRegexTimeout: z
+    .number()
+    .optional()
+    .describe('Lines skipped due to regex timeout'),
+  stoppedReason:
+    SearchContentStopReasonSchema.optional().describe('Why search stopped'),
 });
 
 export const TreeOutputSchema = z.object({
@@ -563,6 +699,7 @@ export const SearchAndReplaceOutputSchema = z.object({
   ok: z.boolean(),
   matches: z.number().optional().describe('Total matches found'),
   filesChanged: z.number().optional().describe('Files modified'),
+  processedFiles: z.number().optional().describe('Files processed'),
   failedFiles: z.number().optional().describe('Files skipped due to errors'),
   failures: z
     .array(

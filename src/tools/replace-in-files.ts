@@ -4,6 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import RE2 from 're2';
 import safeRegex from 'safe-regex2';
 
 import {
@@ -25,6 +26,8 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  createProgressReporter,
+  notifyProgress,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -59,9 +62,33 @@ function recordFailure(failures: Failure[], failure: Failure): void {
   failures.push(failure);
 }
 
+function createRegexMatcher(pattern: string): RE2 {
+  try {
+    return new RE2(pattern, 'g');
+  } catch (error) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Invalid regex pattern: ${formatUnknownErrorMessage(error)}`
+    );
+  }
+}
+
+function countRegexMatches(content: string, regex: RE2): number {
+  regex.lastIndex = 0;
+  let count = 0;
+  while (regex.exec(content) !== null) {
+    count++;
+    if (regex.lastIndex === 0) {
+      regex.lastIndex++;
+    }
+  }
+  return count;
+}
+
 async function processFile(
   filePath: string,
   args: z.infer<typeof SearchAndReplaceInputSchema>,
+  regex: RE2 | undefined,
   signal?: AbortSignal
 ): Promise<{ matches: number; changed: boolean; error?: string }> {
   try {
@@ -72,11 +99,10 @@ async function processFile(
     let newContent = content;
     let matchCount = 0;
 
-    if (args.isRegex) {
-      const regex = new RegExp(args.searchPattern, 'g');
-      const matches = content.match(regex);
-      matchCount = matches ? matches.length : 0;
+    if (args.isRegex && regex) {
+      matchCount = countRegexMatches(content, regex);
       if (matchCount > 0) {
+        regex.lastIndex = 0;
         newContent = content.replace(regex, args.replacement);
       }
     } else {
@@ -110,22 +136,96 @@ async function processFile(
   }
 }
 
+interface ReplaceSummary {
+  totalMatches: number;
+  filesChanged: number;
+  failedFiles: number;
+  processedFiles: number;
+  failures: Failure[];
+}
+
+function createReplaceSummary(): ReplaceSummary {
+  return {
+    totalMatches: 0,
+    filesChanged: 0,
+    failedFiles: 0,
+    processedFiles: 0,
+    failures: [],
+  };
+}
+
+async function resolveSearchRoot(
+  pathValue: string | undefined,
+  signal?: AbortSignal
+): Promise<string> {
+  return pathValue
+    ? validateExistingPath(pathValue, signal)
+    : resolvePathOrRoot(pathValue);
+}
+
+function createReplacementRegex(
+  args: z.infer<typeof SearchAndReplaceInputSchema>
+): RE2 | undefined {
+  if (!args.isRegex) return undefined;
+  if (!safeRegex(args.searchPattern)) {
+    throw new McpError(
+      ErrorCode.E_INVALID_INPUT,
+      `Unsafe regex pattern: ${args.searchPattern}`
+    );
+  }
+  return createRegexMatcher(args.searchPattern);
+}
+
+function reportReplaceProgress(
+  onProgress:
+    | ((progress: { total?: number; current: number }) => void)
+    | undefined,
+  current: number,
+  force = false
+): void {
+  if (!onProgress || current === 0) return;
+  if (!force && current % 25 !== 0) return;
+  onProgress({ current });
+}
+
+async function processEntry(
+  entryPath: string,
+  args: z.infer<typeof SearchAndReplaceInputSchema>,
+  regex: RE2 | undefined,
+  signal: AbortSignal | undefined,
+  summary: ReplaceSummary
+): Promise<void> {
+  let validPath: string;
+  try {
+    validPath = await validatePathForWrite(entryPath, signal);
+  } catch (error) {
+    summary.failedFiles++;
+    recordFailure(summary.failures, {
+      path: entryPath,
+      error: formatUnknownErrorMessage(error),
+    });
+    return;
+  }
+
+  const result = await processFile(validPath, args, regex, signal);
+  if (result.matches > 0) {
+    summary.totalMatches += result.matches;
+    summary.filesChanged++;
+  }
+
+  if (result.error) {
+    summary.failedFiles++;
+    recordFailure(summary.failures, { path: validPath, error: result.error });
+  }
+}
+
 async function handleSearchAndReplace(
   args: z.infer<typeof SearchAndReplaceInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<ToolResponse<z.infer<typeof SearchAndReplaceOutputSchema>>> {
-  const root = args.path
-    ? await validateExistingPath(args.path, signal)
-    : resolvePathOrRoot(args.path);
-
-  if (args.isRegex) {
-    if (!safeRegex(args.searchPattern)) {
-      throw new McpError(
-        ErrorCode.E_INVALID_INPUT,
-        `Unsafe regex pattern: ${args.searchPattern}`
-      );
-    }
-  }
+  const root = await resolveSearchRoot(args.path, signal);
+  const regex = createReplacementRegex(args);
 
   const entries = globEntries({
     cwd: root,
@@ -140,63 +240,29 @@ async function handleSearchAndReplace(
     suppressErrors: true,
   });
 
-  let totalMatches = 0;
-  let filesChanged = 0;
-  let failedFiles = 0;
-  const failures: Failure[] = [];
-
-  const resolveValidPath = async (
-    entryPath: string
-  ): Promise<{ path: string } | { error: string }> => {
-    try {
-      const validPath = await validatePathForWrite(entryPath, signal);
-      return { path: validPath };
-    } catch (error) {
-      return { error: formatUnknownErrorMessage(error) };
-    }
-  };
-
-  const applyResult = (result: {
-    matches: number;
-    changed: boolean;
-    error?: string;
-    path: string;
-  }): void => {
-    if (result.matches > 0) {
-      totalMatches += result.matches;
-      filesChanged++;
-    }
-
-    if (result.error) {
-      failedFiles++;
-      recordFailure(failures, { path: result.path, error: result.error });
-    }
-  };
+  const summary = createReplaceSummary();
 
   for await (const entry of entries) {
     if (signal?.aborted) break;
-
-    const resolved = await resolveValidPath(entry.path);
-    if ('error' in resolved) {
-      failedFiles++;
-      recordFailure(failures, { path: entry.path, error: resolved.error });
-      continue;
-    }
-
-    const result = await processFile(resolved.path, args, signal);
-    applyResult({ ...result, path: resolved.path });
+    summary.processedFiles++;
+    reportReplaceProgress(onProgress, summary.processedFiles);
+    await processEntry(entry.path, args, regex, signal, summary);
   }
 
-  const failureSuffix = failedFiles > 0 ? ` (${failedFiles} failed)` : '';
+  reportReplaceProgress(onProgress, summary.processedFiles, true);
+
+  const failureSuffix =
+    summary.failedFiles > 0 ? ` (${summary.failedFiles} failed)` : '';
 
   return buildToolResponse(
-    `Found ${totalMatches} matches in ${filesChanged} files${failureSuffix}.${args.dryRun ? ' (Dry run)' : ''}`,
+    `Found ${summary.totalMatches} matches in ${summary.filesChanged} files${failureSuffix}.${args.dryRun ? ' (Dry run)' : ''}`,
     {
       ok: true,
-      matches: totalMatches,
-      filesChanged,
-      ...(failedFiles > 0 ? { failedFiles } : {}),
-      ...(failures.length > 0 ? { failures } : {}),
+      matches: summary.totalMatches,
+      filesChanged: summary.filesChanged,
+      processedFiles: summary.processedFiles,
+      ...(summary.failedFiles > 0 ? { failedFiles: summary.failedFiles } : {}),
+      ...(summary.failures.length > 0 ? { failures: summary.failures } : {}),
       dryRun: args.dryRun,
     }
   );
@@ -215,9 +281,24 @@ export function registerSearchAndReplaceTool(
       () =>
         withToolErrorHandling(
           async () => {
+            notifyProgress(extra, {
+              current: 0,
+              message: `replace: ${args.filePattern}`,
+            });
             const { signal, cleanup } = createTimedAbortSignal(extra.signal);
             try {
-              return await handleSearchAndReplace(args, signal);
+              const result = await handleSearchAndReplace(
+                args,
+                signal,
+                createProgressReporter(extra)
+              );
+              const sc = result.structuredContent;
+              const finalCurrent = (sc.processedFiles ?? 0) + 1;
+              notifyProgress(extra, {
+                current: finalCurrent,
+                message: `replace: ${args.filePattern} → ${String(sc.filesChanged ?? 0)} files`,
+              });
+              return result;
             } finally {
               cleanup();
             }
@@ -232,9 +313,6 @@ export function registerSearchAndReplaceTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: isInitialized,
-    progressMessage: (args) => {
-      return `replace: ${args.filePattern}`;
-    },
   });
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 

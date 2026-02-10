@@ -17,6 +17,13 @@ import { createSingleToolCapture } from '../shared/diagnostics-env.js';
 void it('grep includes includeHidden=false by default', () => {
   const parsed = SearchContentInputSchema.parse({ pattern: 'console.log' });
   assert.strictEqual(parsed.includeHidden, false);
+  assert.strictEqual(parsed.includeIgnored, false);
+  assert.strictEqual(parsed.caseSensitive, false);
+  assert.strictEqual(parsed.wholeWord, false);
+  assert.strictEqual(parsed.contextLines, 0);
+  assert.strictEqual(parsed.maxResults, 500);
+  assert.strictEqual(parsed.maxFilesScanned, 20000);
+  assert.strictEqual(parsed.filePattern, '**/*');
 });
 
 void it('grep rejects unknown parameters', () => {
@@ -29,11 +36,15 @@ void it('grep rejects unknown parameters', () => {
 void it('find includes includeIgnored=false by default', () => {
   const parsed = SearchFilesInputSchema.parse({ pattern: '**/*.ts' });
   assert.strictEqual(parsed.includeIgnored, false);
+  assert.strictEqual(parsed.includeHidden, false);
+  assert.strictEqual(parsed.sortBy, 'path');
 });
 
 void it('ls includes includeHidden=false by default', () => {
   const parsed = ListDirectoryInputSchema.parse({});
   assert.strictEqual(parsed.includeHidden, false);
+  assert.strictEqual(parsed.sortBy, 'name');
+  assert.strictEqual(parsed.includeSymlinkTargets, false);
 });
 
 void it('ls includes includeIgnored=false by default', () => {
@@ -43,7 +54,7 @@ void it('ls includes includeIgnored=false by default', () => {
 
 void it('ls rejects unknown parameters', () => {
   assert.throws(
-    () => ListDirectoryInputSchema.parse({ pattern: '**/*' }),
+    () => ListDirectoryInputSchema.parse({ unknownField: true }),
     /Unrecognized key/i
   );
 });

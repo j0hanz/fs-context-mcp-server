@@ -22,6 +22,7 @@ import {
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler } from './task-support.js';
 
 const TREE_TOOL = {
   title: 'Tree',
@@ -96,17 +97,45 @@ export function registerTreeTool(
     );
   };
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => {
+      if (args.path) {
+        return `tree: ${path.basename(args.path)}`;
+      }
+      return 'tree';
+    },
+  });
+
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+
+  const { experimental } = server as unknown as {
+    experimental?: {
+      tasks?: { registerToolTask?: (...args: unknown[]) => unknown };
+    };
+  };
+  const { tasks } = experimental ?? {};
+
+  if (tasks?.registerToolTask) {
+    tasks.registerToolTask(
+      'tree',
+      withDefaultIcons(
+        {
+          ...TREE_TOOL,
+          execution: { taskSupport: 'optional' },
+        },
+        options.iconInfo
+      ),
+      createToolTaskHandler(wrappedHandler, taskOptions)
+    );
+    return;
+  }
+
   server.registerTool(
     'tree',
     withDefaultIcons({ ...TREE_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        if (args.path) {
-          return `tree: ${path.basename(args.path)}`;
-        }
-        return 'tree';
-      },
-    })
+    wrappedHandler
   );
 }
