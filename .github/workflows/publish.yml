@@ -53,10 +53,10 @@ jobs:
       - name: Update package version
         run: npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
 
-      # Trusted Publishing: No NODE_AUTH_TOKEN needed!
-      # npm automatically uses OIDC for authentication
-      - name: Publish to npm (Trusted Publishing)
+      - name: Publish to npm
         run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create workflow summary
         run: |
@@ -67,8 +67,7 @@ jobs:
           echo "| **Package** | [\`@j0hanz/filesystem-mcp\`](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) |" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| **Registry** | npmjs.com |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Auth** | 🔐 Trusted Publishing (OIDC) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Provenance** | ✅ Auto-generated |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Auth** | 🔐 Granular Access Token |" >> $GITHUB_STEP_SUMMARY
           echo "| **Release** | [${{ github.event.release.name }}](${{ github.event.release.html_url }}) |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
