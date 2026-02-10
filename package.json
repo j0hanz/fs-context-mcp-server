@@ -1,6 +1,6 @@
 {
   "name": "@j0hanz/fs-context-mcp",
-  "version": "2.7.1",
+  "version": "2.7.2",
   "mcpName": "io.github.j0hanz/fs-context",
   "description": "MCP Server that enables LLMs to interact with the local filesystem.",
   "type": "module",
