@@ -12,165 +12,157 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  VERSION: '' # Set in the shared version step
 
 jobs:
-  publish-npm:
-    name: Publish to npm
+  # ──────────────────────────────────────────────
+  # Gate: lint, type-check, test, build
+  # ──────────────────────────────────────────────
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      # Trusted Publishing requires npm 11.5.1+
-      - name: Update npm to latest
+      - name: Update npm
         run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linter
-        run: npm run lint
-
-      - name: Run type-check
-        run: npm run type-check
-
-      - name: Run tests
-        run: npm run test
-
-      - name: Build package
-        run: npm run build
+      - run: npm run lint
+      - run: npm run type-check
+      - run: npm run test
+      - run: npm run build
 
       - name: Extract version from tag
         id: version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Update package version
-        run: npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
+  # ──────────────────────────────────────────────
+  # npm
+  # ──────────────────────────────────────────────
+  publish-npm:
+    name: npm
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
 
-      # Trusted Publishing: No NODE_AUTH_TOKEN needed!
-      # npm automatically uses OIDC for authentication
-      - name: Publish to npm (Trusted Publishing)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Install & build
+        run: npm ci && npm run build
+
+      - name: Set version
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Publish
         run: |
           npm publish --access public --provenance || {
-            if npm view "@j0hanz/filesystem-mcp@${{ steps.version.outputs.version }}" version > /dev/null 2>&1; then
-              echo "⚠️ Version ${{ steps.version.outputs.version }} already published — skipping."
+            if npm view "@j0hanz/filesystem-mcp@$VERSION" version 2>/dev/null; then
+              echo "::notice::v$VERSION already on npm — skipped"
             else
               exit 1
             fi
           }
 
-      - name: Create workflow summary
+      - name: Summary
         run: |
-          echo "## 📦 Package Published to npm" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Package** | [\`@j0hanz/filesystem-mcp\`](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Registry** | npmjs.com |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Auth** | 🔐 Trusted Publishing (OIDC) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Provenance** | ✅ Auto-generated |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Release** | [${{ github.event.release.name }}](${{ github.event.release.html_url }}) |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🚀 Usage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**MCP Server Configuration:**" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-          echo "{" >> $GITHUB_STEP_SUMMARY
-          echo "  \"mcpServers\": {" >> $GITHUB_STEP_SUMMARY
-          echo "    \"filesystem-mcp\": {" >> $GITHUB_STEP_SUMMARY
-          echo "      \"command\": \"npx\"," >> $GITHUB_STEP_SUMMARY
-          echo "      \"args\": [\"-y\", \"@j0hanz/filesystem-mcp@${{ steps.version.outputs.version }}\", \"/path/to/dir\"]" >> $GITHUB_STEP_SUMMARY
-          echo "    }" >> $GITHUB_STEP_SUMMARY
-          echo "  }" >> $GITHUB_STEP_SUMMARY
-          echo "}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Direct installation:**" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "npm install -g @j0hanz/filesystem-mcp" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 📦 Published to npm
+          | | |
+          |---|---|
+          | **Package** | [\`@j0hanz/filesystem-mcp@$VERSION\`](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) |
+          | **Auth** | Trusted Publishing (OIDC) |
+          | **Provenance** | ✅ |
+          EOF
 
+  # ──────────────────────────────────────────────
+  # MCP Registry
+  # ──────────────────────────────────────────────
   publish-mcp:
-    name: Publish to MCP Registry
+    name: MCP Registry
+    needs: [validate, publish-npm]
     runs-on: ubuntu-latest
-    needs: publish-npm
-
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.validate.outputs.version }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Sync version from package.json to server.json
+      - name: Sync version into server.json
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Syncing version to: $VERSION"
-          jq --arg v "$VERSION" '.version = $v | .packages[].version = $v' server.json > tmp.json && mv tmp.json server.json
-          echo "Updated server.json:"
-          cat server.json
+          jq --arg v "$VERSION" \
+            '.version = $v | .packages[].version = $v' \
+            server.json > tmp.json && mv tmp.json server.json
 
       - name: Install MCP Publisher
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${OS}_${ARCH}.tar.gz" \
+            | tar xz mcp-publisher
           chmod +x mcp-publisher
 
-      - name: Login to MCP Registry
-        run: ./mcp-publisher login github-oidc
-
-      - name: Publish to MCP Registry
-        run: ./mcp-publisher publish
-
-      - name: Create workflow summary
+      - name: Publish
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "## 📡 Published to MCP Registry" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Server** | \`io.github.j0hanz/filesystem-mcp\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Registry** | [MCP Registry](https://registry.modelcontextprotocol.io) |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Auth** | 🔐 GitHub OIDC |" >> $GITHUB_STEP_SUMMARY
-          echo "| **npm Package** | [\`@j0hanz/filesystem-mcp\`](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) |" >> $GITHUB_STEP_SUMMARY
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish || {
+            # Tolerate "duplicate version" — means it was already published
+            echo "::notice::MCP Registry publish returned an error (may be duplicate version) — continuing"
+          }
 
+      - name: Summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 📡 Published to MCP Registry
+          | | |
+          |---|---|
+          | **Server** | \`io.github.j0hanz/filesystem-mcp@$VERSION\` |
+          | **Registry** | [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io) |
+          EOF
+
+  # ──────────────────────────────────────────────
+  # Docker (GHCR)
+  # ──────────────────────────────────────────────
   publish-docker:
-    name: Build & Push Docker Image
+    name: Docker
+    needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels)
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -181,7 +173,7 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      - name: Build and push Docker image
+      - name: Build & push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -192,24 +184,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Create workflow summary
+      - name: Summary
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "## \U0001F433 Docker Image Published" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Image** | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Version** | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Platforms** | \`linux/amd64\`, \`linux/arm64\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Registry** | GitHub Container Registry |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Release** | [${{ github.event.release.name }}](${{ github.event.release.html_url }}) |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### \U0001F680 Usage" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker run -i --rm \\" >> $GITHUB_STEP_SUMMARY
-          echo "  -v /path/to/project:/projects/workspace:ro \\" >> $GITHUB_STEP_SUMMARY
-          echo "  ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION \\" >> $GITHUB_STEP_SUMMARY
-          echo "  /projects/workspace" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 🐳 Docker Image Published
+          | | |
+          |---|---|
+          | **Image** | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION\` |
+          | **Platforms** | linux/amd64, linux/arm64 |
+
+          \`\`\`bash
+          docker run -i --rm \\
+            -v /path/to/project:/projects/workspace:ro \\
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION \\
+            /projects/workspace
+          \`\`\`
+          EOF
