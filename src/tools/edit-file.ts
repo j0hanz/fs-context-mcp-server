@@ -39,6 +39,7 @@ interface EditResult {
   content: string;
   appliedEdits: number;
   unmatchedEdits: string[];
+  lineRange?: [number, number];
 }
 
 function applyEdits(
@@ -48,17 +49,39 @@ function applyEdits(
   let newContent = content;
   let appliedEdits = 0;
   const unmatchedEdits: string[] = [];
+  let minLine: number | undefined;
+  let maxLine: number | undefined;
 
   for (const edit of edits) {
     if (!newContent.includes(edit.oldText)) {
       unmatchedEdits.push(edit.oldText);
       continue;
     }
+
+    const index = newContent.indexOf(edit.oldText);
+    const linesBefore = newContent.slice(0, index).split('\n').length;
+    const newTextLines = edit.newText.split('\n').length;
+    const startLine = linesBefore;
+    const endLine = linesBefore + newTextLines - 1;
+
+    if (minLine === undefined || startLine < minLine) minLine = startLine;
+    if (maxLine === undefined || endLine > maxLine) maxLine = endLine;
+
     newContent = newContent.replace(edit.oldText, edit.newText);
     appliedEdits += 1;
   }
 
-  return { content: newContent, appliedEdits, unmatchedEdits };
+  const result: EditResult = {
+    content: newContent,
+    appliedEdits,
+    unmatchedEdits,
+  };
+
+  if (minLine !== undefined && maxLine !== undefined) {
+    result.lineRange = [minLine, maxLine];
+  }
+
+  return result;
 }
 
 async function handleEditFile(
@@ -72,13 +95,15 @@ async function handleEditFile(
     content: newContent,
     appliedEdits,
     unmatchedEdits,
+    lineRange,
   } = applyEdits(content, args.edits);
 
-  const structured = {
+  const structured: z.infer<typeof EditFileOutputSchema> = {
     ok: true,
     path: validPath,
     appliedEdits,
     ...(unmatchedEdits.length > 0 ? { unmatchedEdits } : {}),
+    ...(lineRange ? { lineRange } : {}),
   };
 
   if (args.dryRun) {
@@ -134,6 +159,17 @@ export function registerEditFileTool(
       progressMessage: (args) => {
         const name = path.basename(args.path);
         return `🛠 edit: ${name} (${args.edits.length} edits)`;
+      },
+      completionMessage: (args, result) => {
+        const name = path.basename(args.path);
+        if (result.isError) return `🛠 edit: ${name} ➟ Failed`;
+        const sc = result.structuredContent;
+        if (!sc.ok) return `🛠 edit: ${name} ➟ Failed`;
+
+        if (sc.lineRange) {
+          return `🛠 edit: ${name} ➟ [${sc.lineRange[0]}-${sc.lineRange[1]}]`;
+        }
+        return `🛠 edit: ${name} ➟ (${sc.appliedEdits ?? 0} edits)`;
       },
     })
   );

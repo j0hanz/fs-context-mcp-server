@@ -602,6 +602,10 @@ export const EditFileOutputSchema = z.object({
   ok: z.boolean(),
   path: z.string().optional(),
   appliedEdits: z.number().optional(),
+  lineRange: z
+    .tuple([z.number(), z.number()])
+    .optional()
+    .describe('Line range modified [start, end] (1-based)'),
   unmatchedEdits: z
     .array(z.string())
     .optional()

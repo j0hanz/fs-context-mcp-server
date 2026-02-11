@@ -303,8 +303,15 @@ export function registerSearchContentTool(
             );
 
             const sc = result.structuredContent;
-            const suffix =
-              sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
+            const count = sc.ok && sc.totalMatches ? sc.totalMatches : 0;
+            let suffix;
+            if (count === 0) {
+              suffix = 'No matches';
+            } else if (count === 1) {
+              suffix = '1 match';
+            } else {
+              suffix = `${count} matches`;
+            }
             const finalCurrent = (sc.filesScanned ?? 0) + 1;
 
             notifyProgress(extra, {
