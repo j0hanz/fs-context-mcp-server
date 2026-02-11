@@ -25,6 +25,7 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
     console.error(`Shutdown timed out (${reason}), forcing exit.`);
     process.exit(exitCode);
   }, SHUTDOWN_TIMEOUT_MS);
+  timer.unref();
 
   try {
     if (activeServer) {

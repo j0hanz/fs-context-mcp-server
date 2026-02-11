@@ -42,9 +42,35 @@ function parseEnvList(envVar: string): string[] {
 }
 
 // Auto-tuned parallelism based on CPU cores (no env override)
+const BYTES_PER_PARALLEL_TASK = 64 * 1024 * 1024;
+const BYTES_PER_SEARCH_WORKER = 128 * 1024 * 1024;
+
+function getAvailableMemory(): number | undefined {
+  if (typeof process.availableMemory !== 'function') return undefined;
+  const available = process.availableMemory();
+  if (!Number.isFinite(available) || available <= 0) return undefined;
+  return available;
+}
+
+function applyMemoryBound(
+  cpuBound: number,
+  bytesPerUnit: number,
+  minValue: number
+): number {
+  const availableMemory = getAvailableMemory();
+  if (availableMemory === undefined) return cpuBound;
+  const memoryBound = Math.floor(availableMemory / bytesPerUnit);
+  return Math.min(cpuBound, Math.max(memoryBound, minValue));
+}
+
 function getOptimalParallelism(): number {
-  const cpuCores = availableParallelism();
-  return Math.min(Math.max(cpuCores, 4), 32);
+  const cpuBound = Math.min(Math.max(availableParallelism(), 4), 32);
+  return applyMemoryBound(cpuBound, BYTES_PER_PARALLEL_TASK, 2);
+}
+
+function getDefaultSearchWorkers(): number {
+  const cpuBound = Math.min(availableParallelism(), 8);
+  return applyMemoryBound(cpuBound, BYTES_PER_SEARCH_WORKER, 1);
 }
 
 // Hardcoded optimal values (no env override needed)
@@ -88,7 +114,7 @@ const ENV_ALLOWLIST = parseEnvList('FS_CONTEXT_ALLOWLIST');
  */
 export const SEARCH_WORKERS = parseEnvInt(
   'FS_CONTEXT_SEARCH_WORKERS',
-  Math.min(availableParallelism(), 8),
+  getDefaultSearchWorkers(),
   0,
   16
 );

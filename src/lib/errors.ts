@@ -1,9 +1,21 @@
 import { constants as osConstants } from 'node:os';
-import { getSystemErrorName, inspect } from 'node:util';
+import { getSystemErrorMap, getSystemErrorName, inspect } from 'node:util';
 
 import { ErrorCode, joinLines } from '../config.js';
 
 export { ErrorCode };
+
+interface ErrorConstructorWithIsError extends ErrorConstructor {
+  isError?: (value: unknown) => boolean;
+}
+
+function isNativeError(error: unknown): error is Error {
+  const candidate = Error as ErrorConstructorWithIsError;
+  if (typeof candidate.isError === 'function') {
+    return candidate.isError(error);
+  }
+  return error instanceof Error;
+}
 
 interface DetailedError {
   code: ErrorCode;
@@ -14,14 +26,14 @@ interface DetailedError {
 }
 
 export function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  if (!(error instanceof Error)) return false;
+  if (!isNativeError(error)) return false;
   if (!('code' in error)) return false;
   const { code } = error as { code?: unknown };
   return typeof code === 'string';
 }
 
 function getNodeErrno(error: unknown): number | undefined {
-  if (!(error instanceof Error)) return undefined;
+  if (!isNativeError(error)) return undefined;
   if (!('errno' in error)) return undefined;
   const { errno } = error as { errno?: unknown };
   if (typeof errno !== 'number' || !Number.isInteger(errno)) return undefined;
@@ -29,6 +41,7 @@ function getNodeErrno(error: unknown): number | undefined {
 }
 
 const ERRNO_CODE_BY_VALUE = new Map<number, string>();
+const SYSTEM_ERROR_MAP = getSystemErrorMap();
 
 for (const [name, value] of Object.entries(osConstants.errno)) {
   if (typeof value !== 'number') continue;
@@ -39,6 +52,16 @@ for (const [name, value] of Object.entries(osConstants.errno)) {
 
 const ERROR_CODE_RE = /^[A-Z][A-Z0-9_]+$/u;
 
+function getSystemErrorNameFromMap(errno: number): string | undefined {
+  const direct = SYSTEM_ERROR_MAP.get(errno);
+  if (direct) return direct[0];
+
+  const normalized = SYSTEM_ERROR_MAP.get(-Math.abs(errno));
+  if (normalized) return normalized[0];
+
+  return undefined;
+}
+
 function getNodeErrorCodeFromErrno(errno: number): string | undefined {
   const direct = ERRNO_CODE_BY_VALUE.get(errno);
   if (direct) return direct;
@@ -46,8 +69,11 @@ function getNodeErrorCodeFromErrno(errno: number): string | undefined {
   const normalized = ERRNO_CODE_BY_VALUE.get(Math.abs(errno));
   if (normalized) return normalized;
 
+  const fromMap = getSystemErrorNameFromMap(errno);
+  if (fromMap && ERROR_CODE_RE.test(fromMap)) return fromMap;
+
   try {
-    const fromSystem = getSystemErrorName(errno);
+    const fromSystem = getSystemErrorName(errno <= 0 ? errno : -errno);
     return ERROR_CODE_RE.test(fromSystem) ? fromSystem : undefined;
   } catch {
     return undefined;
@@ -63,7 +89,7 @@ function getNodeErrorCodeLabel(error: unknown): string | undefined {
 
 export function formatUnknownErrorMessage(error: unknown): string {
   if (typeof error === 'string') return error;
-  if (error instanceof Error) return error.message;
+  if (isNativeError(error)) return error.message;
   try {
     return inspect(error, {
       depth: 3,
@@ -114,7 +140,7 @@ function walkErrorChain(
 
   while (current !== undefined && current !== null && !visited.has(current)) {
     if (visitor(current)) return true;
-    if (!(current instanceof Error)) break;
+    if (!isNativeError(current)) break;
 
     visited.add(current);
 
@@ -126,7 +152,7 @@ function walkErrorChain(
 }
 
 function isAbortErrorSingle(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+  if (!isNativeError(error)) return false;
   if (error.name === 'AbortError') return true;
 
   const code = getNodeErrorCodeLabel(error);
@@ -138,7 +164,7 @@ export function isAbortError(error: unknown): boolean {
 }
 
 function isTimeoutErrorSingle(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+  if (!isNativeError(error)) return false;
   if (error.name === 'TimeoutError') return true;
   if (isAbortErrorSingle(error)) return true;
 
@@ -218,7 +244,7 @@ function getDirectErrorCode(error: unknown): ErrorCode | undefined {
 }
 
 function classifyMessageError(error: unknown): ErrorCode | undefined {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = isNativeError(error) ? error.message : String(error);
   const lower = message.toLowerCase();
   if (lower.includes('enoent') || lower.includes('no such file or directory')) {
     return ErrorCode.E_NOT_FOUND;
