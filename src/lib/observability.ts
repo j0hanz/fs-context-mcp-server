@@ -225,16 +225,34 @@ function getDelayStats(
   };
 }
 
+function clearPublishedMeasures(entries: readonly { name: string }[]): void {
+  if (entries.length === 0) return;
+  const names = new Set<string>();
+  for (const entry of entries) {
+    names.add(entry.name);
+  }
+  for (const name of names) {
+    performance.clearMeasures(name);
+  }
+}
+
 function ensureObserver(): void {
   if (perfObserver) return;
   perfObserver = new PerformanceObserver((list) => {
-    for (const entry of list.getEntries()) {
+    const entries = list.getEntries();
+    for (const entry of entries) {
       CHANNELS.perf.publish({
         phase: 'measure',
         name: entry.name,
         durationMs: entry.duration,
         detail: (entry as { detail?: unknown }).detail,
       } satisfies PerfDiagnosticsEvent);
+    }
+    try {
+      // Keep the global timeline bounded while preserving published events.
+      clearPublishedMeasures(entries);
+    } catch {
+      // Never allow observability cleanup to affect tool execution.
     }
   });
   perfObserver.observe({ entryTypes: ['measure'] });
@@ -302,27 +320,38 @@ export function startPerfMeasure(
   const startMark = `${name}:start:${id}`;
   const endMark = `${name}:end:${id}`;
   const runInCapturedContext = AsyncLocalStorage.snapshot();
+  let finished = false;
 
   performance.mark(startMark);
 
   return (ok?: boolean) => {
-    runInCapturedContext(() => {
-      performance.mark(endMark);
+    if (finished) return;
+    finished = true;
 
-      let meta = enrichWithToolContext(detail);
-      if (ok !== undefined) {
-        meta = { ...(meta ?? {}), ok };
-      }
+    try {
+      runInCapturedContext(() => {
+        try {
+          performance.mark(endMark);
 
-      performance.measure(name, {
-        start: startMark,
-        end: endMark,
-        detail: meta,
+          let meta = enrichWithToolContext(detail);
+          if (ok !== undefined) {
+            meta = { ...(meta ?? {}), ok };
+          }
+
+          performance.measure(name, {
+            start: startMark,
+            end: endMark,
+            detail: meta,
+          });
+        } finally {
+          performance.clearMarks(startMark);
+          performance.clearMarks(endMark);
+        }
       });
-
+    } catch {
       performance.clearMarks(startMark);
       performance.clearMarks(endMark);
-    });
+    }
   };
 }
 

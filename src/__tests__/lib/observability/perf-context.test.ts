@@ -1,5 +1,6 @@
 import * as diagnosticsChannel from 'node:diagnostics_channel';
 import assert from 'node:assert/strict';
+import { performance } from 'node:perf_hooks';
 import { it } from 'node:test';
 
 import {
@@ -36,6 +37,12 @@ function restoreDiagnosticsEnv(snapshot: EnvSnapshot): void {
   }
 }
 
+async function flushPerformanceObserver(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+}
+
 await it('startPerfMeasure includes tool context detail when available', async () => {
   const snapshot = enableDiagnosticsEnv();
   const published: unknown[] = [];
@@ -58,9 +65,7 @@ await it('startPerfMeasure includes tool context detail when available', async (
       { path: '/tmp/perf-context-test.txt' }
     );
 
-    await new Promise<void>((resolve) => {
-      setImmediate(resolve);
-    });
+    await flushPerformanceObserver();
 
     const measureEvent = published.find(
       (
@@ -82,6 +87,97 @@ await it('startPerfMeasure includes tool context detail when available', async (
     assert.strictEqual(measureEvent.detail['ok'], true);
     assert.strictEqual(typeof measureEvent.detail['path'], 'string');
     assert.strictEqual((measureEvent.detail['path'] as string).length, 16);
+  } finally {
+    diagnosticsChannel.unsubscribe('filesystem-mcp:perf', onMessage);
+    restoreDiagnosticsEnv(snapshot);
+  }
+});
+
+await it('startPerfMeasure clears emitted measures from performance timeline', async () => {
+  const snapshot = enableDiagnosticsEnv();
+  const published: unknown[] = [];
+  const onMessage = (message: unknown): void => {
+    published.push(message);
+  };
+
+  diagnosticsChannel.subscribe('filesystem-mcp:perf', onMessage);
+
+  try {
+    await withToolDiagnostics('perf-clear-test', async () => {
+      const endMeasure = startPerfMeasure('perf.clear.measure');
+      assert.ok(endMeasure);
+      endMeasure?.(true);
+      return { ok: true };
+    });
+
+    await flushPerformanceObserver();
+
+    const publishedMeasure = published.find(
+      (
+        entry
+      ): entry is {
+        phase?: unknown;
+        name?: unknown;
+      } =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        (entry as { phase?: unknown }).phase === 'measure' &&
+        (entry as { name?: unknown }).name === 'perf.clear.measure'
+    );
+
+    assert.ok(publishedMeasure);
+    assert.strictEqual(
+      performance.getEntriesByName('perf.clear.measure', 'measure').length,
+      0
+    );
+  } finally {
+    diagnosticsChannel.unsubscribe('filesystem-mcp:perf', onMessage);
+    restoreDiagnosticsEnv(snapshot);
+  }
+});
+
+await it('startPerfMeasure end callback is idempotent', async () => {
+  const snapshot = enableDiagnosticsEnv();
+  const published: unknown[] = [];
+  const onMessage = (message: unknown): void => {
+    published.push(message);
+  };
+
+  diagnosticsChannel.subscribe('filesystem-mcp:perf', onMessage);
+
+  try {
+    await withToolDiagnostics('perf-idempotent-test', async () => {
+      const endMeasure = startPerfMeasure('perf.idempotent.measure');
+      assert.ok(endMeasure);
+
+      endMeasure?.(true);
+      assert.doesNotThrow(() => {
+        endMeasure?.(false);
+      });
+
+      return { ok: true };
+    });
+
+    await flushPerformanceObserver();
+
+    const measureEvents = published.filter(
+      (
+        entry
+      ): entry is {
+        phase?: unknown;
+        name?: unknown;
+      } =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        (entry as { phase?: unknown }).phase === 'measure' &&
+        (entry as { name?: unknown }).name === 'perf.idempotent.measure'
+    );
+
+    assert.strictEqual(measureEvents.length, 1);
+    assert.strictEqual(
+      performance.getEntriesByName('perf.idempotent.measure', 'measure').length,
+      0
+    );
   } finally {
     diagnosticsChannel.unsubscribe('filesystem-mcp:perf', onMessage);
     restoreDiagnosticsEnv(snapshot);
