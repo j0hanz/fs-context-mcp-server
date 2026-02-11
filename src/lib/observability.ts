@@ -80,17 +80,13 @@ interface PerfDiagnosticsEvent {
 
 // --- Metrics State ---
 
-export interface ToolMetrics {
+interface ToolMetrics {
   calls: number;
   errors: number;
   totalDurationMs: number;
 }
 
 const globalMetrics = new Map<string, ToolMetrics>();
-
-export function getToolMetrics(): Record<string, ToolMetrics> {
-  return Object.fromEntries(globalMetrics);
-}
 
 function updateMetrics(tool: string, ok: boolean, durationMs: number): void {
   const current = globalMetrics.get(tool) ?? {

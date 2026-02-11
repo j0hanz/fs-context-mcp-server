@@ -218,13 +218,9 @@ export interface ToolRegistrationOptions {
   iconInfo?: IconInfo;
 }
 
-export interface ExperimentalTaskRegistration {
-  registerToolTask?: (...args: unknown[]) => unknown;
-}
-
 function isExperimentalTaskRegistration(
   value: unknown
-): value is ExperimentalTaskRegistration {
+): value is { registerToolTask?: (...args: unknown[]) => unknown } {
   if (!value || typeof value !== 'object') return false;
   const { registerToolTask } = value as { registerToolTask?: unknown };
   return (
@@ -234,7 +230,7 @@ function isExperimentalTaskRegistration(
 
 export function getExperimentalTaskRegistration(
   server: McpServer
-): ExperimentalTaskRegistration | undefined {
+): { registerToolTask?: (...args: unknown[]) => unknown } | undefined {
   const serverWithExperimental = server as { experimental?: unknown };
   const { experimental } = serverWithExperimental;
   if (!experimental || typeof experimental !== 'object') return undefined;

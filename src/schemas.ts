@@ -67,7 +67,7 @@ const TreeEntrySchema: z.ZodType<TreeEntry> = z.lazy(() =>
   })
 );
 
-export const ErrorSchema = z.strictObject({
+const ErrorSchema = z.strictObject({
   code: z
     .enum(Object.values(ErrorCode) as [string, ...string[]])
     .describe('Error code (e.g. E_NOT_FOUND)'),

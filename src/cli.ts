@@ -199,12 +199,10 @@ function deduplicateAllowedDirectories(dirs: readonly string[]): string[] {
   return deduplicated;
 }
 
-export interface ParseArgsResult {
+export async function parseArgs(): Promise<{
   allowedDirs: string[];
   allowCwd: boolean;
-}
-
-export async function parseArgs(): Promise<ParseArgsResult> {
+}> {
   const output: string[] = [];
   const cli = createCliProgram(output);
   try {
