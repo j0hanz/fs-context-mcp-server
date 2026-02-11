@@ -19,21 +19,33 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # ──────────────────────────────────────────────
+  # 1. Bump versions, validate, tag & release
+  # ──────────────────────────────────────────────
   release:
-    name: Bump, tag & release
+    name: Release
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm
+        run: npm install -g npm@latest
 
       - name: Configure git
         run: |
@@ -44,8 +56,6 @@ jobs:
         id: ver
         run: |
           CURRENT=$(node -p "require('./package.json').version")
-          echo "Current version: $CURRENT"
-
           if [ -n "${{ inputs.custom_version }}" ]; then
             NEW="${{ inputs.custom_version }}"
           else
@@ -56,27 +66,27 @@ jobs:
               patch) NEW="$MAJOR.$MINOR.$((PATCH + 1))" ;;
             esac
           fi
-
-          echo "New version: $NEW"
           echo "version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "### Version: $CURRENT → $NEW" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Bump package.json
-        env:
-          VERSION: ${{ steps.ver.outputs.version }}
-        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
-
-      - name: Bump server.json
+      - name: Bump package.json & server.json
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          jq --arg v "$VERSION" \
-            '.version = $v | .packages[].version = $v' \
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          jq --arg v "$VERSION" '.version = $v | .packages[].version = $v' \
             server.json > tmp.json && mv tmp.json server.json
+          npm install --package-lock-only --ignore-scripts
 
-      - name: Update lock file
-        run: npm install --package-lock-only --ignore-scripts
+      - name: Install & validate
+        run: |
+          npm ci
+          npm run lint
+          npm run type-check
+          npm run test
+          npm run build
 
-      - name: Commit & tag
+      - name: Commit, tag & push
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
@@ -89,24 +99,142 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.ver.outputs.version }}
+        run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+
+  # ──────────────────────────────────────────────
+  # 2. Publish to npm
+  # ──────────────────────────────────────────────
+  publish-npm:
+    name: npm
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      - name: Install & build
+        run: npm ci && npm run build
+
+      - name: Publish
         run: |
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --generate-notes
+          npm publish --access public --provenance || {
+            if npm view "@j0hanz/filesystem-mcp@$VERSION" version 2>/dev/null; then
+              echo "::notice::v$VERSION already on npm — skipped"
+            else
+              exit 1
+            fi
+          }
+
+      - name: Summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 📦 Published to npm
+          | | |
+          |---|---|
+          | **Package** | [\`@j0hanz/filesystem-mcp@$VERSION\`](https://www.npmjs.com/package/@j0hanz/filesystem-mcp) |
+          | **Auth** | Trusted Publishing (OIDC) |
+          | **Provenance** | ✅ |
+          EOF
+
+  # ──────────────────────────────────────────────
+  # 3. Publish to MCP Registry
+  # ──────────────────────────────────────────────
+  publish-mcp:
+    name: MCP Registry
+    needs: [release, publish-npm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - name: Publish
+        run: |
+          OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_${OS}_${ARCH}.tar.gz" \
+            | tar xz mcp-publisher
+          chmod +x mcp-publisher
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish || echo "::notice::MCP Registry publish failed (may be duplicate) — continuing"
+
+      - name: Summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 📡 Published to MCP Registry
+          | | |
+          |---|---|
+          | **Server** | \`io.github.j0hanz/filesystem-mcp@$VERSION\` |
+          | **Registry** | [registry.modelcontextprotocol.io](https://registry.modelcontextprotocol.io) |
+          EOF
+
+  # ──────────────────────────────────────────────
+  # 4. Build & push Docker image
+  # ──────────────────────────────────────────────
+  publish-docker:
+    name: Docker
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}},value=v${{ needs.release.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.release.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ needs.release.outputs.version }}
+            type=raw,value=latest
+
+      - name: Build & push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Summary
         env:
-          VERSION: ${{ steps.ver.outputs.version }}
+          VERSION: ${{ needs.release.outputs.version }}
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          ## 🚀 Release v$VERSION created
-
-          The [Publish workflow](../actions/workflows/publish.yml) has been triggered automatically.
-
+          ## 🐳 Docker Image Published
           | | |
           |---|---|
-          | **Version** | \`$VERSION\` |
-          | **Tag** | \`v$VERSION\` |
-          | **Bump** | ${{ inputs.bump }} |
-          | **Release** | [v$VERSION](../../releases/tag/v$VERSION) |
+          | **Image** | \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$VERSION\` |
+          | **Platforms** | linux/amd64, linux/arm64 |
           EOF
