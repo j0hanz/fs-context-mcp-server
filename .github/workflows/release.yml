@@ -101,6 +101,21 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: gh release create "v$VERSION" --title "v$VERSION" --generate-notes
 
+      - name: Summary
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 🏷️ Release v$VERSION
+          | | |
+          | --- | --- |
+          | **Tag** | \`v$VERSION\` |
+          | **npm** | auto (next job) |
+          | **Docker** | auto (next job) |
+          | **MCP Registry** | auto (next job) |
+          | **Glama** | ⚠️ Manual — [create release on Glama dashboard](https://glama.ai/mcp/servers/j0hanz/filesystem-mcp) |
+          EOF
+
   # ──────────────────────────────────────────────
   # 2. Publish to npm
   # ──────────────────────────────────────────────

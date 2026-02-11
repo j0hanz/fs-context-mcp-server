@@ -219,8 +219,11 @@ Use the Docker image with any MCP client that supports stdio transport:
     "filesystem": {
       "command": "docker",
       "args": [
-        "run", "-i", "--rm",
-        "-v", "/path/to/project:/projects/workspace:ro",
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "/path/to/project:/projects/workspace:ro",
         "ghcr.io/j0hanz/filesystem-mcp:latest",
         "/projects/workspace"
       ]
