@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      custom_version:
+        description: 'Custom version (overrides bump, e.g. 2.0.0-beta.1)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Bump, tag & release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Determine version
+        id: ver
+        run: |
+          CURRENT=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT"
+
+          if [ -n "${{ inputs.custom_version }}" ]; then
+            NEW="${{ inputs.custom_version }}"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+            case "${{ inputs.bump }}" in
+              major) NEW="$((MAJOR + 1)).0.0" ;;
+              minor) NEW="$MAJOR.$((MINOR + 1)).0" ;;
+              patch) NEW="$MAJOR.$MINOR.$((PATCH + 1))" ;;
+            esac
+          fi
+
+          echo "New version: $NEW"
+          echo "version=$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Bump package.json
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Bump server.json
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          jq --arg v "$VERSION" \
+            '.version = $v | .packages[].version = $v' \
+            server.json > tmp.json && mv tmp.json server.json
+
+      - name: Update lock file
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Commit & tag
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          git add package.json package-lock.json server.json
+          git commit -m "release: v$VERSION"
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin main --follow-tags
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          ## 🚀 Release v$VERSION created
+
+          The [Publish workflow](../actions/workflows/publish.yml) has been triggered automatically.
+
+          | | |
+          |---|---|
+          | **Version** | \`$VERSION\` |
+          | **Tag** | \`v$VERSION\` |
+          | **Bump** | ${{ inputs.bump }} |
+          | **Release** | [v$VERSION](../../releases/tag/v$VERSION) |
+          EOF
