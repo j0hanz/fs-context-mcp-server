@@ -16,6 +16,7 @@ import type {
   CreateTaskResult,
   GetTaskResult,
   Result,
+  TaskStatusNotificationParams,
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { ErrorCode, McpError } from '../lib/errors.js';
@@ -34,6 +35,9 @@ type ToolArgs<Args extends ZodRawShapeCompat | AnySchema | undefined> =
     : Args extends AnySchema
       ? SchemaOutput<Args>
       : undefined;
+
+const RELATED_TASK_META_KEY = 'io.modelcontextprotocol/related-task';
+const TASK_STATUS_NOTIFICATION_METHOD = 'notifications/tasks/status';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object';
@@ -153,6 +157,78 @@ function normalizeCallToolResult(value: Result): CallToolResult {
   );
 }
 
+function withRelatedTaskMeta(result: Result, taskId: string): Result {
+  if (!isRecord(result)) {
+    return {
+      _meta: {
+        [RELATED_TASK_META_KEY]: { taskId },
+      },
+    };
+  }
+
+  const existingMeta = isRecord(result['_meta']) ? result['_meta'] : {};
+
+  return {
+    ...result,
+    _meta: {
+      ...existingMeta,
+      [RELATED_TASK_META_KEY]: { taskId },
+    },
+  };
+}
+
+type TaskStatusNotificationSender = (notification: {
+  method: typeof TASK_STATUS_NOTIFICATION_METHOD;
+  params: TaskStatusNotificationParams;
+}) => Promise<void>;
+
+function getTaskStatusNotificationSender(
+  extra: TaskToolExtra
+): TaskStatusNotificationSender | undefined {
+  const candidate = (extra as { sendNotification?: unknown }).sendNotification;
+  return typeof candidate === 'function'
+    ? (candidate as TaskStatusNotificationSender)
+    : undefined;
+}
+
+function buildTaskStatusNotificationParams(
+  task: GetTaskResult
+): TaskStatusNotificationParams {
+  return {
+    taskId: task.taskId,
+    status: task.status,
+    ttl: task.ttl,
+    createdAt: task.createdAt,
+    lastUpdatedAt: task.lastUpdatedAt,
+    ...(task.pollInterval !== undefined
+      ? { pollInterval: task.pollInterval }
+      : {}),
+    ...(task.statusMessage !== undefined
+      ? { statusMessage: task.statusMessage }
+      : {}),
+  };
+}
+
+async function notifyTaskStatusIfPossible(
+  extra: TaskToolExtra,
+  taskStore: RequestTaskStore,
+  taskId: string
+): Promise<void> {
+  const sendNotification = getTaskStatusNotificationSender(extra);
+  if (!sendNotification) return;
+
+  try {
+    const task = await taskStore.getTask(taskId);
+    const normalized = normalizeGetTaskResult(task);
+    await sendNotification({
+      method: TASK_STATUS_NOTIFICATION_METHOD,
+      params: buildTaskStatusNotificationParams(normalized),
+    });
+  } catch {
+    // Never fail task execution because status notifications are optional.
+  }
+}
+
 function getTaskStore(extra: TaskToolExtra): RequestTaskStore {
   if (!extra.taskStore) {
     throw new McpError(
@@ -217,11 +293,12 @@ async function tryStoreTaskResult(
   status: 'completed' | 'failed',
   result: Result
 ): Promise<void> {
+  const resultWithTaskMeta = withRelatedTaskMeta(result, taskId);
   const beforeStatus = await getCurrentTaskStatus(taskStore, taskId);
   if (isTerminalTaskStatus(beforeStatus)) return;
 
   try {
-    await taskStore.storeTaskResult(taskId, status, result);
+    await taskStore.storeTaskResult(taskId, status, resultWithTaskMeta);
   } catch (error) {
     const afterStatus = await getCurrentTaskStatus(taskStore, taskId);
     if (isTerminalTaskStatus(afterStatus) || isTerminalTaskStoreError(error)) {
@@ -278,16 +355,19 @@ export function createToolTaskHandler<
       taskStore,
       taskId: task.taskId,
     };
+    void notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
 
     void (async () => {
       try {
         const result = await run(args, taskExtra);
         const status = isErrorResult(result) ? 'failed' : 'completed';
         await tryStoreTaskResult(taskStore, task.taskId, status, result);
+        await notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
       } catch (error) {
         const fallback = buildToolErrorResponse(error, ErrorCode.E_UNKNOWN);
         try {
           await tryStoreTaskResult(taskStore, task.taskId, 'failed', fallback);
+          await notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
         } catch {
           // Swallow to avoid unhandled rejections from background task writes.
         }
@@ -316,7 +396,7 @@ export function createToolTaskHandler<
     const taskStore = getTaskStore(extra);
     const taskId = getTaskId(extra);
     const result = await taskStore.getTaskResult(taskId);
-    return normalizeCallToolResult(result);
+    return normalizeCallToolResult(withRelatedTaskMeta(result, taskId));
   }) as ToolTaskHandler<Args>['getTaskResult'];
 
   return {

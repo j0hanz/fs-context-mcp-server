@@ -29,7 +29,7 @@ These instructions are available as a resource (internal://instructions) or prom
 ## PROGRESS & TASKS
 
 - Include `_meta.progressToken` in requests to receive `notifications/progress` updates for long-running tools.
-- Task-augmented tool calls are supported for `grep`, `find`, `search_and_replace`, `tree`, `read_many`, and `stat_many`:
+- Task-augmented tool calls are supported for `grep`, `find`, `calculate_hash`, `search_and_replace`, `tree`, `read_many`, and `stat_many`:
   - These tools declare `execution.taskSupport: "optional"` — invoke normally or as a task.
   - Send `tools/call` with `task` to get a task id.
   - Poll `tasks/get` and fetch results via `tasks/result`.

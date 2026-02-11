@@ -9,6 +9,10 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
+import {
+  isIgnoredByGitignore,
+  loadRootGitignore,
+} from '../lib/file-operations/gitignore.js';
 import { globEntries } from '../lib/file-operations/glob-engine.js';
 import {
   assertNotAborted,
@@ -24,6 +28,9 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  createProgressReporter,
+  getExperimentalTaskRegistration,
+  notifyProgress,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -32,6 +39,7 @@ import {
   withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler } from './task-support.js';
 
 const WINDOWS_PATH_SEPARATOR = /\\/gu;
 
@@ -102,12 +110,31 @@ function updateCompositeHash(
   hasher.update(fileHash);
 }
 
+function reportHashProgress(
+  onProgress:
+    | ((progress: { total?: number; current: number }) => void)
+    | undefined,
+  current: number,
+  force = false
+): void {
+  if (!onProgress || current === 0) return;
+  if (!force && current % 25 !== 0) return;
+  onProgress({ current });
+}
+
 async function hashDirectory(
   dirPath: string,
-  signal?: AbortSignal
+  options: {
+    signal?: AbortSignal;
+    onProgress?: (progress: { total?: number; current: number }) => void;
+  } = {}
 ): Promise<{ hash: string; fileCount: number }> {
-  // Enumerate all files in directory (respects .gitignore by default)
+  const { signal, onProgress } = options;
+  const gitignoreMatcher = await loadRootGitignore(dirPath, signal);
+
+  // Enumerate all files in directory.
   const entries: { path: string; hash: Buffer }[] = [];
+  let filesHashed = 0;
 
   for await (const entry of globEntries({
     cwd: dirPath,
@@ -122,13 +149,23 @@ async function hashDirectory(
     suppressErrors: true,
   })) {
     assertNotAborted(signal);
+    if (
+      gitignoreMatcher &&
+      isIgnoredByGitignore(gitignoreMatcher, dirPath, entry.path)
+    ) {
+      continue;
+    }
 
     // entry.path is already absolute, no need to join
     const fileHash = await hashFile(entry.path, undefined, signal);
     // Use posix separators so hashes are stable across OS path separators.
     const relativePath = toStableRelativePath(dirPath, entry.path);
     entries.push({ path: relativePath, hash: fileHash });
+    filesHashed++;
+    reportHashProgress(onProgress, filesHashed);
   }
+
+  reportHashProgress(onProgress, filesHashed, true);
 
   assertNotAborted(signal);
   // Sort by path with byte-wise semantics for deterministic ordering.
@@ -150,7 +187,8 @@ async function hashDirectory(
 
 async function handleCalculateHash(
   args: z.infer<typeof CalculateHashInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (progress: { total?: number; current: number }) => void
 ): Promise<ToolResponse<z.infer<typeof CalculateHashOutputSchema>>> {
   const validPath = await validateExistingPath(args.path, signal);
 
@@ -159,7 +197,10 @@ async function handleCalculateHash(
 
   if (stats.isDirectory()) {
     // Hash directory: composite hash of all files
-    const { hash, fileCount } = await hashDirectory(validPath, signal);
+    const { hash, fileCount } = await hashDirectory(validPath, {
+      ...(signal ? { signal } : {}),
+      ...(onProgress ? { onProgress } : {}),
+    });
 
     return buildToolResponse(`${hash} (${fileCount} files)`, {
       ok: true,
@@ -171,6 +212,7 @@ async function handleCalculateHash(
   } else {
     // Hash single file
     const hash = await hashFile(validPath, 'hex', signal);
+    reportHashProgress(onProgress, 1, true);
 
     return buildToolResponse(hash, {
       ok: true,
@@ -194,9 +236,29 @@ export function registerCalculateHashTool(
       () =>
         withToolErrorHandling(
           async () => {
+            notifyProgress(extra, {
+              current: 0,
+              message: `🕮 calculate_hash: ${path.basename(args.path)}`,
+            });
             const { signal, cleanup } = createTimedAbortSignal(extra.signal);
             try {
-              return await handleCalculateHash(args, signal);
+              const result = await handleCalculateHash(
+                args,
+                signal,
+                createProgressReporter(extra)
+              );
+              const sc = result.structuredContent;
+              const totalFiles = sc.ok ? (sc.fileCount ?? 1) : 1;
+              const finalCurrent = totalFiles + 1;
+              const suffix = sc.ok
+                ? `${(sc.hash ?? '').slice(0, 8)}...`
+                : 'failed';
+
+              notifyProgress(extra, {
+                current: finalCurrent,
+                message: `🕮 calculate_hash: ${path.basename(args.path)} ➟ ${suffix}`,
+              });
+              return result;
             } finally {
               cleanup();
             }
@@ -207,15 +269,33 @@ export function registerCalculateHashTool(
       { path: args.path }
     );
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+  });
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+
+  const tasks = getExperimentalTaskRegistration(server);
+
+  if (tasks?.registerToolTask) {
+    tasks.registerToolTask(
+      'calculate_hash',
+      withDefaultIcons(
+        {
+          ...CALCULATE_HASH_TOOL,
+          execution: { taskSupport: 'optional' },
+        },
+        options.iconInfo
+      ),
+      createToolTaskHandler(wrappedHandler, taskOptions)
+    );
+    return;
+  }
+
   server.registerTool(
     'calculate_hash',
     withDefaultIcons({ ...CALCULATE_HASH_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        const name = path.basename(args.path);
-        return `🕮 calculate_hash: ${name}`;
-      },
-    })
+    wrappedHandler
   );
 }

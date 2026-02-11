@@ -26,6 +26,7 @@ await it('registers optional task handlers for long-running tools', async () => 
   const expectedTaskTools = [
     'find',
     'grep',
+    'calculate_hash',
     'search_and_replace',
     'tree',
     'read_many',

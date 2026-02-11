@@ -21,8 +21,8 @@
         {
           "type": "positional",
           "valueHint": "directory",
-          "description": "Root directory path the MCP server is allowed to access.",
-          "isRequired": true,
+          "description": "Optional root directory path the MCP server is allowed to access. If omitted, roots can be provided by the MCP Roots protocol or --allow-cwd.",
+          "isRequired": false,
           "format": "filepath",
           "isRepeated": true
         }

@@ -90,7 +90,7 @@ docker run -i --rm \
 
 ## Configuration
 
-The server requires specifying allowed directories via command-line arguments.
+Allowed directories can be provided via command-line arguments, via the MCP Roots protocol, or by using `--allow-cwd`.
 
 ### Arguments
 

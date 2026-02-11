@@ -18,6 +18,127 @@ interface CompletionResult {
   hasMore?: boolean;
 }
 
+interface CompletionOptions {
+  argumentName?: string;
+  contextArguments?: Record<string, string>;
+}
+
+interface ResourceReference {
+  type: 'ref/resource';
+  uri: string;
+}
+
+const PATH_ARGUMENTS = new Set([
+  'path',
+  'source',
+  'destination',
+  'original',
+  'modified',
+  'directory',
+  'file',
+  'root',
+  'cwd',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isPathLikeArgumentName(argName: string): boolean {
+  return (
+    PATH_ARGUMENTS.has(argName) ||
+    argName.endsWith('paths') ||
+    argName.endsWith('path') ||
+    argName.endsWith('files') ||
+    argName.endsWith('file') ||
+    argName.endsWith('dirs') ||
+    argName.endsWith('dir')
+  );
+}
+
+function parseResourceReference(value: unknown): ResourceReference | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value['type'] !== 'ref/resource') return undefined;
+  const { uri } = value;
+  if (typeof uri !== 'string') return undefined;
+  return { type: 'ref/resource', uri };
+}
+
+function extractTemplateVariables(uri: string): string[] {
+  const vars: string[] = [];
+
+  const isVariableChar = (char: string): boolean => {
+    const code = char.charCodeAt(0);
+    const isDigit = code >= 48 && code <= 57;
+    const isUpper = code >= 65 && code <= 90;
+    const isLower = code >= 97 && code <= 122;
+    return isDigit || isUpper || isLower || code === 95;
+  };
+
+  let index = 0;
+  while (index < uri.length) {
+    const start = uri.indexOf('{', index);
+    if (start === -1) break;
+    const end = uri.indexOf('}', start + 1);
+    if (end === -1) break;
+
+    const raw = uri.slice(start + 1, end);
+    let normalized = '';
+    for (const char of raw) {
+      if (isVariableChar(char)) {
+        normalized += char.toLowerCase();
+      }
+    }
+    if (normalized.length > 0) vars.push(normalized);
+    index = end + 1;
+  }
+  return vars;
+}
+
+function isPathArgumentFromReference(
+  argumentName: string,
+  ref: unknown
+): boolean {
+  const resourceRef = parseResourceReference(ref);
+  if (!resourceRef) return false;
+
+  const normalizedArg = argumentName.toLowerCase();
+  const templateVars = extractTemplateVariables(resourceRef.uri);
+  if (templateVars.length === 0) return false;
+
+  const matchesVariable = templateVars.includes(normalizedArg);
+  if (!matchesVariable) return false;
+
+  if (isPathLikeArgumentName(normalizedArg)) return true;
+  if (resourceRef.uri.toLowerCase().includes('file:///')) return true;
+
+  const uriLooksPathLike =
+    resourceRef.uri.includes('/') &&
+    (resourceRef.uri.toLowerCase().includes('path') ||
+      resourceRef.uri.toLowerCase().includes('file') ||
+      resourceRef.uri.toLowerCase().includes('dir') ||
+      resourceRef.uri.toLowerCase().includes('root') ||
+      resourceRef.uri.toLowerCase().includes('cwd'));
+
+  return uriLooksPathLike;
+}
+
+function extractContextArguments(
+  value: unknown
+): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const context = value['arguments'];
+  if (!isRecord(context)) return undefined;
+
+  const entries = Object.entries(context).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string'
+  );
+  if (entries.length === 0) return undefined;
+  return Object.fromEntries(
+    entries.map(([key, val]) => [key.toLowerCase(), val])
+  );
+}
+
 function hasTrailingSeparator(value: string): boolean {
   return (
     value.endsWith(path.sep) || value.endsWith('/') || value.endsWith('\\')
@@ -74,9 +195,102 @@ function resolveNamedRootContext(
   return resolveFromBase(root, remainder, trailingSeparator);
 }
 
+function resolveNamedRootPath(
+  value: string,
+  allowed: string[]
+): string | undefined {
+  const normalizedInput = value.replace(/\\/gu, '/');
+  const [rootName, ...rest] = normalizedInput.split('/');
+  if (!rootName) return undefined;
+
+  const root = allowed.find(
+    (candidate) =>
+      path.basename(candidate).toLowerCase() === rootName.toLowerCase()
+  );
+  if (!root) return undefined;
+
+  const remainder = rest.join(path.sep);
+  return normalizePath(path.resolve(root, remainder));
+}
+
+function chooseContextKeys(argumentName: string): string[] {
+  const normalized = argumentName.toLowerCase();
+  if (normalized === 'destination') {
+    return ['source', 'path', 'cwd', 'root'];
+  }
+  if (
+    normalized === 'path' ||
+    normalized === 'source' ||
+    normalized === 'original' ||
+    normalized === 'modified' ||
+    normalized === 'file'
+  ) {
+    return ['path', 'cwd', 'root'];
+  }
+  return ['path', 'source', 'cwd', 'root'];
+}
+
+function resolveContextCandidatePath(
+  candidate: string,
+  allowed: string[]
+): string | undefined {
+  if (isAbsolutePathInput(candidate)) {
+    return normalizePath(candidate);
+  }
+
+  if (allowed.length === 1) {
+    const base = allowed[0];
+    if (!base) return undefined;
+    return normalizePath(path.resolve(base, candidate));
+  }
+
+  return resolveNamedRootPath(candidate, allowed);
+}
+
+async function toAllowedContextDirectory(
+  resolved: string,
+  allowed: string[]
+): Promise<string | undefined> {
+  if (!isPathWithinDirectories(resolved, allowed)) return undefined;
+
+  try {
+    const stats = await fs.stat(resolved);
+    if (stats.isDirectory()) return resolved;
+  } catch {
+    // Fall back to parent path best-effort resolution.
+  }
+
+  const parent = path.dirname(resolved);
+  return isPathWithinDirectories(parent, allowed) ? parent : undefined;
+}
+
+async function resolveContextBaseDirectory(
+  argumentName: string,
+  contextArguments: Record<string, string> | undefined,
+  allowed: string[]
+): Promise<string | undefined> {
+  if (!contextArguments || Object.keys(contextArguments).length === 0) {
+    return undefined;
+  }
+
+  const keys = chooseContextKeys(argumentName);
+  for (const key of keys) {
+    const candidate = contextArguments[key];
+    if (!candidate || candidate.trim().length === 0) continue;
+
+    const resolved = resolveContextCandidatePath(candidate, allowed);
+    if (!resolved) continue;
+    const baseDirectory = await toAllowedContextDirectory(resolved, allowed);
+    if (baseDirectory) return baseDirectory;
+  }
+
+  return undefined;
+}
+
 function getSearchContext(
   currentValue: string,
-  allowed: string[]
+  allowed: string[],
+  contextBase?: string
 ):
   | {
       searchDir: string;
@@ -93,14 +307,25 @@ function getSearchContext(
     );
   }
 
+  const namedRootContext = resolveNamedRootContext(currentValue, allowed);
+  if (namedRootContext) {
+    return namedRootContext;
+  }
+
+  if (contextBase) {
+    if (currentValue.length === 0) {
+      return { searchDir: contextBase, prefix: '' };
+    }
+    return resolveFromBase(contextBase, currentValue, trailingSeparator);
+  }
+
   if (allowed.length === 1) {
     const base = allowed[0];
     if (base) {
       return resolveFromBase(base, currentValue, trailingSeparator);
     }
   }
-
-  return resolveNamedRootContext(currentValue, allowed);
+  return undefined;
 }
 
 async function findMatchesInDirectory(
@@ -166,20 +391,28 @@ function findMatchingRoots(
 }
 
 export async function getPathCompletions(
-  currentValue: string
+  currentValue: string,
+  options: CompletionOptions = {}
 ): Promise<CompletionResult> {
   const allowed = getAllowedDirectories();
-  // If empty, suggest allowed roots
-  if (!currentValue) {
-    return {
-      values: allowed,
-      total: allowed.length,
-      hasMore: false,
-    };
-  }
 
   try {
-    const context = getSearchContext(currentValue, allowed);
+    const contextBase = await resolveContextBaseDirectory(
+      options.argumentName ?? '',
+      options.contextArguments,
+      allowed
+    );
+
+    // If no value and no context base, suggest roots.
+    if (!currentValue && !contextBase) {
+      return {
+        values: allowed,
+        total: allowed.length,
+        hasMore: false,
+      };
+    }
+
+    const context = getSearchContext(currentValue, allowed, contextBase);
     if (!context) {
       const rootMatches = findRootPrefixMatches(currentValue, allowed);
       const sliced = rootMatches.slice(0, MAX_COMPLETION_ITEMS);
@@ -222,37 +455,23 @@ export async function getPathCompletions(
 export function registerCompletions(server: McpServer): void {
   server.server.setRequestHandler(CompleteRequestSchema, async (request) => {
     const { params } = request;
-    const { argument } = params;
+    const { argument, ref } = params;
 
-    const pathArguments = new Set([
-      'path',
-      'source',
-      'destination',
-      'original',
-      'modified',
-      'directory',
-      'file',
-      'root',
-      'cwd',
-    ]);
-
-    // Check if argument name is relevant or ends with path-like suffixes
     const argName = argument.name.toLowerCase();
     const isPathArg =
-      pathArguments.has(argName) ||
-      argName.endsWith('paths') ||
-      argName.endsWith('path') ||
-      argName.endsWith('files') ||
-      argName.endsWith('file') ||
-      argName.endsWith('dirs') ||
-      argName.endsWith('dir');
+      isPathLikeArgumentName(argName) ||
+      isPathArgumentFromReference(argName, ref);
 
     if (!isPathArg) {
       return { completion: { values: [], total: 0, hasMore: false } };
     }
 
+    const contextArguments = extractContextArguments(params.context);
     const { value } = argument;
-    const completions = await getPathCompletions(value);
+    const completions = await getPathCompletions(value, {
+      argumentName: argName,
+      ...(contextArguments ? { contextArguments } : {}),
+    });
 
     return {
       completion: {

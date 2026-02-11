@@ -41,8 +41,8 @@ function createInMemoryTaskStore(): {
   const taskStore = {
     createTask: async () => {
       const taskId = `task-${String(nextId++)}`;
-      tasks.set(taskId, { status: 'running' });
-      return { taskId, status: 'running' };
+      tasks.set(taskId, { status: 'working' });
+      return { taskId, status: 'working' };
     },
     getTask: async (taskId: string) => {
       const task = tasks.get(taskId);
@@ -95,6 +95,46 @@ await it('stores completed background task results', async () => {
 
   const taskResult = await handler.getTaskResult({ taskStore, taskId });
   assert.strictEqual(taskResult.isError, undefined);
+  assert.deepStrictEqual(
+    taskResult._meta?.['io.modelcontextprotocol/related-task'],
+    {
+      taskId,
+    }
+  );
+});
+
+await it('publishes optional tasks/status notifications when sender is available', async () => {
+  const { taskStore, tasks } = createInMemoryTaskStore();
+  const notifications: Array<{ method?: unknown; params?: unknown }> = [];
+
+  const handler = createToolTaskHandler(async () => {
+    return {
+      content: [{ type: 'text', text: 'ok' }],
+      structuredContent: { ok: true },
+    };
+  });
+
+  const createResult = await handler.createTask({
+    taskStore,
+    sendNotification: async (notification) => {
+      notifications.push(
+        notification as { method?: unknown; params?: unknown }
+      );
+    },
+  });
+  const taskId = createResult.task.taskId;
+
+  await waitFor(() => tasks.get(taskId)?.status === 'completed');
+  await waitFor(() =>
+    notifications.some((notification) => {
+      if (notification.method !== 'notifications/tasks/status') return false;
+      const params = notification.params as {
+        taskId?: string;
+        status?: string;
+      };
+      return params.taskId === taskId && params.status === 'completed';
+    })
+  );
 });
 
 await it('does not emit unhandled rejections when result storage races terminal task status', async () => {
@@ -104,8 +144,8 @@ await it('does not emit unhandled rejections when result storage races terminal 
   const taskStore = {
     createTask: async () => {
       const taskId = 'task-race';
-      tasks.set(taskId, { status: 'running' });
-      return { taskId, status: 'running' };
+      tasks.set(taskId, { status: 'working' });
+      return { taskId, status: 'working' };
     },
     getTask: async (taskId: string) => {
       const task = tasks.get(taskId);

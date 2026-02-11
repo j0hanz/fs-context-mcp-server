@@ -19,6 +19,10 @@ interface CompletionRequest {
       name: string;
       value: string;
     };
+    ref?: unknown;
+    context?: {
+      arguments?: Record<string, string>;
+    };
   };
 }
 
@@ -139,6 +143,60 @@ await it('treats plural path argument names as completion targets', async () => 
         params: { argument: { name: 'paths', value: '' } },
       });
       assert.ok(pathResult.completion.values.includes(root));
+    });
+  } finally {
+    await cleanupRoots([root]);
+  }
+});
+
+await it('uses context arguments to scope path completions', async () => {
+  const root = await createCompletionRoot('mcp-completion-context-');
+  const expected = path.join(root, 'src', 'index.ts');
+
+  try {
+    await withAllowedRoots([root], async () => {
+      const { fakeServer, getHandler } = createCompletionHandlerCapture();
+      registerCompletions(fakeServer);
+      const handler = getHandler();
+
+      const result = await handler({
+        params: {
+          argument: { name: 'destination', value: '' },
+          context: {
+            arguments: {
+              source: path.join(root, 'src', 'index.ts'),
+            },
+          },
+        },
+      });
+
+      assert.ok(result.completion.values.includes(expected));
+    });
+  } finally {
+    await cleanupRoots([root]);
+  }
+});
+
+await it('treats resource template variables as path arguments when ref is path-like', async () => {
+  const root = await createCompletionRoot('mcp-completion-ref-');
+
+  try {
+    await withAllowedRoots([root], async () => {
+      const { fakeServer, getHandler } = createCompletionHandlerCapture();
+      registerCompletions(fakeServer);
+      const handler = getHandler();
+
+      const result = await handler({
+        params: {
+          argument: { name: 'workspace', value: '' },
+          ref: {
+            type: 'ref/resource',
+            uri: 'file:///{workspace}',
+          },
+        },
+      });
+
+      assert.ok(result.completion.values.includes(root));
     });
   } finally {
     await cleanupRoots([root]);
