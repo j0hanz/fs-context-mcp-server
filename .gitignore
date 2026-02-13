@@ -38,6 +38,7 @@ logs/
 *.swo
 *~
 .DS_Store
+.agents
 
 # OS files
 Thumbs.db
