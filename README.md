@@ -137,6 +137,15 @@ The server communicates via `stdio`. Ensure your MCP client is configured to run
 | `apply_patch`        | Apply unified patch                 | `path`, `patch`                               |
 | `search_and_replace` | Search & replace across files       | `filePattern`, `searchPattern`, `replacement` |
 
+### Behavioral Notes
+
+- `rm` with `recursive: false`:
+  - Deletes files and empty directories.
+  - Returns `E_INVALID_INPUT` for non-empty directories with guidance to use `recursive: true`.
+- `includeIgnored: false` (default) for navigation/search tools:
+  - Excludes common generated/vendor directories such as `node_modules`, `dist`, `.git`, and similar patterns.
+  - Set `includeIgnored: true` to include those entries.
+
 ### Resources
 
 | URI Pattern                    | Description                                      |
@@ -252,6 +261,12 @@ args = ["-y", "@j0hanz/filesystem-mcp@latest", "${workspaceFolder}"]
 - **Path Restrictions**: All file operations are strictly validated against the allowed root directories provided at startup.
 - **Path Validation**: Uses `isPathWithinDirectories` to prevent path traversal attacks.
 - **Hidden Files**: Hidden files (starting with `.`) are excluded by default in listings and searches unless explicitly requested.
+- **Ignored Directories**: Ignored directories (for example `node_modules`, `.git`, `dist`) are excluded by default unless `includeIgnored=true`.
+
+## Testing Notes
+
+- For protocol-level validation, prefer an MCP SDK client (`listTools`, `listResources`, `listPrompts`, `callTool`, `readResource`) as source-of-truth.
+- Some third-party MCP CLIs may have URI parsing limitations when reading resources; if this happens, verify resource behavior through SDK client calls.
 
 ## Development Workflow
 

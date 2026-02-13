@@ -40,13 +40,36 @@ async function handleDeleteFile(
 ): Promise<ToolResponse<z.infer<typeof DeleteFileOutputSchema>>> {
   const validPath = await validatePathForWrite(args.path, signal);
 
-  await withAbort(
-    fs.rm(validPath, {
-      recursive: args.recursive,
-      force: args.ignoreIfNotExists,
-    }),
-    signal
-  );
+  let stats: Awaited<ReturnType<typeof fs.lstat>> | undefined;
+  try {
+    stats = await withAbort(fs.lstat(validPath), signal);
+  } catch (error) {
+    if (
+      isNodeError(error) &&
+      error.code === 'ENOENT' &&
+      args.ignoreIfNotExists
+    ) {
+      return buildToolResponse(`Successfully deleted: ${args.path}`, {
+        ok: true,
+        path: validPath,
+      });
+    }
+    throw error;
+  }
+
+  if (stats.isDirectory() && !args.recursive) {
+    // Use rmdir for non-recursive directory deletes so non-empty directories
+    // consistently return ENOTEMPTY-style errors with actionable guidance.
+    await withAbort(fs.rmdir(validPath), signal);
+  } else {
+    await withAbort(
+      fs.rm(validPath, {
+        recursive: args.recursive,
+        force: args.ignoreIfNotExists,
+      }),
+      signal
+    );
+  }
 
   return buildToolResponse(`Successfully deleted: ${args.path}`, {
     ok: true,
@@ -84,6 +107,24 @@ export function registerDeleteFileTool(
                 );
               }
               if (error.code === 'ENOTEMPTY') {
+                return buildToolErrorResponse(
+                  new Error(
+                    `Directory is not empty: ${args.path}. Use recursive: true to delete non-empty directories.`
+                  ),
+                  ErrorCode.E_INVALID_INPUT,
+                  args.path
+                );
+              }
+              if (error.code === 'EISDIR') {
+                return buildToolErrorResponse(
+                  new Error(
+                    `Path is a directory: ${args.path}. Use recursive: true to delete directories.`
+                  ),
+                  ErrorCode.E_INVALID_INPUT,
+                  args.path
+                );
+              }
+              if (error.code === 'EEXIST') {
                 return buildToolErrorResponse(
                   new Error(
                     `Directory is not empty: ${args.path}. Use recursive: true to delete non-empty directories.`

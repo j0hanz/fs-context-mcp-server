@@ -133,6 +133,20 @@ await it('advanced operations integration test', async () => {
       const content = await fs.readFile(fileC, 'utf-8');
       assert.strictEqual(content, 'foo\nbaz\n');
 
+      const stalePatchResult = (await handler(
+        { path: fileC, patch, fuzzy: false },
+        {}
+      )) as any;
+      assert.equal(stalePatchResult.isError, true);
+      assert.strictEqual(
+        stalePatchResult.structuredContent.error?.code,
+        ErrorCode.E_INVALID_INPUT
+      );
+      assert.match(
+        stalePatchResult.structuredContent.error?.message ?? '',
+        /diff_files/u
+      );
+
       const tooLarge = (await handler(
         {
           path: fileC,

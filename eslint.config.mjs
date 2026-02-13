@@ -12,6 +12,7 @@ export default defineConfig(
     ignores: [
       'dist',
       'node_modules',
+      '.agents',
       '*.config.mjs',
       '*.config.js',
       'src/__tests__/**',

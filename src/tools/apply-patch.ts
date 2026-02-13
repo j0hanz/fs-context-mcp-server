@@ -89,7 +89,7 @@ async function handleApplyPatch(
   if (patched === false) {
     throw new McpError(
       ErrorCode.E_INVALID_INPUT,
-      `Patch application failed. The file content may have changed or the patch context is insufficient. Try enable fuzzy matching.`
+      'Patch application failed. The file content may have changed or patch context is insufficient. Generate a fresh patch via diff_files against the current file, then retry. If differences are minor, enable fuzzy matching (fuzzy=true or fuzzFactor).'
     );
   }
 
