@@ -141,7 +141,10 @@ export function createInMemoryResourceStore(
   function getText(uri: string): TextResourceEntry {
     const existing = byUri.get(uri);
     if (!existing) {
-      throw new McpError(ErrorCode.E_NOT_FOUND, `Resource not found: ${uri}`);
+      throw new McpError(
+        ErrorCode.E_NOT_FOUND,
+        `Resource not found: ${uri}. The cached result may have been evicted. Re-run the originating tool to regenerate.`
+      );
     }
     return existing;
   }

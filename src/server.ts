@@ -436,7 +436,11 @@ export async function createServer(
   registerResultResources(server, resourceStore, localIcon);
   registerCompletions(server);
   {
-    const stripStructured = process.env['FS_CONTEXT_STRIP_STRUCTURED'] !== '0';
+    const stripEnv = process.env['FS_CONTEXT_STRIP_STRUCTURED']
+      ?.trim()
+      .toLowerCase();
+    const stripStructured =
+      stripEnv === '1' || stripEnv === 'true' || stripEnv === 'yes';
     if (stripStructured) {
       type RegisterToolFn = (...args: unknown[]) => unknown;
       const typedServer = server as unknown as {
