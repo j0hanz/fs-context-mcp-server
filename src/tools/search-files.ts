@@ -17,7 +17,6 @@ import {
   buildToolResponse,
   createProgressReporter,
   executeToolWithDiagnostics,
-  getExperimentalTaskRegistration,
   notifyProgress,
   resolvePathOrRoot,
   type ToolExtra,
@@ -27,14 +26,15 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler } from './task-support.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const SEARCH_FILES_TOOL = {
   title: 'Find Files',
   description:
     'Find files by glob pattern (e.g., **/*.ts). ' +
     'Returns a list of matching files with metadata. ' +
-    'For text search inside files, use grep.',
+    'For text search inside files, use grep. ' +
+    'To bulk-edit the matched files, pass the same glob pattern to search_and_replace.',
   inputSchema: SearchFilesInputSchema,
   outputSchema: SearchFilesOutputSchema,
   annotations: {
@@ -159,23 +159,16 @@ export function registerSearchFilesTool(
   });
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 
-  const tasks = getExperimentalTaskRegistration(server);
-
-  if (tasks?.registerToolTask) {
-    tasks.registerToolTask(
+  if (
+    tryRegisterToolTask(
+      server,
       'find',
-      withDefaultIcons(
-        {
-          ...SEARCH_FILES_TOOL,
-          execution: { taskSupport: 'optional' },
-        },
-        options.iconInfo
-      ),
-      createToolTaskHandler(wrappedHandler, taskOptions)
-    );
+      SEARCH_FILES_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
     return;
-  }
-
   server.registerTool(
     'find',
     withDefaultIcons({ ...SEARCH_FILES_TOOL }, options.iconInfo),

@@ -16,7 +16,6 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
-  getExperimentalTaskRegistration,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -24,15 +23,19 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler } from './task-support.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const APPLY_PATCH_TOOL = {
   title: 'Apply Patch',
-  description: 'Apply a unified patch to a file.',
+  description:
+    'Apply a unified diff patch to a file. ' +
+    'Generate the patch with `diff_files`, then validate with `dryRun: true` before writing. ' +
+    'On failure, regenerate a fresh patch via `diff_files` against the current file content and retry.',
   inputSchema: ApplyPatchInputSchema,
   outputSchema: ApplyPatchOutputSchema,
   annotations: {
     readOnlyHint: false,
+    destructiveHint: true,
     openWorldHint: false,
   },
 } as const;
@@ -136,23 +139,16 @@ export function registerApplyPatchTool(
     ? { guard: options.isInitialized }
     : undefined;
 
-  const tasks = getExperimentalTaskRegistration(server);
-
-  if (tasks?.registerToolTask) {
-    tasks.registerToolTask(
+  if (
+    tryRegisterToolTask(
+      server,
       'apply_patch',
-      withDefaultIcons(
-        {
-          ...APPLY_PATCH_TOOL,
-          execution: { taskSupport: 'optional' },
-        },
-        options.iconInfo
-      ),
-      createToolTaskHandler(wrappedHandler, taskOptions)
-    );
+      APPLY_PATCH_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
     return;
-  }
-
   server.registerTool(
     'apply_patch',
     withDefaultIcons({ ...APPLY_PATCH_TOOL }, options.iconInfo),

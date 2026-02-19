@@ -33,7 +33,6 @@ import {
   buildToolResponse,
   createProgressReporter,
   executeToolWithDiagnostics,
-  getExperimentalTaskRegistration,
   notifyProgress,
   resolvePathOrRoot,
   type ToolExtra,
@@ -43,15 +42,21 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler } from './task-support.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const SEARCH_AND_REPLACE_TOOL = {
   title: 'Search and Replace',
-  description: 'Search and replace text across multiple files.',
+  description:
+    'Search and replace text across multiple files matching a glob pattern. ' +
+    'Replaces ALL occurrences in each file (unlike `edit` which replaces only the first). ' +
+    'Use `filePattern` to scope which files are touched. ' +
+    'Always run with `dryRun: true` first to verify matches before writing. ' +
+    'Literal mode (default) matches exact text; `isRegex: true` enables RE2 regex with capture groups ($1, $2).',
   inputSchema: SearchAndReplaceInputSchema,
   outputSchema: SearchAndReplaceOutputSchema,
   annotations: {
     readOnlyHint: false,
+    destructiveHint: true,
     openWorldHint: false,
   },
 } as const;
@@ -178,7 +183,10 @@ async function processEntry(
           regex.lastIndex = 0;
           newContent = content.replace(regex, args.replacement);
         } else {
-          newContent = content.replaceAll(args.searchPattern, args.replacement);
+          newContent = content.replaceAll(
+            args.searchPattern,
+            () => args.replacement
+          );
         }
 
         await atomicWriteFile(validPath, newContent, {
@@ -385,23 +393,16 @@ export function registerSearchAndReplaceTool(
   });
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 
-  const tasks = getExperimentalTaskRegistration(server);
-
-  if (tasks?.registerToolTask) {
-    tasks.registerToolTask(
+  if (
+    tryRegisterToolTask(
+      server,
       'search_and_replace',
-      withDefaultIcons(
-        {
-          ...SEARCH_AND_REPLACE_TOOL,
-          execution: { taskSupport: 'optional' },
-        },
-        options.iconInfo
-      ),
-      createToolTaskHandler(wrappedHandler, taskOptions)
-    );
+      SEARCH_AND_REPLACE_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
     return;
-  }
-
   server.registerTool(
     'search_and_replace',
     withDefaultIcons({ ...SEARCH_AND_REPLACE_TOOL }, options.iconInfo),

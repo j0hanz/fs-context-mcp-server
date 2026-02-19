@@ -16,7 +16,6 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
-  getExperimentalTaskRegistration,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -24,7 +23,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler } from './task-support.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const GET_MULTIPLE_FILE_INFO_TOOL = {
   title: 'Get Multiple File Info',
@@ -109,23 +108,16 @@ export function registerGetMultipleFileInfoTool(
     ? { guard: options.isInitialized }
     : undefined;
 
-  const tasks = getExperimentalTaskRegistration(server);
-
-  if (tasks?.registerToolTask) {
-    tasks.registerToolTask(
+  if (
+    tryRegisterToolTask(
+      server,
       'stat_many',
-      withDefaultIcons(
-        {
-          ...GET_MULTIPLE_FILE_INFO_TOOL,
-          execution: { taskSupport: 'optional' },
-        },
-        options.iconInfo
-      ),
-      createToolTaskHandler(wrappedHandler, taskOptions)
-    );
+      GET_MULTIPLE_FILE_INFO_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
     return;
-  }
-
   server.registerTool(
     'stat_many',
     withDefaultIcons({ ...GET_MULTIPLE_FILE_INFO_TOOL }, options.iconInfo),

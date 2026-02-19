@@ -20,6 +20,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const WRITE_FILE_TOOL = {
   title: 'Write File',
@@ -75,12 +76,26 @@ export function registerWriteFileTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => `🛠 write: ${path.basename(args.path)}`,
+  });
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+  if (
+    tryRegisterToolTask(
+      server,
+      'write',
+      WRITE_FILE_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
+    return;
   server.registerTool(
     'write',
     withDefaultIcons({ ...WRITE_FILE_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => `🛠 write: ${path.basename(args.path)}`,
-    })
+    wrappedHandler
   );
 }

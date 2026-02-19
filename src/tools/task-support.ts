@@ -3,6 +3,7 @@ import type {
   TaskRequestHandlerExtra,
   ToolTaskHandler,
 } from '@modelcontextprotocol/sdk/experimental/tasks/interfaces.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {
   AnySchema,
   SchemaOutput,
@@ -20,8 +21,12 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { ErrorCode, McpError } from '../lib/errors.js';
-import type { ToolExtra, ToolResult } from './shared.js';
-import { buildToolErrorResponse } from './shared.js';
+import type { IconInfo, ToolExtra, ToolResult } from './shared.js';
+import {
+  buildToolErrorResponse,
+  getExperimentalTaskRegistration,
+  withDefaultIcons,
+} from './shared.js';
 
 type TaskToolExtra = ToolExtra & {
   taskId?: string;
@@ -118,9 +123,10 @@ function normalizeGetTaskResult(value: unknown): GetTaskResult {
     throw new McpError(ErrorCode.E_INVALID_INPUT, 'Invalid task status.');
   }
 
-  const now = new Date().toISOString();
   const createdAt =
-    typeof value['createdAt'] === 'string' ? value['createdAt'] : now;
+    typeof value['createdAt'] === 'string'
+      ? value['createdAt']
+      : new Date().toISOString();
   const lastUpdatedAt =
     typeof value['lastUpdatedAt'] === 'string'
       ? value['lastUpdatedAt']
@@ -294,9 +300,6 @@ async function tryStoreTaskResult(
   result: Result
 ): Promise<void> {
   const resultWithTaskMeta = withRelatedTaskMeta(result, taskId);
-  const beforeStatus = await getCurrentTaskStatus(taskStore, taskId);
-  if (isTerminalTaskStatus(beforeStatus)) return;
-
   try {
     await taskStore.storeTaskResult(taskId, status, resultWithTaskMeta);
   } catch (error) {
@@ -306,6 +309,33 @@ async function tryStoreTaskResult(
     }
     throw error;
   }
+}
+
+/**
+ * Registers a tool preferring task-capable registration when available, and
+ * returns `true`. Returns `false` so the caller can fall through to standard
+ * `server.registerTool`.
+ */
+export function tryRegisterToolTask<
+  Args extends ZodRawShapeCompat | AnySchema | undefined,
+>(
+  server: McpServer,
+  toolName: string,
+  toolDef: object,
+  taskHandler: ToolTaskHandler<Args>,
+  iconInfo: IconInfo | undefined
+): boolean {
+  const tasks = getExperimentalTaskRegistration(server);
+  if (!tasks?.registerToolTask) return false;
+  tasks.registerToolTask(
+    toolName,
+    withDefaultIcons(
+      { ...toolDef, execution: { taskSupport: 'optional' } },
+      iconInfo
+    ),
+    taskHandler
+  );
+  return true;
 }
 
 export function createToolTaskHandler<Result>(

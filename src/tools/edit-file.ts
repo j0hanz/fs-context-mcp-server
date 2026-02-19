@@ -25,11 +25,14 @@ const EDIT_FILE_TOOL = {
   title: 'Edit File',
   description:
     'Edit a file by replacing text. Sequentially applies a list of string replacements. ' +
-    'Replaces the first occurrence of each `oldText`.',
+    'Replaces the first occurrence of each `oldText`. ' +
+    '`oldText` must match exactly — include 3–5 lines of surrounding context to uniquely target the location. ' +
+    'Use `dryRun: true` to validate edits before writing.',
   inputSchema: EditFileInputSchema,
   outputSchema: EditFileOutputSchema,
   annotations: {
     readOnlyHint: false,
+    destructiveHint: true,
     openWorldHint: false,
   },
 } as const;
@@ -66,7 +69,7 @@ function applyEdits(
     if (minLine === undefined || startLine < minLine) minLine = startLine;
     if (maxLine === undefined || endLine > maxLine) maxLine = endLine;
 
-    newContent = newContent.replace(edit.oldText, edit.newText);
+    newContent = newContent.replace(edit.oldText, () => edit.newText);
     appliedEdits += 1;
   }
 

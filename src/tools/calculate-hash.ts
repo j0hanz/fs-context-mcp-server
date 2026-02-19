@@ -26,7 +26,6 @@ import {
   buildToolResponse,
   createProgressReporter,
   executeToolWithDiagnostics,
-  getExperimentalTaskRegistration,
   notifyProgress,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -35,7 +34,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler } from './task-support.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const WINDOWS_PATH_SEPARATOR = /\\/gu;
 
@@ -281,23 +280,16 @@ export function registerCalculateHashTool(
     ? { guard: options.isInitialized }
     : undefined;
 
-  const tasks = getExperimentalTaskRegistration(server);
-
-  if (tasks?.registerToolTask) {
-    tasks.registerToolTask(
+  if (
+    tryRegisterToolTask(
+      server,
       'calculate_hash',
-      withDefaultIcons(
-        {
-          ...CALCULATE_HASH_TOOL,
-          execution: { taskSupport: 'optional' },
-        },
-        options.iconInfo
-      ),
-      createToolTaskHandler(wrappedHandler, taskOptions)
-    );
+      CALCULATE_HASH_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
     return;
-  }
-
   server.registerTool(
     'calculate_hash',
     withDefaultIcons({ ...CALCULATE_HASH_TOOL }, options.iconInfo),

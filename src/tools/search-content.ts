@@ -25,7 +25,6 @@ import {
   buildToolResponse,
   createProgressReporter,
   executeToolWithDiagnostics,
-  getExperimentalTaskRegistration,
   notifyProgress,
   resolvePathOrRoot,
   type ToolExtra,
@@ -35,7 +34,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler } from './task-support.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const MAX_INLINE_MATCHES = 50;
 
@@ -45,6 +44,7 @@ const SEARCH_CONTENT_TOOL = {
     'Search for text within file contents (grep-like). ' +
     'Returns matching lines. ' +
     'Path may be a directory or a single file. ' +
+    'Use `filePattern` to scope by file type (e.g. `**/*.ts`) and avoid noisy results. ' +
     'Use includeHidden=true to include hidden files and directories.',
   inputSchema: SearchContentInputSchema,
   outputSchema: SearchContentOutputSchema,
@@ -317,23 +317,16 @@ export function registerSearchContentTool(
 
   const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
 
-  const tasks = getExperimentalTaskRegistration(server);
-
-  if (tasks?.registerToolTask) {
-    tasks.registerToolTask(
+  if (
+    tryRegisterToolTask(
+      server,
       'grep',
-      withDefaultIcons(
-        {
-          ...SEARCH_CONTENT_TOOL,
-          execution: { taskSupport: 'optional' },
-        },
-        options.iconInfo
-      ),
-      createToolTaskHandler(wrappedHandler, taskOptions)
-    );
+      SEARCH_CONTENT_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
     return;
-  }
-
   server.registerTool(
     'grep',
     withDefaultIcons({ ...SEARCH_CONTENT_TOOL }, options.iconInfo),

@@ -24,6 +24,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const READ_FILE_TOOL = {
   title: 'Read File',
@@ -135,19 +136,33 @@ export function registerReadFileTool(
         buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, args.path),
     });
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => {
+      const name = path.basename(args.path);
+      if (args.startLine !== undefined) {
+        const end = args.endLine ?? '…';
+        return `🕮 read: ${name} [${args.startLine}-${end}]`;
+      }
+      return `🕮 read: ${name}`;
+    },
+  });
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+  if (
+    tryRegisterToolTask(
+      server,
+      'read',
+      READ_FILE_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
+    return;
   server.registerTool(
     'read',
     withDefaultIcons({ ...READ_FILE_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        const name = path.basename(args.path);
-        if (args.startLine !== undefined) {
-          const end = args.endLine ?? '…';
-          return `🕮 read: ${name} [${args.startLine}-${end}]`;
-        }
-        return `🕮 read: ${name}`;
-      },
-    })
+    wrappedHandler
   );
 }

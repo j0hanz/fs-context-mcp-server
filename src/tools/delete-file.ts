@@ -20,6 +20,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const DELETE_FILE_TOOL = {
   title: 'Delete File',
@@ -138,12 +139,26 @@ export function registerDeleteFileTool(
       },
     });
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => `🛠 rm: ${path.basename(args.path)}`,
+  });
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+  if (
+    tryRegisterToolTask(
+      server,
+      'rm',
+      DELETE_FILE_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
+    return;
   server.registerTool(
     'rm',
     withDefaultIcons({ ...DELETE_FILE_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => `🛠 rm: ${path.basename(args.path)}`,
-    })
+    wrappedHandler
   );
 }

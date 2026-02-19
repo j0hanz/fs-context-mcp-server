@@ -267,17 +267,23 @@ export const SearchContentInputSchema = z.strictObject({
     .string()
     .min(1, 'Pattern required')
     .max(1000, 'Max 1000 chars')
-    .describe('Search text or regex (if isRegex=true)'),
+    .describe(
+      'Literal text to search for by default; treated as RE2 regex when isRegex is true.'
+    ),
   isRegex: z
     .boolean()
     .optional()
     .default(false)
-    .describe('Treat pattern as regex'),
+    .describe(
+      'Treat pattern as a RE2 regular expression. RE2 does not support lookahead, lookbehind, or backreferences.'
+    ),
   caseSensitive: z
     .boolean()
     .optional()
     .default(false)
-    .describe('Case-sensitive matching'),
+    .describe(
+      'Case-sensitive matching (default: false — searches are case-insensitive).'
+    ),
   wholeWord: z
     .boolean()
     .optional()
@@ -553,16 +559,29 @@ export const EditFileInputSchema = z.strictObject({
   edits: z
     .array(
       z.object({
-        oldText: z.string().describe('Exact string to replace'),
-        newText: z.string().describe('Replacement string'),
+        oldText: z
+          .string()
+          .describe(
+            'Exact literal string to replace — must match character-for-character including whitespace and indentation. Include 3–5 lines of surrounding context to uniquely identify the location.'
+          ),
+        newText: z
+          .string()
+          .describe(
+            'Replacement string — preserve the indentation style of surrounding code.'
+          ),
       })
     )
-    .min(1, 'Min 1 edit required'),
+    .min(1, 'Min 1 edit required')
+    .describe(
+      'List of replacements to apply sequentially. Each edit replaces the first occurrence of oldText.'
+    ),
   dryRun: z
     .boolean()
     .optional()
     .default(false)
-    .describe('Check only, no writes'),
+    .describe(
+      'Preview edits without writing. Check unmatchedEdits in the response to verify all oldText values were found.'
+    ),
 });
 
 export const EditFileOutputSchema = z.object({
@@ -661,7 +680,11 @@ export const DiffFilesOutputSchema = z.object({
 
 export const ApplyPatchInputSchema = z.strictObject({
   path: RequiredPathSchema.describe('Path to file to patch'),
-  patch: z.string().describe('Unified diff content to apply'),
+  patch: z
+    .string()
+    .describe(
+      'Unified diff content to apply — must include @@ hunk headers. Generate with `diff_files`.'
+    ),
   fuzzFactor: z
     .number()
     .int({ error: 'Must be integer' })
@@ -674,7 +697,13 @@ export const ApplyPatchInputSchema = z.strictObject({
     .optional()
     .default(true)
     .describe('Auto-convert line endings to match target file'),
-  dryRun: z.boolean().optional().default(false).describe('Check only'),
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Validate the patch can be applied without writing. Check `applied` in the response before committing.'
+    ),
 });
 
 export const ApplyPatchOutputSchema = z.object({
@@ -694,10 +723,27 @@ export const SearchAndReplaceInputSchema = z.strictObject({
       error: 'Invalid glob or unsafe path (absolute/.. forbidden)',
     })
     .describe('Glob pattern (e.g. "**/*.ts")'),
-  searchPattern: z.string().min(1, 'Search pattern required'),
+  searchPattern: z
+    .string()
+    .min(1, 'Search pattern required')
+    .describe(
+      'Text to search for. Matched literally by default; treated as RE2 regex when isRegex is true.'
+    ),
   replacement: z.string().describe('Replacement text'),
-  isRegex: z.boolean().optional().default(false),
-  dryRun: z.boolean().optional().default(false),
+  isRegex: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Treat searchPattern as a RE2 regular expression. Supports capture group references ($1, $2) in replacement.'
+    ),
+  dryRun: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      'Preview matches without writing. Check changedFiles and matches in the response before committing.'
+    ),
 });
 
 export const SearchAndReplaceOutputSchema = z.object({

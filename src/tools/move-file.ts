@@ -23,6 +23,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const MOVE_FILE_TOOL = {
   title: 'Move File',
@@ -95,13 +96,12 @@ export function registerMoveFileTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.source),
     });
 
-  server.registerTool(
-    'mv',
-    withDefaultIcons({ ...MOVE_FILE_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) =>
-        `🛠 mv: ${path.basename(args.source)} ➟ ${path.basename(args.destination)}`,
-    })
-  );
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) =>
+      `🛠 mv: ${path.basename(args.source)} ➟ ${path.basename(args.destination)}`,
+  });
+  const taskOptions = options.isInitialized ? { guard: options.isInitialized } : undefined;
+  if (tryRegisterToolTask(server, 'mv', MOVE_FILE_TOOL, createToolTaskHandler(wrappedHandler, taskOptions), options.iconInfo)) return;
+  server.registerTool('mv', withDefaultIcons({ ...MOVE_FILE_TOOL }, options.iconInfo), wrappedHandler);
 }

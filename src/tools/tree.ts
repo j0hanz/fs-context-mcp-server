@@ -12,7 +12,6 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
-  getExperimentalTaskRegistration,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -21,7 +20,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler } from './task-support.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const TREE_TOOL = {
   title: 'Tree',
@@ -100,23 +99,16 @@ export function registerTreeTool(
     ? { guard: options.isInitialized }
     : undefined;
 
-  const tasks = getExperimentalTaskRegistration(server);
-
-  if (tasks?.registerToolTask) {
-    tasks.registerToolTask(
+  if (
+    tryRegisterToolTask(
+      server,
       'tree',
-      withDefaultIcons(
-        {
-          ...TREE_TOOL,
-          execution: { taskSupport: 'optional' },
-        },
-        options.iconInfo
-      ),
-      createToolTaskHandler(wrappedHandler, taskOptions)
-    );
+      TREE_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
     return;
-  }
-
   server.registerTool(
     'tree',
     withDefaultIcons({ ...TREE_TOOL }, options.iconInfo),

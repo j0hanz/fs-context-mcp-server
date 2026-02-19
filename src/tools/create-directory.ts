@@ -23,6 +23,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
 
 const CREATE_DIRECTORY_TOOL = {
   title: 'Create Directory',
@@ -68,12 +69,26 @@ export function registerCreateDirectoryTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => `🛠 mkdir: ${path.basename(args.path)}`,
+  });
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+  if (
+    tryRegisterToolTask(
+      server,
+      'mkdir',
+      CREATE_DIRECTORY_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
+    return;
   server.registerTool(
     'mkdir',
     withDefaultIcons({ ...CREATE_DIRECTORY_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => `🛠 mkdir: ${path.basename(args.path)}`,
-    })
+    wrappedHandler
   );
 }
