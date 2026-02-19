@@ -4,72 +4,63 @@
 
 ## 1) Project Context
 
-- **Domain:** Model Context Protocol (MCP) Server for filesystem operations (reading, writing, searching, analyzing files).
+- **Domain:** MCP server for secure local filesystem navigation, search, metadata, and file operations for LLM/tooling clients (see `package.json`, `README.md`, `src/tools.ts`).
 - **Tech Stack (Verified):**
-  - **Languages:** TypeScript 5.9.3, Node.js >= 24 (see `package.json`, `.github/workflows/publish.yml`)
-  - **Frameworks:** Node.js native test runner (see `package.json` scripts)
-  - **Key Libraries:** `@modelcontextprotocol/sdk`, `zod`, `commander`, `diff` (see `package.json`)
-- **Architecture:** Modular MCP Server with tool-based architecture.
-  - Entry point: `src/index.ts` handles CLI and signals.
-  - Server logic: `src/server.ts` manages the `McpServer` instance and `RootsManager`.
-  - Tools: `src/tools/` contains individual tool implementations, registered via `src/tools.ts`.
+  - **Languages:** TypeScript (see `package.json`, `tsconfig.json`, `src/**/*.ts`).
+  - **Frameworks:** MCP server stack via `@modelcontextprotocol/sdk` and Zod schemas (see `package.json`, `src/server.ts`, `src/schemas.ts`).
+  - **Key Libraries:** `@modelcontextprotocol/sdk`, `zod`, `commander`, `re2`, `diff` (see `package.json`).
+- **Architecture:** Single-package Node ESM TypeScript server with a composed registration layer (`src/server.ts`), per-tool modules (`src/tools/*.ts`), shared filesystem/security utilities (`src/lib/*`), and prompt/resource registration (`src/prompts.ts`, `src/resources.ts`) (see `package.json`, `src/server.ts`, `src/tools.ts`).
 
 ## 2) Repository Map (High-Level)
 
-- `src/`: Core source code (TypeScript).
-- `src/tools/`: Individual tool implementations (read, write, search, etc.).
-- `src/lib/`: Shared utilities (fs-helpers, path-validation, errors).
-- `src/__tests__/`: Unit and integration tests (see `package.json` `test:fast` script).
-- `scripts/`: Build and maintenance scripts (e.g., `tasks.mjs`).
-- `.github/workflows/`: CI/CD pipelines (verified source of truth for commands).
-- `node-tests/`: Additional specific Node.js tests.
-  > Ignore generated/vendor dirs like `dist/`, `node_modules/`.
+- `src/`: Main server implementation, tool registration, schemas, and shared libraries (see `src/index.ts`, `src/server.ts`, `src/tools.ts`, `src/lib/`).
+- `src/__tests__/`: Primary automated tests split by area (`integration`, `lib`, `tools`, `security`, `server`) (see `src/__tests__/`).
+- `scripts/`: Build/test task orchestration for compile, type-check, and tests (see `scripts/tasks.mjs`).
+- `.github/workflows/`: CI/CD and release automation (see `.github/workflows/release.yml`).
+- `node-tests/`: Additional Node-level test files (see `node-tests/*.test.ts`).
+  > Ignore generated/vendor dirs like `dist/`, `build/`, `node_modules/`, `.venv/`, `__pycache__/`.
 
 ## 3) Operational Commands (Verified)
 
-- **Environment:** Node.js v24 (see `.github/workflows/publish.yml`)
-- **Install:** `npm ci` (see `.github/workflows/publish.yml`)
-- **Dev:** `npm run dev` (runs `tsc --watch`) (see `package.json`)
-- **Test:** `npm run test` (runs `node scripts/tasks.mjs test`) or `npm run test:fast` (runs `node --test ... src/__tests__/**/*.test.ts`) (see `package.json`, `.github/workflows/publish.yml`)
-- **Build:** `npm run build` (runs `node scripts/tasks.mjs build`) (see `.github/workflows/publish.yml`)
-- **Lint:** `npm run lint` (runs `eslint .`) (see `.github/workflows/publish.yml`)
-- **Format:** `npm run format` (runs `prettier --write .`) (see `package.json`)
-- **Type Check:** `npm run type-check` (runs `node scripts/tasks.mjs type-check`) (see `.github/workflows/publish.yml`)
+- **Environment:** Node.js `>=24` and npm (see `package.json#engines`, `.github/workflows/release.yml` `actions/setup-node@v4` with `node-version: '24'`).
+- **Install:** `npm ci` (see `.github/workflows/release.yml`, `README.md`).
+- **Dev:** `npm run dev` (see `package.json` `scripts.dev`; note CI does not run a watch/dev loop).
+- **Test:** `npm run test` (see `.github/workflows/release.yml`, `package.json` `scripts.test`); targeted fast runner: `npm run test:fast` (see `package.json`).
+- **Build:** `npm run build` (see `.github/workflows/release.yml`, `package.json`, `scripts/tasks.mjs`).
+- **Lint/Format:** `npm run lint` (see `.github/workflows/release.yml`, `package.json`); `npm run format` (see `package.json`).
 
 ## 4) Coding Standards (Style & Patterns)
 
-- **Naming:** `kebab-case` for filenames (e.g., `src/tools/read-multiple.ts`), `camelCase` for functions/variables (observed in `src/tools/read.ts`).
-- **Structure:**
-  - Tools are isolated in `src/tools/` and must be registered in `src/tools.ts`.
-  - Shared logic resides in `src/lib/`.
-  - Schemas are often defined in `src/schemas.ts` or locally using `zod`.
-- **Typing/Strictness:** strict TypeScript configuration (`strict: true`, `noImplicitOverride`, `noImplicitReturns` in `tsconfig.json`).
+- **Naming:** Enforced TypeScript naming conventions: camelCase defaults, PascalCase for type-like symbols, and allowed UPPER_CASE for constants/enum members (see `eslint.config.mjs` `@typescript-eslint/naming-convention`).
+- **Structure:** Entrypoint handles CLI and lifecycle (`src/index.ts`), server composes capabilities/resources/prompts/tools (`src/server.ts`), and tools are registered centrally through `registerAllTools` (`src/tools.ts`).
+- **Typing/Strictness:** Strict TypeScript enabled with `strict`, `noUncheckedIndexedAccess`, `isolatedModules`, `verbatimModuleSyntax`, and exact optional property semantics (see `tsconfig.json`).
 - **Patterns Observed:**
-  - **Tool Wrapper Pattern:** Tools are wrapped with `withToolDiagnostics` and `withToolErrorHandling` for consistent observability and error reporting (observed in `src/tools/read.ts`).
-  - **Resource Externalization:** Large content is externalized as a resource URI instead of being returned inline (observed in `src/tools/read.ts`).
-  - **Roots Management:** `RootsManager` class in `src/server.ts` handles allowed directories and security.
-  - **CLI/Server Split:** `src/cli.ts` handles arguments, `src/index.ts` drives the process, `src/server.ts` defines the MCP server.
+  - Tool-level modular registration pattern with one registrar per tool and centralized registry fan-out (observed in `src/tools.ts`).
+  - Defensive path-security policy with deny/allow glob matching and explicit access-denied errors for sensitive paths (observed in `src/lib/path-policy.ts`).
+  - Normalized error classification and user-facing suggestions mapped from Node/system errors to MCP error codes (observed in `src/lib/errors.ts`).
+  - Task-capable tool integration and progress reporting for long-running operations (observed in `src/tools/search-content.ts`, `src/tools/task-support.ts`).
 
 ## 5) Agent Behavioral Rules (Do Nots)
 
-- Do not introduce new dependencies without updating `package.json` and `package-lock.json`.
-- Do not edit `package-lock.json` manually; use `npm install`.
-- Do not bypass strict type checks; use `any` only as a last resort and with a comment.
-- Do not implement tools without adding them to `registerAllTools` in `src/tools.ts`.
-- Do not ignore the `RootsManager` security model; all file access must be validated against allowed directories.
+- Do not introduce new dependencies without updating `package.json` and lockfile through npm workflows (see `package.json`, `package-lock.json`, `.github/workflows/release.yml`).
+- Do not edit lockfiles manually (lockfile is generated in release flow via npm and committed as an artifact) (see `.github/workflows/release.yml` step `npm install --package-lock-only --ignore-scripts`).
+- Do not commit secrets; never print `.env` values; use existing CI secret mechanisms (`GITHUB_TOKEN`) where applicable (see `.github/workflows/release.yml`, `package.json` `scripts.dev:run` with `--env-file=.env`).
+- Do not change tool contracts/capabilities without updating tests and documentation (tool surface is asserted in protocol e2e tests and documented in README) (see `src/__tests__/integration/mcp-protocol-e2e.test.ts`, `README.md`, `src/server.ts`, `src/tools.ts`).
+- Do not disable or bypass existing lint/type rules without explicit approval (see `eslint.config.mjs`, `tsconfig.json`).
 
 ## 6) Testing Strategy (Verified)
 
-- **Framework:** Node.js native test runner (`node --test`) (see `package.json`).
-- **Where tests live:** `src/__tests__/` (main suite), `node-tests/` (specific scenarios).
+- **Framework:** Node test runner (`node --test`) with TypeScript execution via `tsx/esm` when needed (see `package.json` `scripts.test:fast`, `scripts/tasks.mjs`, and `import { it, describe } from 'node:test'` in tests).
+- **Where tests live:** `src/__tests__/...` (integration/lib/tools/security/server) and `node-tests/` (see directory structure and files under those paths).
 - **Approach:**
-  - Unit tests for individual tools and library functions.
-  - Tests are written in TypeScript and run via `tsx` or compiled code (implied by `tsx/esm` in `test:fast` script).
+  - Protocol-level integration/e2e validates full MCP surface through SDK client sessions over stdio (see `src/__tests__/integration/mcp-protocol-e2e.test.ts`).
+  - Unit/behavior tests validate library and tool-specific edge cases (see `src/__tests__/lib/**/*`, `src/__tests__/tools/**/*`).
+  - Worker/thread behavior and consistency checks are exercised with compiled-path test harnesses and env-driven worker counts (see `src/__tests__/lib/file-operations/search-content-workers.test.ts`).
 
-## 7) Common Pitfalls (Verified Only)
+## 7) Common Pitfalls (Optional; Verified Only)
 
-- **Path Validation:** All file operations must use `normalizePath` and `isPathWithinDirectories` from `src/lib/path-validation.ts` to ensure security (observed in `src/server.ts`).
-- **Large Files:** Reading large files must handle truncation or externalization to resources (observed in `src/tools/read.ts`).
+- Accessing paths outside allowed roots or sensitive files is blocked by policy and mapped to explicit access errors → always resolve within allowed directories first (see `src/lib/path-validation.ts`, `src/lib/path-policy.ts`, `src/__tests__/security/filesystem-boundary.test.ts`).
+- Large result payloads can be truncated/externalized into resource links → handle `resource_link`/resource reads for full output (see `src/tools/search-content.ts`, `README.md` resources section).
 
 ## 8) Evolution Rules
 
