@@ -170,141 +170,8 @@ interface ParallelResult<R> {
   errors: { index: number; error: Error }[];
 }
 
-interface ParallelState<T, R> {
-  items: T[];
-  processor: (item: T) => Promise<R>;
-  concurrency: number;
-  results: R[];
-  errors: { index: number; error: Error }[];
-  nextIndex: number;
-  aborted: boolean;
-  inFlight: Set<Promise<void>>;
-}
-
 function createParallelAbortError(): Error {
   return createAbortError();
-}
-
-function createState<T, R>(
-  items: T[],
-  processor: (item: T) => Promise<R>,
-  concurrency: number,
-  signal?: AbortSignal
-): ParallelState<T, R> {
-  return {
-    items,
-    processor,
-    concurrency,
-    results: [],
-    errors: [],
-    nextIndex: 0,
-    aborted: Boolean(signal?.aborted),
-    inFlight: new Set<Promise<void>>(),
-  };
-}
-
-function attachAbortListener<T, R>(
-  state: ParallelState<T, R>,
-  signal?: AbortSignal
-): () => void {
-  if (!signal || signal.aborted) return () => {};
-
-  const onAbort = (): void => {
-    state.aborted = true;
-  };
-
-  signal.addEventListener('abort', onAbort, { once: true });
-
-  return (): void => {
-    signal.removeEventListener('abort', onAbort);
-  };
-}
-
-function createAbortPromise(signal?: AbortSignal): {
-  abortPromise?: Promise<void>;
-  cleanup: () => void;
-} {
-  if (!signal) return { cleanup: () => {} };
-  if (signal.aborted)
-    return { abortPromise: Promise.resolve(), cleanup: () => {} };
-  let cleanup = (): void => {};
-  const abortPromise = new Promise<void>((resolve) => {
-    const onAbort = (): void => {
-      resolve();
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-    cleanup = (): void => {
-      signal.removeEventListener('abort', onAbort);
-    };
-  });
-  return { abortPromise, cleanup };
-}
-
-function canStartNext<T, R>(state: ParallelState<T, R>): boolean {
-  return (
-    !state.aborted &&
-    state.inFlight.size < state.concurrency &&
-    state.nextIndex < state.items.length
-  );
-}
-
-async function createTask<T, R>(
-  item: T,
-  index: number,
-  state: ParallelState<T, R>
-): Promise<void> {
-  try {
-    const result = await state.processor(item);
-    state.results.push(result);
-  } catch (reason) {
-    const error =
-      reason instanceof Error
-        ? reason
-        : new Error(formatUnknownErrorMessage(reason));
-    state.errors.push({ index, error });
-  }
-}
-
-function queueNextTask<T, R>(state: ParallelState<T, R>): void {
-  const index = state.nextIndex;
-  state.nextIndex += 1;
-  const item = state.items[index];
-  if (item === undefined) return;
-
-  const task = createTask(item, index, state);
-  state.inFlight.add(task);
-  void task.finally(() => {
-    state.inFlight.delete(task);
-  });
-}
-
-function startNextTasks<T, R>(state: ParallelState<T, R>): void {
-  while (canStartNext(state)) {
-    queueNextTask(state);
-  }
-}
-
-async function drainTasks<T, R>(
-  state: ParallelState<T, R>,
-  abortPromise?: Promise<void>
-): Promise<void> {
-  startNextTasks(state);
-
-  while (state.inFlight.size > 0) {
-    if (abortPromise) {
-      const nextTask = Promise.race(state.inFlight);
-      await Promise.race([nextTask, abortPromise]);
-    } else {
-      await Promise.race(state.inFlight);
-    }
-
-    if (state.aborted) break;
-    startNextTasks(state);
-  }
-
-  if (state.inFlight.size > 0) {
-    await Promise.allSettled(state.inFlight);
-  }
 }
 
 export async function processInParallel<T, R>(
@@ -313,31 +180,54 @@ export async function processInParallel<T, R>(
   concurrency: number = PARALLEL_CONCURRENCY,
   signal?: AbortSignal
 ): Promise<ParallelResult<R>> {
-  const { abortPromise, cleanup: cleanupAbortPromise } =
-    createAbortPromise(signal);
-
-  if (items.length === 0) {
-    cleanupAbortPromise();
-    return { results: [], errors: [] };
-  }
-
+  if (items.length === 0) return { results: [], errors: [] };
   const effectiveConcurrency = normalizeConcurrency(concurrency);
-  const state = createState(items, processor, effectiveConcurrency, signal);
 
-  const detachAbort = attachAbortListener(state, signal);
+  const results: R[] = [];
+  const errors: { index: number; error: Error }[] = [];
 
-  try {
-    await drainTasks(state, abortPromise);
-  } finally {
-    detachAbort();
-    cleanupAbortPromise();
-  }
+  if (signal?.aborted) throw createParallelAbortError();
 
-  if (state.aborted) {
-    throw createParallelAbortError();
-  }
+  let nextIndex = 0;
 
-  return { results: state.results, errors: state.errors };
+  const next = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      if (signal?.aborted) throw createParallelAbortError();
+
+      const index = nextIndex++;
+      // Check again because another worker might have incremented past length
+      if (index >= items.length) break;
+
+      const item = items[index] as T;
+
+      try {
+        const result = await processor(item);
+        if (signal?.aborted) throw createParallelAbortError();
+        results.push(result);
+      } catch (error) {
+        if (signal?.aborted) throw createParallelAbortError();
+
+        errors.push({
+          index,
+          error:
+            error instanceof Error
+              ? error
+              : new Error(formatUnknownErrorMessage(error)),
+        });
+      }
+    }
+  };
+
+  const workers = Array.from(
+    { length: Math.min(items.length, effectiveConcurrency) },
+    () => next()
+  );
+
+  await Promise.allSettled(workers);
+
+  if (signal?.aborted) throw createParallelAbortError();
+
+  return { results, errors };
 }
 
 export function getFileType(stats: Stats): FileType {

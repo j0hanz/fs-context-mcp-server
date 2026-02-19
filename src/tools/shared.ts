@@ -390,8 +390,9 @@ async function sendProgressNotification(
       method: 'notifications/progress',
       params,
     });
-  } catch {
+  } catch (error) {
     // Ignore progress notification failures to avoid breaking tool execution.
+    console.error('Failed to send progress notification:', error);
   }
 }
 

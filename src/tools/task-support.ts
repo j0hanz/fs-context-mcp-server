@@ -368,8 +368,12 @@ export function createToolTaskHandler<
         try {
           await tryStoreTaskResult(taskStore, task.taskId, 'failed', fallback);
           await notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
-        } catch {
+        } catch (innerError) {
           // Swallow to avoid unhandled rejections from background task writes.
+          console.error(
+            `Failed to store task failure result for task ${task.taskId}:`,
+            innerError
+          );
         }
       }
     })();
