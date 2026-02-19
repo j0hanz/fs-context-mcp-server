@@ -115,19 +115,22 @@ async function handleReadMultipleFiles(
     ok: true,
     results: mappedResults.map((result) => ({
       path: result.path,
-      content: result.content,
-      truncated: result.truncated,
-      resourceUri: result.resourceUri,
-      readMode: result.readMode,
-      head: result.head,
-      startLine: result.startLine,
-      endLine: result.endLine,
-      linesRead: result.linesRead,
-      hasMoreLines: result.hasMoreLines,
-      totalLines: result.totalLines,
-      truncationReason: result.truncationReason,
-      maxTotalSize: result.maxTotalSize,
-      error: result.error,
+      ...(result.content !== undefined ? { content: result.content } : {}),
+      ...(result.truncated ? { truncated: result.truncated } : {}),
+      ...(result.resourceUri ? { resourceUri: result.resourceUri } : {}),
+      ...(result.head !== undefined ? { head: result.head } : {}),
+      ...(result.startLine !== undefined
+        ? { startLine: result.startLine }
+        : {}),
+      ...(result.endLine !== undefined ? { endLine: result.endLine } : {}),
+      ...(result.hasMoreLines ? { hasMoreLines: result.hasMoreLines } : {}),
+      ...(result.totalLines !== undefined
+        ? { totalLines: result.totalLines }
+        : {}),
+      ...(result.truncationReason
+        ? { truncationReason: result.truncationReason }
+        : {}),
+      ...(result.error ? { error: result.error } : {}),
     })),
     summary: {
       total: mappedResults.length,

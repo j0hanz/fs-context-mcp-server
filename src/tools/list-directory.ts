@@ -103,15 +103,13 @@ function buildStructuredListResult(
     path: resultPath,
     entries: structuredEntries,
     totalEntries: summary.totalEntries,
-    truncated: summary.truncated,
-    entriesScanned: summary.entriesScanned,
-    entriesVisible: summary.entriesVisible,
+    ...(summary.truncated ? { truncated: summary.truncated } : {}),
     totalFiles: summary.totalFiles,
     totalDirectories: summary.totalDirectories,
-    maxDepthReached: summary.maxDepthReached,
-    stoppedReason: summary.stoppedReason,
-    skippedInaccessible: summary.skippedInaccessible,
-    symlinksNotFollowed: summary.symlinksNotFollowed,
+    ...(summary.stoppedReason ? { stoppedReason: summary.stoppedReason } : {}),
+    ...(summary.skippedInaccessible
+      ? { skippedInaccessible: summary.skippedInaccessible }
+      : {}),
   };
 }
 

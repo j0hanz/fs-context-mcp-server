@@ -69,15 +69,14 @@ async function handleReadFile(
     ok: true,
     path: args.path,
     content: result.content,
-    truncated: result.truncated,
-    resourceUri: undefined,
-    totalLines: result.totalLines,
-    readMode: result.readMode,
-    head: result.head,
-    startLine: result.startLine,
-    endLine: result.endLine,
-    linesRead: result.linesRead,
-    hasMoreLines: result.hasMoreLines,
+    ...(result.truncated ? { truncated: result.truncated } : {}),
+    ...(result.totalLines !== undefined
+      ? { totalLines: result.totalLines }
+      : {}),
+    ...(result.head !== undefined ? { head: result.head } : {}),
+    ...(result.startLine !== undefined ? { startLine: result.startLine } : {}),
+    ...(result.endLine !== undefined ? { endLine: result.endLine } : {}),
+    ...(result.hasMoreLines ? { hasMoreLines: result.hasMoreLines } : {}),
   };
 
   const externalized = maybeExternalizeTextContent(

@@ -131,24 +131,26 @@ function buildStructuredSearchResult(
     matches.push(buildSearchMatchPayload(match));
   }
 
-  const structured: z.infer<typeof SearchContentOutputSchema> = {
+  return {
     ok: true,
     patternType: options.patternType,
     caseSensitive: options.caseSensitive,
     matches,
     totalMatches: summary.matches,
-    truncated: summary.truncated,
-    filesScanned: summary.filesScanned,
-    filesMatched: summary.filesMatched,
-    skippedTooLarge: summary.skippedTooLarge,
-    skippedBinary: summary.skippedBinary,
-    skippedInaccessible: summary.skippedInaccessible,
-    linesSkippedDueToRegexTimeout: summary.linesSkippedDueToRegexTimeout,
+    ...(summary.truncated ? { truncated: summary.truncated } : {}),
+    ...(summary.filesMatched ? { filesMatched: summary.filesMatched } : {}),
+    ...(summary.skippedTooLarge
+      ? { skippedTooLarge: summary.skippedTooLarge }
+      : {}),
+    ...(summary.skippedBinary ? { skippedBinary: summary.skippedBinary } : {}),
+    ...(summary.skippedInaccessible
+      ? { skippedInaccessible: summary.skippedInaccessible }
+      : {}),
+    ...(summary.linesSkippedDueToRegexTimeout
+      ? { linesSkippedDueToRegexTimeout: summary.linesSkippedDueToRegexTimeout }
+      : {}),
+    ...(summary.stoppedReason ? { stoppedReason: summary.stoppedReason } : {}),
   };
-  if (summary.stoppedReason) {
-    structured.stoppedReason = summary.stoppedReason;
-  }
-  return structured;
 }
 
 type SearchContentResultValue = Awaited<ReturnType<typeof searchContent>>;

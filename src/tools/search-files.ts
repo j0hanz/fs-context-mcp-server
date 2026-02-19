@@ -81,13 +81,16 @@ async function handleSearchFiles(
     pattern: args.pattern,
     results: relativeResults,
     totalMatches: result.summary.matched,
-    truncated: result.summary.truncated,
-    filesScanned: result.summary.filesScanned,
-    skippedInaccessible: result.summary.skippedInaccessible,
+    ...(result.summary.truncated
+      ? { truncated: result.summary.truncated }
+      : {}),
+    ...(result.summary.skippedInaccessible
+      ? { skippedInaccessible: result.summary.skippedInaccessible }
+      : {}),
+    ...(result.summary.stoppedReason
+      ? { stoppedReason: result.summary.stoppedReason }
+      : {}),
   };
-  if (result.summary.stoppedReason) {
-    structured.stoppedReason = result.summary.stoppedReason;
-  }
 
   let truncatedReason: string | undefined;
   if (result.summary.truncated) {
