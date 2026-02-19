@@ -119,7 +119,9 @@ function resourceText(resourceResult: unknown): string {
   assert.ok(Array.isArray(contents));
   const first = contents[0] as { text?: unknown } | undefined;
   assert.ok(first && typeof first === 'object');
-  assert.equal(typeof first.text, 'string');
+  if (typeof first.text !== 'string') {
+    assert.fail('Expected first resource content block to contain string text');
+  }
   return first.text;
 }
 

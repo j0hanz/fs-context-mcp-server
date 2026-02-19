@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { it } from 'node:test';
 
+import type {
+  CreateTaskRequestHandlerExtra,
+  TaskRequestHandlerExtra,
+} from '@modelcontextprotocol/sdk/experimental/tasks/interfaces.js';
 import type { RequestTaskStore } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { Result } from '@modelcontextprotocol/sdk/types.js';
 
@@ -78,6 +82,30 @@ function createInMemoryTaskStore(): {
   return { taskStore, tasks };
 }
 
+function createRequestExtra(
+  taskStore: RequestTaskStore
+): CreateTaskRequestHandlerExtra {
+  return {
+    signal: new AbortController().signal,
+    requestId: 'request-id',
+    sendNotification: async () => {},
+    sendRequest: async () => {
+      throw new Error('sendRequest is not used in this test');
+    },
+    taskStore,
+  };
+}
+
+function createTaskRequestExtra(
+  taskStore: RequestTaskStore,
+  taskId: string
+): TaskRequestHandlerExtra {
+  return {
+    ...createRequestExtra(taskStore),
+    taskId,
+  };
+}
+
 await it('stores completed background task results', async () => {
   const { taskStore, tasks } = createInMemoryTaskStore();
 
@@ -88,12 +116,14 @@ await it('stores completed background task results', async () => {
     };
   });
 
-  const createResult = await handler.createTask({ taskStore });
+  const createResult = await handler.createTask(createRequestExtra(taskStore));
   const taskId = createResult.task.taskId;
 
   await waitFor(() => tasks.get(taskId)?.status === 'completed');
 
-  const taskResult = await handler.getTaskResult({ taskStore, taskId });
+  const taskResult = await handler.getTaskResult(
+    createTaskRequestExtra(taskStore, taskId)
+  );
   assert.strictEqual(taskResult.isError, undefined);
   assert.deepStrictEqual(
     taskResult._meta?.['io.modelcontextprotocol/related-task'],
@@ -115,7 +145,7 @@ await it('publishes optional tasks/status notifications when sender is available
   });
 
   const createResult = await handler.createTask({
-    taskStore,
+    ...createRequestExtra(taskStore),
     sendNotification: async (notification) => {
       notifications.push(
         notification as { method?: unknown; params?: unknown }
@@ -186,7 +216,7 @@ await it('does not emit unhandled rejections when result storage races terminal 
       };
     });
 
-    await handler.createTask({ taskStore });
+    await handler.createTask(createRequestExtra(taskStore));
     await sleep(50);
 
     assert.strictEqual(storeAttempts, 1);

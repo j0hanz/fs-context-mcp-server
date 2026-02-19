@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Command, CommanderError, InvalidArgumentError } from 'commander';
 
 import packageJsonRaw from '../package.json' with { type: 'json' };
+import { processInParallel } from './lib/fs-helpers.js';
 import {
   getReservedDeviceNameForPath,
   isWindowsDriveRelativePath,
@@ -17,6 +18,7 @@ import { isRecord } from './lib/type-guards.js';
 const PackageJsonSchema = z.object({ version: z.string() });
 const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
 const IS_WINDOWS = process.platform === 'win32';
+const CLI_VALIDATE_CONCURRENCY = 8;
 
 export class CliExitError extends Error {
   readonly exitCode: number;
@@ -125,11 +127,21 @@ async function validateDirectoryPath(inputPath: string): Promise<string> {
 async function normalizeCliDirectories(
   args: readonly string[]
 ): Promise<string[]> {
-  const validations: Promise<string>[] = [];
-  for (const arg of args) {
-    validations.push(validateDirectoryPath(arg));
+  const { results, errors } = await processInParallel(
+    [...args],
+    validateDirectoryPath,
+    CLI_VALIDATE_CONCURRENCY
+  );
+  if (errors.length === 0) {
+    return results;
   }
-  return Promise.all(validations);
+  let first = errors[0];
+  for (const failure of errors) {
+    if (first && failure.index < first.index) {
+      first = failure;
+    }
+  }
+  throw first?.error ?? new Error('Failed to validate directories');
 }
 
 function parseAllowedDirArgument(value: string, previous: unknown): string[] {

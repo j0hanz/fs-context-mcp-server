@@ -435,48 +435,6 @@ export async function createServer(
   registerGetHelpPrompt(server, serverInstructions, localIcon);
   registerResultResources(server, resourceStore, localIcon);
   registerCompletions(server);
-  {
-    const stripEnv = process.env['FS_CONTEXT_STRIP_STRUCTURED']
-      ?.trim()
-      .toLowerCase();
-    const stripStructured =
-      stripEnv === '1' || stripEnv === 'true' || stripEnv === 'yes';
-    if (stripStructured) {
-      type RegisterToolFn = (...args: unknown[]) => unknown;
-      const typedServer = server as unknown as {
-        registerTool: RegisterToolFn;
-      };
-      const origReg = typedServer.registerTool.bind(server);
-      typedServer.registerTool = (...regArgs: unknown[]) => {
-        // Strip outputSchema so SDK won't require structuredContent
-        if (
-          regArgs.length >= 2 &&
-          regArgs[1] &&
-          typeof regArgs[1] === 'object'
-        ) {
-          const config = { ...(regArgs[1] as Record<string, unknown>) };
-          delete config['outputSchema'];
-          regArgs[1] = config;
-        }
-        const handlerIdx = regArgs.length - 1;
-        const origHandler = regArgs[handlerIdx];
-        if (typeof origHandler !== 'function') return origReg(...regArgs);
-        regArgs[handlerIdx] = async (...hArgs: unknown[]): Promise<unknown> => {
-          const r: unknown = await (
-            origHandler as (...a: unknown[]) => Promise<unknown>
-          )(...hArgs);
-          if (!r || typeof r !== 'object') return r;
-          const record = r as Record<string, unknown>;
-          return Object.fromEntries(
-            Object.entries(record).filter(
-              ([key]) => key !== 'structuredContent'
-            )
-          );
-        };
-        return origReg(...regArgs);
-      };
-    }
-  }
   registerAllTools(server, {
     resourceStore,
     isInitialized: () => rootsManager.isInitialized(),

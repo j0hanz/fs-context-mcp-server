@@ -23,13 +23,15 @@ const projectRoot = path.resolve(currentDir, '..');
 const DIST_WORKER_TEST_TIMEOUT_MS = 15_000;
 
 const testScript = `
+const keepAlive = setInterval(() => {}, 1000);
+
 (async () => {
   const testDir = process.env.FS_CONTEXT_TEST_DIR;
   if (!testDir) {
     process.stdout.write(
       JSON.stringify({ ok: false, error: 'Missing testDir argument' }) + '\\n'
     );
-    process.exit(2);
+    process.exitCode = 2;
     return;
   }
 
@@ -50,7 +52,7 @@ const testScript = `
     process.stdout.write(
       JSON.stringify({ ok: true, matches: result.matches.length }) + '\\n'
     );
-    process.exit(0);
+    process.exitCode = 0;
   } catch (error) {
     process.stdout.write(
       JSON.stringify({
@@ -58,7 +60,9 @@ const testScript = `
         error: error instanceof Error ? error.message : String(error),
       }) + '\\n'
     );
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    clearInterval(keepAlive);
   }
 })();
 `;
@@ -127,7 +131,19 @@ test('dist searchContent uses worker pool when enabled', async () => {
     const { stdout, stderr, exitCode } = await runSearchInChild(tmp);
     assert.strictEqual(exitCode, 0, `child failed: ${stderr}\n${stdout}`);
 
-    const parsed = JSON.parse(stdout.trim()) as
+    const jsonLine =
+      stdout
+        .trim()
+        .split(/\r?\n/u)
+        .filter((line) => line.trim().length > 0)
+        .at(-1) ?? '';
+    assert.notStrictEqual(
+      jsonLine,
+      '',
+      `child returned no JSON output\nstdout: ${stdout}\nstderr: ${stderr}`
+    );
+
+    const parsed = JSON.parse(jsonLine) as
       | { ok: true; matches: number }
       | { ok: false; error: string };
     assert.ok(parsed.ok, parsed.ok ? undefined : parsed.error);

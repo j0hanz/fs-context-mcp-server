@@ -293,32 +293,65 @@ export function registerSearchContentTool(
       context: { path: args.path ?? '.' },
       run: async (signal) => {
         const normalizedArgs = SearchContentInputSchema.parse(args);
+        const scope = normalizedArgs.filePattern;
+
         notifyProgress(extra, {
           current: 0,
-          message: `🔎︎ grep: ${normalizedArgs.pattern}`,
+          message: `🔎︎ grep: ${normalizedArgs.pattern} in ${scope}`,
         });
+
+        const baseReporter = createProgressReporter(extra);
+        const progressWithMessage = ({
+          current,
+          total,
+        }: {
+          total?: number;
+          current: number;
+        }): void => {
+          const fileWord = current === 1 ? 'file' : 'files';
+          baseReporter({
+            current,
+            ...(total !== undefined ? { total } : {}),
+            message: `🔎︎ grep: ${normalizedArgs.pattern} • ${current} ${fileWord} scanned`,
+          });
+        };
 
         const result = await handleSearchContent(
           normalizedArgs,
           signal,
           options.resourceStore,
-          createProgressReporter(extra)
+          progressWithMessage
         );
 
         const sc = result.structuredContent;
         const count = sc.ok && sc.totalMatches ? sc.totalMatches : 0;
-        let suffix;
+        const filesMatched = sc.ok ? (sc.filesMatched ?? 0) : 0;
+        const stoppedReason = sc.ok ? sc.stoppedReason : undefined;
+
+        let suffix: string;
         if (count === 0) {
-          suffix = 'No matches';
-        } else if (count === 1) {
-          suffix = '1 match';
+          suffix = `No matches in ${scope}`;
         } else {
-          suffix = `${count} matches`;
+          const matchWord = count === 1 ? 'match' : 'matches';
+          const fileInfo =
+            filesMatched > 0
+              ? ` in ${filesMatched} ${filesMatched === 1 ? 'file' : 'files'}`
+              : '';
+          suffix = `${count} ${matchWord}${fileInfo}`;
+          if (stoppedReason === 'timeout') {
+            suffix += ' (stopped — timeout)';
+          } else if (stoppedReason === 'maxResults') {
+            suffix += ' (truncated — max results)';
+          } else if (stoppedReason === 'maxFiles') {
+            suffix += ' (truncated — max files)';
+          }
         }
+
         const finalCurrent = (sc.filesScanned ?? 0) + 1;
 
         notifyProgress(extra, {
           current: finalCurrent,
+          total: finalCurrent,
           message: `🔎︎ grep: ${normalizedArgs.pattern} • ${suffix}`,
         });
         return result;

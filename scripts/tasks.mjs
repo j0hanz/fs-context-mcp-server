@@ -30,10 +30,15 @@ const CONFIG = {
   },
   commands: {
     tsc: ['node', [BIN.tsc, '-p', 'tsconfig.build.json']],
-    tscCheck: ['node', [BIN.tsc, '-p', 'tsconfig.json', '--noEmit']],
+    tscCheckSrc: ['node', [BIN.tsc, '-p', 'tsconfig.json', '--noEmit']],
+    tscCheckTests: ['node', [BIN.tsc, '-p', 'tsconfig.test.json', '--noEmit']],
   },
   test: {
-    patterns: ['src/__tests__/**/*.test.ts', 'tests/**/*.test.ts'],
+    patterns: [
+      'src/__tests__/**/*.test.ts',
+      'tests/**/*.test.ts',
+      'node-tests/**/*.test.ts',
+    ],
   },
 };
 
@@ -164,7 +169,11 @@ async function findTestPatterns() {
 const TestTasks = {
   async typeCheck() {
     await Runner.runShellTask('Type-checking src', async () => {
-      const [cmd, args] = CONFIG.commands.tscCheck;
+      const [cmd, args] = CONFIG.commands.tscCheckSrc;
+      await System.exec(cmd, args);
+    });
+    await Runner.runShellTask('Type-checking tests', async () => {
+      const [cmd, args] = CONFIG.commands.tscCheckTests;
       await System.exec(cmd, args);
     });
   },

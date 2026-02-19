@@ -23,7 +23,11 @@ import type {
 import { ErrorCode, McpError } from '../lib/errors.js';
 import { isRecord } from '../lib/type-guards.js';
 import type { IconInfo, ToolExtra, ToolResult } from './shared.js';
-import { buildToolErrorResponse, withDefaultIcons } from './shared.js';
+import {
+  buildToolErrorResponse,
+  maybeStripStructuredContentFromResult,
+  withDefaultIcons,
+} from './shared.js';
 
 function isExperimentalTaskRegistration(
   value: unknown
@@ -309,12 +313,16 @@ async function runTaskInBackground<
   taskId: string
 ): Promise<void> {
   try {
-    const result = await run(args, extra);
+    const result = maybeStripStructuredContentFromResult(
+      await run(args, extra)
+    );
     const status = isErrorResult(result) ? 'failed' : 'completed';
     await tryStoreTaskResult(taskStore, taskId, status, result);
     await notifyTaskStatusIfPossible(extra, taskStore, taskId);
   } catch (error) {
-    const fallback = buildToolErrorResponse(error, ErrorCode.E_UNKNOWN);
+    const fallback = maybeStripStructuredContentFromResult(
+      buildToolErrorResponse(error, ErrorCode.E_UNKNOWN)
+    );
     try {
       await tryStoreTaskResult(taskStore, taskId, 'failed', fallback);
       await notifyTaskStatusIfPossible(extra, taskStore, taskId);

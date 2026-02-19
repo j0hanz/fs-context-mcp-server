@@ -160,3 +160,23 @@ await it('parseArgs returns clean CLI exit for file paths', async () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
+
+await it('parseArgs reports the earliest invalid directory when multiple fail', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mcp-args-order-'));
+  const firstMissing = path.join(tempDir, 'missing-a');
+  const secondMissing = path.join(tempDir, 'missing-b');
+
+  try {
+    await assert.rejects(
+      withArgv([firstMissing, secondMissing], () => parseArgs()),
+      (error: unknown): boolean => {
+        assert.ok(error instanceof CliExitError);
+        assert.strictEqual(error.exitCode, 1);
+        assert.match(error.message, /missing-a/i);
+        return true;
+      }
+    );
+  } finally {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});

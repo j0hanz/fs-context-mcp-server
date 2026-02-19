@@ -14,10 +14,15 @@ interface EnvSnapshot {
 }
 
 function enableDiagnosticsEnv(): EnvSnapshot {
-  const snapshot: EnvSnapshot = {
-    diagnostics: process.env.FS_CONTEXT_DIAGNOSTICS,
-    diagnosticsDetail: process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL,
-  };
+  const snapshot: EnvSnapshot = {};
+  const diagnostics = process.env.FS_CONTEXT_DIAGNOSTICS;
+  const diagnosticsDetail = process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL;
+  if (diagnostics !== undefined) {
+    snapshot.diagnostics = diagnostics;
+  }
+  if (diagnosticsDetail !== undefined) {
+    snapshot.diagnosticsDetail = diagnosticsDetail;
+  }
   process.env.FS_CONTEXT_DIAGNOSTICS = '1';
   process.env.FS_CONTEXT_DIAGNOSTICS_DETAIL = '1';
   return snapshot;

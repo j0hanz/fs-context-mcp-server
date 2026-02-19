@@ -23,6 +23,7 @@ import type { ToolErrorResponseSchema } from '../schemas.js';
 const MAX_INLINE_CONTENT_CHARS = 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
 const PROGRESS_RATE_LIMIT_MS = 50;
+const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes']);
 
 export const READ_ONLY_TOOL_ANNOTATIONS = {
   readOnlyHint: true,
@@ -41,6 +42,32 @@ export const IDEMPOTENT_WRITE_TOOL_ANNOTATIONS = {
   idempotentHint: true,
   openWorldHint: false,
 } as const;
+
+export function shouldStripStructuredOutput(): boolean {
+  const value = process.env['FS_CONTEXT_STRIP_STRUCTURED'];
+  if (value === undefined) return false;
+  return TRUE_ENV_VALUES.has(value.trim().toLowerCase());
+}
+
+export function maybeStripStructuredContentFromResult<T extends object>(
+  result: T
+): T {
+  if (!shouldStripStructuredOutput()) return result;
+  if (!Object.hasOwn(result, 'structuredContent')) return result;
+
+  const rest = { ...(result as Record<string, unknown>) };
+  delete rest['structuredContent'];
+  return rest as T;
+}
+
+function maybeStripOutputSchema<T extends object>(tool: T): T {
+  if (!shouldStripStructuredOutput()) return tool;
+  if (!Object.hasOwn(tool, 'outputSchema')) return tool;
+
+  const mutable = { ...(tool as Record<string, unknown>) };
+  delete mutable['outputSchema'];
+  return mutable as T;
+}
 
 type ResourceEntry = ReturnType<ResourceStore['putText']>;
 
@@ -170,14 +197,16 @@ export function withDefaultIcons<T extends object>(
   tool: T,
   iconInfo: IconInfo | undefined
 ): T & { icons?: Icon[] } {
-  if (!iconInfo) return tool;
+  if (!iconInfo) {
+    return maybeStripOutputSchema(tool) as T & { icons?: Icon[] };
+  }
 
   const existingIcons = (tool as { icons?: Icon[] }).icons;
   if (existingIcons && existingIcons.length > 0) {
-    return tool as T & { icons?: Icon[] };
+    return maybeStripOutputSchema(tool) as T & { icons?: Icon[] };
   }
 
-  return {
+  const withIcons = {
     ...tool,
     icons: [
       {
@@ -186,6 +215,7 @@ export function withDefaultIcons<T extends object>(
       },
     ],
   };
+  return maybeStripOutputSchema(withIcons) as T & { icons?: Icon[] };
 }
 
 export interface ToolRegistrationOptions {
@@ -443,7 +473,7 @@ export function wrapToolHandler<Args, Result>(
   return async (args: Args, extra?: ToolExtra) => {
     const resolvedExtra = extra ?? {};
     if (options.guard && !options.guard()) {
-      return buildNotInitializedResult();
+      return maybeStripStructuredContentFromResult(buildNotInitializedResult());
     }
 
     if (options.progressMessage) {
@@ -452,15 +482,17 @@ export function wrapToolHandler<Args, Result>(
       const completionFn = completionMessage
         ? (result: ToolResult<Result>) => completionMessage(args, result)
         : undefined;
-      return withProgress(
+      const result = await withProgress(
         message,
         resolvedExtra,
         () => handler(args, resolvedExtra),
         completionFn
       );
+      return maybeStripStructuredContentFromResult(result);
     }
 
-    return handler(args, resolvedExtra);
+    const result = await handler(args, resolvedExtra);
+    return maybeStripStructuredContentFromResult(result);
   };
 }
 
