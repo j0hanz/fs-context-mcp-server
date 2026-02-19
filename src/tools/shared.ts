@@ -517,5 +517,12 @@ export function resolvePathOrRoot(pathValue: string | undefined): string {
       'Multiple workspace roots configured. Provide an explicit path to disambiguate.'
     );
   }
-  return roots[0] ?? '';
+  const root = roots[0];
+  if (!root) {
+    throw new McpError(
+      ErrorCode.E_ACCESS_DENIED,
+      'Workspace root is unexpectedly undefined'
+    );
+  }
+  return root;
 }

@@ -183,7 +183,10 @@ export async function processInParallel<T, R>(
   if (items.length === 0) return { results: [], errors: [] };
   const effectiveConcurrency = normalizeConcurrency(concurrency);
 
-  const results: R[] = [];
+  // Pre-allocate slots by index to guarantee input-order output.
+  const resultSlots: (R | undefined)[] = new Array<R | undefined>(
+    items.length
+  ).fill(undefined);
   const errors: { index: number; error: Error }[] = [];
 
   if (signal?.aborted) throw createParallelAbortError();
@@ -203,7 +206,7 @@ export async function processInParallel<T, R>(
       try {
         const result = await processor(item);
         if (signal?.aborted) throw createParallelAbortError();
-        results.push(result);
+        resultSlots[index] = result;
       } catch (error) {
         if (signal?.aborted) throw createParallelAbortError();
 
@@ -227,6 +230,7 @@ export async function processInParallel<T, R>(
 
   if (signal?.aborted) throw createParallelAbortError();
 
+  const results = resultSlots.filter((r): r is R => r !== undefined);
   return { results, errors };
 }
 
@@ -432,11 +436,6 @@ function normalizeOptions(options: ReadFileOptions): NormalizedOptions {
     skipBinary: options.skipBinary ?? false,
   };
 
-  assertPositiveSafeIntegerOption(
-    'maxSize',
-    normalized.maxSize,
-    'maxSize must be at least 1'
-  );
   if (options.head !== undefined) {
     normalized.head = options.head;
   }

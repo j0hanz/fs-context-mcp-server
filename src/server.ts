@@ -56,7 +56,7 @@ const {
   homepage: SERVER_HOMEPAGE,
 } = PackageJsonSchema.parse(packageJsonRaw);
 
-function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
+function normalizeCLIDirectories(dirs: readonly string[]): string[] {
   return dirs
     .map((dir) => dir.trim())
     .filter((dir) => dir.length > 0)
@@ -176,7 +176,7 @@ class RootsManager {
   }
 
   async recomputeAllowedDirectories(): Promise<void> {
-    const cliAllowedDirs = normalizeAllowedDirectories(
+    const cliAllowedDirs = normalizeCLIDirectories(
       this.options.cliAllowedDirs ?? []
     );
     const allowCwd = this.options.allowCwd === true;
@@ -306,7 +306,7 @@ async function filterRootsWithinBaseline(
   baseline: readonly string[],
   signal?: AbortSignal
 ): Promise<string[]> {
-  const normalizedBaseline = normalizeAllowedDirectories(baseline);
+  const normalizedBaseline = normalizeCLIDirectories(baseline);
   const filtered: string[] = [];
 
   for (const root of roots) {
@@ -341,21 +341,21 @@ async function isRootWithinBaseline(
   }
 }
 
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
-let serverInstructions = `
+async function loadServerInstructions(): Promise<string> {
+  const defaultInstructions = `
 Filesystem MCP Instructions
 (Detailed instructions failed to load - check logs)
 `;
-try {
-  serverInstructions = await fs.readFile(
-    path.join(currentDir, 'instructions.md'),
-    'utf-8'
-  );
-} catch (error) {
-  console.error(
-    '[WARNING] Failed to load instructions.md:',
-    formatUnknownErrorMessage(error)
-  );
+  try {
+    const currentDir = path.dirname(fileURLToPath(import.meta.url));
+    return await fs.readFile(path.join(currentDir, 'instructions.md'), 'utf-8');
+  } catch (error) {
+    console.error(
+      '[WARNING] Failed to load instructions.md:',
+      formatUnknownErrorMessage(error)
+    );
+    return defaultInstructions;
+  }
 }
 
 async function getLocalIconInfo(): Promise<IconInfo | undefined> {
@@ -377,6 +377,7 @@ export async function createServer(
   options: ServerOptions = {}
 ): Promise<McpServer> {
   const resourceStore = createInMemoryResourceStore();
+  const serverInstructions = await loadServerInstructions();
   const localIcon = await getLocalIconInfo();
   const taskStore = new InMemoryTaskStore();
   const taskMessageQueue = new InMemoryTaskMessageQueue();

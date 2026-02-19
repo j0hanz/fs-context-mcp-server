@@ -130,7 +130,7 @@ const ENV_ALLOWLIST = parseEnvList('FS_CONTEXT_ALLOWLIST');
 export const SEARCH_WORKERS = parseEnvInt(
   'FS_CONTEXT_SEARCH_WORKERS',
   getDefaultSearchWorkers(),
-  0,
+  1,
   16
 );
 

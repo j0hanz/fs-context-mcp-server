@@ -17,12 +17,14 @@ interface Config {
   logToolErrors: boolean;
 }
 
+let _cachedConfig: Config | undefined;
+
 function readConfig(): Config {
-  return {
+  return (_cachedConfig ??= {
     enabled: isTrue(ENV['FS_CONTEXT_DIAGNOSTICS']),
     detail: parseDetail(ENV['FS_CONTEXT_DIAGNOSTICS_DETAIL']),
     logToolErrors: isTrue(ENV['FS_CONTEXT_TOOL_LOG_ERRORS']),
-  };
+  });
 }
 
 function isTrue(val?: string): boolean {
