@@ -83,7 +83,12 @@ function ensureParentNodes(
   const normalized = relativePath.replace(/\\/gu, '/');
   if (normalized.length === 0 || normalized === '.') return rootNode;
 
-  const segments = normalized.split('/').filter((seg) => seg.length > 0);
+  const segments: string[] = [];
+  for (const segment of normalized.split('/')) {
+    if (segment.length > 0) {
+      segments.push(segment);
+    }
+  }
   const parentSegmentCount = Math.max(0, segments.length - 1);
   let current = rootNode;
   let currentPath = '';
@@ -236,7 +241,10 @@ function upsertChildNode(
     parent.children ??= [];
     let seen = childPathIndexByParent.get(parent);
     if (!seen) {
-      seen = new Set(parent.children.map((entry) => entry.relativePath));
+      seen = new Set<string>();
+      for (const entry of parent.children) {
+        seen.add(entry.relativePath);
+      }
       childPathIndexByParent.set(parent, seen);
     }
     const key = child.relativePath;
@@ -295,9 +303,12 @@ export function formatTreeAscii(tree: TreeEntry): string {
     }
 
     const count = node.children.length;
-    node.children.forEach((child, index) => {
-      walk(child, nextPrefix, index === count - 1, false);
-    });
+    for (let index = 0; index < count; index += 1) {
+      const child = node.children[index];
+      if (child) {
+        walk(child, nextPrefix, index === count - 1, false);
+      }
+    }
   };
 
   walk(tree, '', true, true);

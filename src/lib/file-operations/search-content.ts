@@ -702,14 +702,14 @@ class SearchWorkerPool {
     for (const p of this.pending.values())
       p.reject(new Error(ERROR_WORKER_POOL_CLOSED));
     this.pending.clear();
-    const workers = this.workers.filter(
-      (worker): worker is Worker => worker !== undefined
-    );
-    await Promise.all(workers.map((worker) => worker.terminate()));
-    this.workers = Array.from(
-      { length: this.size },
-      (): Worker | undefined => undefined
-    );
+    const terminations: Promise<number>[] = [];
+    for (let index = 0; index < this.workers.length; index += 1) {
+      const worker = this.workers[index];
+      if (!worker) continue;
+      terminations.push(worker.terminate());
+      this.workers[index] = undefined;
+    }
+    await Promise.all(terminations);
   }
 }
 
@@ -865,18 +865,17 @@ async function waitForWinner(pending: Set<ScanTask>): Promise<{
   result: WorkerScanResult | undefined;
   error: Error | undefined;
 }> {
-  const pendingTasks = Array.from(pending);
-  interface RaceResult {
+  const raceCandidates: Promise<{
     task: ScanTask;
     result: WorkerScanResult | undefined;
     error: Error | undefined;
-  }
-  return Promise.race(
-    pendingTasks.map((t) =>
-      t.promise.then(
-        (res): RaceResult => ({ task: t, result: res, error: undefined }),
-        (err: unknown): RaceResult => ({
-          task: t,
+  }>[] = [];
+  for (const task of pending) {
+    raceCandidates.push(
+      task.promise.then(
+        (result) => ({ task, result, error: undefined }),
+        (err: unknown) => ({
+          task,
           result: undefined,
           error:
             err instanceof Error
@@ -884,8 +883,9 @@ async function waitForWinner(pending: Set<ScanTask>): Promise<{
               : new Error(formatUnknownErrorMessage(err)),
         })
       )
-    )
-  );
+    );
+  }
+  return Promise.race(raceCandidates);
 }
 
 async function executeParallel(
@@ -1043,7 +1043,7 @@ export async function searchContent(
         path.dirname(details.resolvedPath),
         pattern,
         opts.filePattern,
-        [...result.matches],
+        result.matches as ContentMatch[],
         summary
       );
     }

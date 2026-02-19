@@ -50,10 +50,14 @@ function parseEnvBool(envVar: string, defaultValue: boolean): boolean {
 function parseEnvList(envVar: string): string[] {
   const value = process.env[envVar];
   if (!value) return [];
-  return value
-    .split(/[,\n]/u)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+  const entries: string[] = [];
+  for (const token of value.split(/[,\n]/u)) {
+    const trimmed = token.trim();
+    if (trimmed.length > 0) {
+      entries.push(trimmed);
+    }
+  }
+  return entries;
 }
 
 // Auto-tuned parallelism based on CPU cores (no env override)

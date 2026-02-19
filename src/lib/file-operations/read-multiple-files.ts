@@ -268,7 +268,10 @@ async function applyBudgetForRange(options: {
   for (let index = batchStart; index < batchEnd; index += 1) {
     const filePath = filePaths[index];
     if (!filePath) continue;
-    const info = await resolveValidatedInfo(filePath, index, validated, signal);
+    const cached = validated.get(index);
+    const info =
+      cached ??
+      (await resolveValidatedInfo(filePath, index, validated, signal));
     if (!info) continue;
 
     const { exceeded, totalSize: nextTotalSize } = applyBudget(

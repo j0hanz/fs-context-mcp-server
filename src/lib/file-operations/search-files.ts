@@ -344,15 +344,14 @@ function buildSearchSummary(
   stoppedReason: StopReason | undefined,
   skippedInaccessible: number
 ): SearchFilesResult['summary'] {
-  const summary: SearchFilesResult['summary'] = {
+  const summary = {
     matched: results.length,
     truncated,
     skippedInaccessible,
     filesScanned,
-    ...(stoppedReason !== undefined ? { stoppedReason } : {}),
   };
-
-  return summary;
+  if (stoppedReason === undefined) return summary;
+  return { ...summary, stoppedReason };
 }
 
 interface Sortable {
@@ -407,11 +406,16 @@ const SORT_COMPARATORS: Readonly<
 
 export function sortSearchResults(results: Sortable[], sortBy: SortBy): void {
   if (sortBy === 'name') {
-    const decorated = results.map((item, index) => ({
-      item,
-      baseName: path.basename(item.path ?? ''),
-      index,
-    }));
+    const decorated: { item: Sortable; baseName: string; index: number }[] = [];
+    for (let index = 0; index < results.length; index += 1) {
+      const item = results[index];
+      if (!item) continue;
+      decorated.push({
+        item,
+        baseName: path.basename(item.path ?? ''),
+        index,
+      });
+    }
     decorated.sort((a, b) => {
       const baseCompare = compareString(a.baseName, b.baseName);
       if (baseCompare !== 0) return baseCompare;

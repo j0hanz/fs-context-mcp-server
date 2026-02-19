@@ -182,9 +182,7 @@ export async function processInParallel<T, R>(
   const effectiveConcurrency = normalizeConcurrency(concurrency);
 
   // Pre-allocate slots by index to guarantee input-order output.
-  const resultSlots: (R | undefined)[] = new Array<R | undefined>(
-    items.length
-  ).fill(undefined);
+  const resultSlots: (R | undefined)[] = new Array<R | undefined>(items.length);
   const errors: { index: number; error: Error }[] = [];
 
   if (signal?.aborted) throw createParallelAbortError();
@@ -219,16 +217,22 @@ export async function processInParallel<T, R>(
     }
   };
 
-  const workers = Array.from(
-    { length: Math.min(items.length, effectiveConcurrency) },
-    () => next()
-  );
+  const workerCount = Math.min(items.length, effectiveConcurrency);
+  const workers: Promise<void>[] = new Array<Promise<void>>(workerCount);
+  for (let index = 0; index < workerCount; index += 1) {
+    workers[index] = next();
+  }
 
   await Promise.allSettled(workers);
 
   if (signal?.aborted) throw createParallelAbortError();
 
-  const results = resultSlots.filter((r): r is R => r !== undefined);
+  const results: R[] = [];
+  for (const slot of resultSlots) {
+    if (slot !== undefined) {
+      results.push(slot);
+    }
+  }
   return { results, errors };
 }
 

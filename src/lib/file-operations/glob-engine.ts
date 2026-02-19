@@ -167,12 +167,13 @@ function addGlobstarCandidates(
   const afterGlobstar = remainder.slice(3);
   const addDotFile =
     afterGlobstar.length > 0 && afterGlobstar.charCodeAt(0) !== DOT_CHAR_CODE;
+  let depthPrefix = '';
   for (let depth = 0; depth <= maxDepth; depth++) {
-    const depthPrefix = '*/'.repeat(depth);
     patterns.add(`${prefix}${depthPrefix}.*/**/${afterGlobstar}`);
     if (addDotFile) {
       patterns.add(`${prefix}${depthPrefix}.${afterGlobstar}`);
     }
+    depthPrefix += '*/';
   }
 }
 
@@ -398,21 +399,29 @@ async function* processIterable(
 
   const flush = async function* (): AsyncGenerator<GlobEntry> {
     if (buffer.length === 0) return;
-    const batch = buffer.splice(0, buffer.length);
-    const results = await Promise.all(
-      batch.map((match) =>
-        resolveStringMatch(
-          match,
-          cwd,
-          maxDepth,
-          seen,
-          onlyFiles,
-          followSymlinks,
-          returnStats,
-          suppressErrors
-        )
-      )
-    );
+    const batchSize = buffer.length;
+    const requests: Promise<GlobEntry | null>[] = new Array<
+      Promise<GlobEntry | null>
+    >(batchSize);
+    for (let index = 0; index < batchSize; index += 1) {
+      const match = buffer[index];
+      if (match === undefined) {
+        requests[index] = Promise.resolve(null);
+        continue;
+      }
+      requests[index] = resolveStringMatch(
+        match,
+        cwd,
+        maxDepth,
+        seen,
+        onlyFiles,
+        followSymlinks,
+        returnStats,
+        suppressErrors
+      );
+    }
+    buffer.length = 0;
+    const results = await Promise.all(requests);
     for (const entry of results) {
       if (entry !== null) yield entry;
     }

@@ -10,10 +10,14 @@ function normalizeToPosixPath(filePath: string): string {
 }
 
 function parseGitignoreLines(contents: string): string[] {
-  return contents
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+  const lines: string[] = [];
+  for (const line of contents.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) {
+      lines.push(trimmed);
+    }
+  }
+  return lines;
 }
 
 export async function loadRootGitignore(

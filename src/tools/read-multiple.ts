@@ -104,6 +104,13 @@ async function handleReadMultipleFiles(
     };
   });
 
+  let succeeded = 0;
+  let failed = 0;
+  for (const result of mappedResults) {
+    if (result.error === undefined) succeeded += 1;
+    else failed += 1;
+  }
+
   const structured: z.infer<typeof ReadMultipleFilesOutputSchema> = {
     ok: true,
     results: mappedResults.map((result) => ({
@@ -124,21 +131,22 @@ async function handleReadMultipleFiles(
     })),
     summary: {
       total: mappedResults.length,
-      succeeded: mappedResults.filter((r) => r.error === undefined).length,
-      failed: mappedResults.filter((r) => r.error !== undefined).length,
+      succeeded,
+      failed,
     },
   };
 
-  const resourceLinks = mappedResults.flatMap((result) => {
-    if (!result.resourceUri) return [];
-    return [
+  const resourceLinks: ReturnType<typeof buildResourceLink>[] = [];
+  for (const result of mappedResults) {
+    if (!result.resourceUri) continue;
+    resourceLinks.push(
       buildResourceLink({
         uri: result.resourceUri,
         name: `read:${path.basename(result.path)}`,
         description: 'Full file contents',
-      }),
-    ];
-  });
+      })
+    );
+  }
 
   const text = mappedResults
     .map((result) => {

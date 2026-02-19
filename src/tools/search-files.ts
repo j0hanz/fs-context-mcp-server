@@ -66,11 +66,15 @@ async function handleSearchFiles(
     excludePatterns,
     searchOptions
   );
-  const relativeResults = result.results.map((entry) => ({
-    path: path.relative(result.basePath, entry.path),
-    size: entry.size,
-    modified: entry.modified?.toISOString(),
-  }));
+  const relativeResults: z.infer<typeof SearchFilesOutputSchema>['results'] =
+    [];
+  for (const entry of result.results) {
+    relativeResults.push({
+      path: path.relative(result.basePath, entry.path),
+      size: entry.size,
+      modified: entry.modified?.toISOString(),
+    });
+  }
   const structured: z.infer<typeof SearchFilesOutputSchema> = {
     ok: true,
     root: basePath,
@@ -80,10 +84,10 @@ async function handleSearchFiles(
     truncated: result.summary.truncated,
     filesScanned: result.summary.filesScanned,
     skippedInaccessible: result.summary.skippedInaccessible,
-    ...(result.summary.stoppedReason
-      ? { stoppedReason: result.summary.stoppedReason }
-      : {}),
   };
+  if (result.summary.stoppedReason) {
+    structured.stoppedReason = result.summary.stoppedReason;
+  }
 
   let truncatedReason: string | undefined;
   if (result.summary.truncated) {
@@ -101,13 +105,15 @@ async function handleSearchFiles(
     ...(truncatedReason ? { truncatedReason } : {}),
   };
 
-  const textLines =
-    relativeResults.length === 0
-      ? ['No matches']
-      : [
-          `Found ${relativeResults.length}:`,
-          ...relativeResults.map((entry) => `  ${entry.path}`),
-        ];
+  const textLines: string[] = [];
+  if (relativeResults.length === 0) {
+    textLines.push('No matches');
+  } else {
+    textLines.push(`Found ${relativeResults.length}:`);
+    for (const entry of relativeResults) {
+      textLines.push(`  ${entry.path}`);
+    }
+  }
 
   const text = joinLines(textLines) + formatOperationSummary(summaryOptions);
   return buildToolResponse(text, structured);

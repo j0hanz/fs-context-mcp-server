@@ -114,15 +114,24 @@ async function validateDirectoryPath(inputPath: string): Promise<string> {
 async function normalizeCliDirectories(
   args: readonly string[]
 ): Promise<string[]> {
-  return Promise.all(args.map(validateDirectoryPath));
+  const validations: Promise<string>[] = [];
+  for (const arg of args) {
+    validations.push(validateDirectoryPath(arg));
+  }
+  return Promise.all(validations);
 }
 
 function parseAllowedDirArgument(value: string, previous: unknown): string[] {
   validateCliPath(value);
 
-  const values = Array.isArray(previous)
-    ? previous.filter((item): item is string => typeof item === 'string')
-    : [];
+  const values: string[] = [];
+  if (Array.isArray(previous)) {
+    for (const item of previous) {
+      if (typeof item === 'string') {
+        values.push(item);
+      }
+    }
+  }
 
   return [...values, value];
 }
@@ -130,9 +139,13 @@ function parseAllowedDirArgument(value: string, previous: unknown): string[] {
 function getParsedAllowedDirs(cli: Command): string[] {
   const [allowedDirs] = cli.processedArgs as unknown[];
   if (!Array.isArray(allowedDirs)) return [];
-  return allowedDirs.filter(
-    (candidate: unknown): candidate is string => typeof candidate === 'string'
-  );
+  const parsed: string[] = [];
+  for (const candidate of allowedDirs) {
+    if (typeof candidate === 'string') {
+      parsed.push(candidate);
+    }
+  }
+  return parsed;
 }
 
 function createCliProgram(output: string[]): Command {

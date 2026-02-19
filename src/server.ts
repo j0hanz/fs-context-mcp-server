@@ -57,10 +57,13 @@ const {
 } = PackageJsonSchema.parse(packageJsonRaw);
 
 function normalizeCLIDirectories(dirs: readonly string[]): string[] {
-  return dirs
-    .map((dir) => dir.trim())
-    .filter((dir) => dir.length > 0)
-    .map(normalizePath);
+  const normalized: string[] = [];
+  for (const dir of dirs) {
+    const trimmed = dir.trim();
+    if (trimmed.length === 0) continue;
+    normalized.push(normalizePath(trimmed));
+  }
+  return normalized;
 }
 
 interface ServerOptions {
@@ -272,7 +275,13 @@ function extractRoots(value: unknown): Root[] {
   if (!parsed.success || !parsed.data.roots) {
     return [];
   }
-  return parsed.data.roots.filter(isRoot).map(normalizeRoot);
+  const roots: Root[] = [];
+  for (const root of parsed.data.roots) {
+    if (isRoot(root)) {
+      roots.push(normalizeRoot(root));
+    }
+  }
+  return roots;
 }
 
 async function resolveRootDirectories(roots: Root[]): Promise<string[]> {

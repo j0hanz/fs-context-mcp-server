@@ -115,9 +115,13 @@ function normalizeAllowedDirectory(dir: string): string {
 }
 
 function normalizeAllowedDirectories(dirs: readonly string[]): string[] {
-  const normalized = dirs
-    .map(normalizeAllowedDirectory)
-    .filter((dir) => dir.length > 0);
+  const normalized: string[] = [];
+  for (const dir of dirs) {
+    const entry = normalizeAllowedDirectory(dir);
+    if (entry.length > 0) {
+      normalized.push(entry);
+    }
+  }
 
   // Preserve first-seen order while deduping.
   return dedupePreserveOrder(normalized);

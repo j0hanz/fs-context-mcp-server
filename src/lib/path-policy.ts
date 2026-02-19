@@ -40,21 +40,25 @@ function compilePatternGlobs(normalizedPattern: string): readonly string[] {
 }
 
 function compilePatterns(patterns: readonly string[]): CompiledPattern[] {
-  const unique = new Set(
-    patterns
-      .map((pattern) => pattern.trim())
-      .filter((pattern) => pattern.length > 0)
-  );
+  const unique = new Set<string>();
+  for (const pattern of patterns) {
+    const trimmed = pattern.trim();
+    if (trimmed.length > 0) {
+      unique.add(trimmed);
+    }
+  }
 
-  return [...unique].map((pattern) => {
+  const compiled: CompiledPattern[] = [];
+  for (const pattern of unique) {
     const normalized = normalizeForMatch(pattern);
     const matchesPath = normalized.includes('/');
-    return {
+    compiled.push({
       raw: normalized,
       globs: matchesPath ? compilePatternGlobs(normalized) : [normalized],
       matchesPath,
-    };
-  });
+    });
+  }
+  return compiled;
 }
 
 const DENY_PATTERNS = compilePatterns(SENSITIVE_FILE_DENYLIST);

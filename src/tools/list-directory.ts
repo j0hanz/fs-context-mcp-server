@@ -53,13 +53,11 @@ function buildListTextResult(
     return `${path} (no matches)`;
   }
 
-  const lines = [
-    path,
-    ...entries.map((entry) => {
-      const suffix = entry.type === 'directory' ? '/' : '';
-      return `  ${entry.relativePath}${suffix}`;
-    }),
-  ];
+  const lines = [path];
+  for (const entry of entries) {
+    const suffix = entry.type === 'directory' ? '/' : '';
+    lines.push(`  ${entry.relativePath}${suffix}`);
+  }
 
   let truncatedReason: string | undefined;
   if (summary.truncated) {
@@ -94,10 +92,16 @@ function buildStructuredListResult(
   result: Awaited<ReturnType<typeof listDirectory>>
 ): z.infer<typeof ListDirectoryOutputSchema> {
   const { entries, summary, path: resultPath } = result;
+  const structuredEntries: NonNullable<
+    z.infer<typeof ListDirectoryOutputSchema>['entries']
+  > = [];
+  for (const entry of entries) {
+    structuredEntries.push(buildStructuredListEntry(entry));
+  }
   return {
     ok: true,
     path: resultPath,
-    entries: entries.map(buildStructuredListEntry),
+    entries: structuredEntries,
     totalEntries: summary.totalEntries,
     truncated: summary.truncated,
     entriesScanned: summary.entriesScanned,

@@ -162,11 +162,17 @@ async function* readDirectoryEntries(
   }
 
   const { results, errors } = await processInParallel(
-    entries.map((entry, index) => ({ entry, index })),
-    async ({ entry, index }) => ({
-      index,
-      stats: await withAbort(fsp.lstat(entry.entryPath), signal),
-    }),
+    entries.map((_, index) => index),
+    async (index) => {
+      const candidate = entries[index];
+      if (!candidate) {
+        throw new Error(`Entry index out of range: ${String(index)}`);
+      }
+      return {
+        index,
+        stats: await withAbort(fsp.lstat(candidate.entryPath), signal),
+      };
+    },
     PARALLEL_CONCURRENCY,
     signal
   );
@@ -175,20 +181,20 @@ async function* readDirectoryEntries(
     throw errors[0]?.error ?? new Error('Failed to read entry stats');
   }
 
-  const statsByIndex = new Map<number, Stats>();
+  const statsByIndex: (Stats | undefined)[] = [];
   for (const result of results) {
-    statsByIndex.set(result.index, result.stats);
+    statsByIndex[result.index] = result.stats;
   }
 
-  let index = 0;
-  for (const entry of entries) {
-    const stats = statsByIndex.get(index);
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry) continue;
+    const stats = statsByIndex[index];
     yield {
       path: entry.entryPath,
       dirent: entry.dirent,
       ...(stats ? { stats } : {}),
     };
-    index += 1;
   }
 }
 
@@ -370,7 +376,7 @@ function buildSummary(
   stoppedReason: StoppedReason | undefined,
   counters: Counters
 ): ListDirectoryResult['summary'] {
-  const baseSummary: ListDirectoryResult['summary'] = {
+  const summary = {
     totalEntries: entries.length,
     entriesScanned: entries.length,
     entriesVisible: entries.length,
@@ -382,10 +388,8 @@ function buildSummary(
     symlinksNotFollowed: counters.symlinksNotFollowed,
   };
 
-  return {
-    ...baseSummary,
-    ...(stoppedReason !== undefined ? { stoppedReason } : {}),
-  };
+  if (stoppedReason === undefined) return summary;
+  return { ...summary, stoppedReason };
 }
 
 async function collectEntries(

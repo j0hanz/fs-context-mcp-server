@@ -130,13 +130,15 @@ function extractContextArguments(
   const context = value['arguments'];
   if (!isRecord(context)) return undefined;
 
-  const entries = Object.entries(context).filter(
-    (entry): entry is [string, string] => typeof entry[1] === 'string'
-  );
-  if (entries.length === 0) return undefined;
-  return Object.fromEntries(
-    entries.map(([key, val]) => [key.toLowerCase(), val])
-  );
+  const normalized: Record<string, string> = {};
+  let count = 0;
+  for (const [key, entryValue] of Object.entries(context)) {
+    if (typeof entryValue !== 'string') continue;
+    normalized[key.toLowerCase()] = entryValue;
+    count += 1;
+  }
+  if (count === 0) return undefined;
+  return normalized;
 }
 
 function hasTrailingSeparator(value: string): boolean {
@@ -371,11 +373,18 @@ function findRootPrefixMatches(
   const normalizedInput = currentValue.replace(/\\/gu, '/');
   const rootPrefix = (normalizedInput.split('/')[0] ?? '').toLowerCase();
   if (!rootPrefix) {
-    return allowed.map((root) => `${root}${path.sep}`);
+    const matches: string[] = [];
+    for (const root of allowed) {
+      matches.push(`${root}${path.sep}`);
+    }
+    return matches;
   }
-  return allowed
-    .filter((root) => path.basename(root).toLowerCase().startsWith(rootPrefix))
-    .map((root) => `${root}${path.sep}`);
+  const matches: string[] = [];
+  for (const root of allowed) {
+    if (!path.basename(root).toLowerCase().startsWith(rootPrefix)) continue;
+    matches.push(`${root}${path.sep}`);
+  }
+  return matches;
 }
 
 function findMatchingRoots(
@@ -439,7 +448,10 @@ export async function getPathCompletions(
     ]);
 
     // Deduplicate and sort
-    const uniqueMatches = Array.from(new Set([...dirMatches, ...rootMatches]));
+    const unique = new Set<string>();
+    for (const match of dirMatches) unique.add(match);
+    for (const match of rootMatches) unique.add(match);
+    const uniqueMatches = Array.from(unique);
 
     uniqueMatches.sort((a, b) => {
       const aIsDir = a.endsWith(path.sep);

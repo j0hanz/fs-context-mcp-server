@@ -126,11 +126,16 @@ function buildStructuredSearchResult(
   options: { patternType: 'literal' | 'regex'; caseSensitive: boolean }
 ): z.infer<typeof SearchContentOutputSchema> {
   const { summary } = result;
-  return {
+  const matches: SearchMatchPayload[] = [];
+  for (const match of normalizedMatches) {
+    matches.push(buildSearchMatchPayload(match));
+  }
+
+  const structured: z.infer<typeof SearchContentOutputSchema> = {
     ok: true,
     patternType: options.patternType,
     caseSensitive: options.caseSensitive,
-    matches: normalizedMatches.map(buildSearchMatchPayload),
+    matches,
     totalMatches: summary.matches,
     truncated: summary.truncated,
     filesScanned: summary.filesScanned,
@@ -139,8 +144,11 @@ function buildStructuredSearchResult(
     skippedBinary: summary.skippedBinary,
     skippedInaccessible: summary.skippedInaccessible,
     linesSkippedDueToRegexTimeout: summary.linesSkippedDueToRegexTimeout,
-    ...(summary.stoppedReason ? { stoppedReason: summary.stoppedReason } : {}),
   };
+  if (summary.stoppedReason) {
+    structured.stoppedReason = summary.stoppedReason;
+  }
+  return structured;
 }
 
 type SearchContentResultValue = Awaited<ReturnType<typeof searchContent>>;
@@ -153,16 +161,19 @@ function normalizeSearchMatches(
   result: SearchContentResultValue
 ): NormalizedSearchMatch[] {
   const relativeByFile = new Map<string, string>();
-  const normalized = result.matches.map((match, index) => {
+  const normalized: NormalizedSearchMatch[] = [];
+  let index = 0;
+  for (const match of result.matches) {
     const cached = relativeByFile.get(match.file);
     const relative = cached ?? path.relative(result.basePath, match.file);
     if (!cached) relativeByFile.set(match.file, relative);
-    return {
+    normalized.push({
       ...match,
       relativeFile: relative,
       index,
-    };
-  });
+    });
+    index += 1;
+  }
   normalized.sort((a, b) => {
     const fileCompare = a.relativeFile.localeCompare(b.relativeFile);
     if (fileCompare !== 0) return fileCompare;
@@ -232,9 +243,13 @@ async function handleSearchContent(
   }
 
   const previewMatches = normalizedMatches.slice(0, MAX_INLINE_MATCHES);
+  const previewPayload: SearchMatchPayload[] = [];
+  for (const match of previewMatches) {
+    previewPayload.push(buildSearchMatchPayload(match));
+  }
   const previewStructured: z.infer<typeof SearchContentOutputSchema> = {
     ...structuredFull,
-    matches: previewMatches.map(buildSearchMatchPayload),
+    matches: previewPayload,
     truncated: true,
     resourceUri: undefined,
   };
@@ -247,10 +262,13 @@ async function handleSearchContent(
 
   previewStructured.resourceUri = entry.uri;
 
-  const text = joinLines([
+  const textLines: string[] = [
     `Found ${normalizedMatches.length} (showing first ${MAX_INLINE_MATCHES}):`,
-    ...previewMatches.map(formatSearchMatchLine),
-  ]);
+  ];
+  for (const match of previewMatches) {
+    textLines.push(formatSearchMatchLine(match));
+  }
+  const text = joinLines(textLines);
 
   return buildToolResponse(text, previewStructured, [
     buildResourceLink({
