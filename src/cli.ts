@@ -221,7 +221,7 @@ export async function parseArgs(): Promise<{
   const allowCwd = options.allowCwd === true;
   const positionals = getParsedAllowedDirs(cli);
 
-  let allowedDirs: string[] = [];
+  let allowedDirs: string[];
   try {
     allowedDirs =
       positionals.length > 0 ? await normalizeCliDirectories(positionals) : [];

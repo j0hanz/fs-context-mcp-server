@@ -408,7 +408,7 @@ async function runAndObserve<T>(
   if (pubTool) publishToolStart(tool, pathVal);
 
   let result: T;
-  let ok = false;
+  let ok: boolean;
   let errorMsg: string | undefined;
 
   try {
