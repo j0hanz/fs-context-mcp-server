@@ -6,19 +6,18 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode, isNodeError } from '../lib/errors.js';
-import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { withAbort } from '../lib/fs-helpers.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import { DeleteFileInputSchema, DeleteFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -85,71 +84,59 @@ export function registerDeleteFileTool(
     args: z.infer<typeof DeleteFileInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof DeleteFileOutputSchema>>> =>
-    withToolDiagnostics(
-      'rm',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              return await handleDeleteFile(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) => {
-            if (isNodeError(error)) {
-              if (error.code === 'ENOENT') {
-                return buildToolErrorResponse(
-                  error,
-                  ErrorCode.E_NOT_FOUND,
-                  args.path
-                );
-              }
-              if (error.code === 'ENOTEMPTY') {
-                return buildToolErrorResponse(
-                  new Error(
-                    `Directory is not empty: ${args.path}. Use recursive: true to delete non-empty directories.`
-                  ),
-                  ErrorCode.E_INVALID_INPUT,
-                  args.path
-                );
-              }
-              if (error.code === 'EISDIR') {
-                return buildToolErrorResponse(
-                  new Error(
-                    `Path is a directory: ${args.path}. Use recursive: true to delete directories.`
-                  ),
-                  ErrorCode.E_INVALID_INPUT,
-                  args.path
-                );
-              }
-              if (error.code === 'EEXIST') {
-                return buildToolErrorResponse(
-                  new Error(
-                    `Directory is not empty: ${args.path}. Use recursive: true to delete non-empty directories.`
-                  ),
-                  ErrorCode.E_INVALID_INPUT,
-                  args.path
-                );
-              }
-              if (error.code === 'EPERM' || error.code === 'EACCES') {
-                return buildToolErrorResponse(
-                  error,
-                  ErrorCode.E_PERMISSION_DENIED,
-                  args.path
-                );
-              }
-            }
+    executeToolWithDiagnostics({
+      toolName: 'rm',
+      extra,
+      timedSignal: {},
+      context: { path: args.path },
+      run: (signal) => handleDeleteFile(args, signal),
+      onError: (error) => {
+        if (isNodeError(error)) {
+          if (error.code === 'ENOENT') {
             return buildToolErrorResponse(
               error,
-              ErrorCode.E_UNKNOWN,
+              ErrorCode.E_NOT_FOUND,
               args.path
             );
           }
-        ),
-      { path: args.path }
-    );
+          if (error.code === 'ENOTEMPTY') {
+            return buildToolErrorResponse(
+              new Error(
+                `Directory is not empty: ${args.path}. Use recursive: true to delete non-empty directories.`
+              ),
+              ErrorCode.E_INVALID_INPUT,
+              args.path
+            );
+          }
+          if (error.code === 'EISDIR') {
+            return buildToolErrorResponse(
+              new Error(
+                `Path is a directory: ${args.path}. Use recursive: true to delete directories.`
+              ),
+              ErrorCode.E_INVALID_INPUT,
+              args.path
+            );
+          }
+          if (error.code === 'EEXIST') {
+            return buildToolErrorResponse(
+              new Error(
+                `Directory is not empty: ${args.path}. Use recursive: true to delete non-empty directories.`
+              ),
+              ErrorCode.E_INVALID_INPUT,
+              args.path
+            );
+          }
+          if (error.code === 'EPERM' || error.code === 'EACCES') {
+            return buildToolErrorResponse(
+              error,
+              ErrorCode.E_PERMISSION_DENIED,
+              args.path
+            );
+          }
+        }
+        return buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path);
+      },
+    });
 
   server.registerTool(
     'rm',

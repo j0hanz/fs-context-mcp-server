@@ -180,12 +180,15 @@ function applyErrors(
 ): void {
   for (const failure of errors) {
     const { index } = failure;
-    if (index < 0 || index >= output.length) continue;
-    if (output[index] === undefined) continue;
+    if (!isValidOutputIndex(index, output.length)) continue;
 
     const filePath = paths[index] ?? '(unknown)';
     output[index] = { path: filePath, error: failure.error.message };
   }
+}
+
+function isValidOutputIndex(index: number, length: number): boolean {
+  return index >= 0 && index < length;
 }
 
 function calculateSummary(results: readonly MultipleFileInfoResult[]): {

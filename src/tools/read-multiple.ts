@@ -10,8 +10,6 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations/read-multiple-files.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import {
   ReadMultipleFilesInputSchema,
   ReadMultipleFilesOutputSchema,
@@ -20,6 +18,7 @@ import {
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   getExperimentalTaskRegistration,
   maybeExternalizeTextContent,
   type ToolExtra,
@@ -27,7 +26,6 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 import { createToolTaskHandler } from './task-support.js';
@@ -164,30 +162,16 @@ export function registerReadMultipleFilesTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof ReadMultipleFilesOutputSchema>>> => {
     const primaryPath = args.paths[0] ?? '';
-    return withToolDiagnostics(
-      'read_many',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              DEFAULT_SEARCH_TIMEOUT_MS
-            );
-            try {
-              return await handleReadMultipleFiles(
-                args,
-                signal,
-                options.resourceStore
-              );
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, primaryPath)
-        ),
-      { path: primaryPath }
-    );
+    return executeToolWithDiagnostics({
+      toolName: 'read_many',
+      extra,
+      timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
+      context: { path: primaryPath },
+      run: (signal) =>
+        handleReadMultipleFiles(args, signal, options.resourceStore),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, primaryPath),
+    });
   };
 
   const wrappedHandler = wrapToolHandler(handler, {

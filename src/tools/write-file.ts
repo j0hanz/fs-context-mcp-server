@@ -6,23 +6,18 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
-import {
-  atomicWriteFile,
-  createTimedAbortSignal,
-  withAbort,
-} from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { atomicWriteFile, withAbort } from '../lib/fs-helpers.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import { WriteFileInputSchema, WriteFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -70,23 +65,15 @@ export function registerWriteFileTool(
     args: z.infer<typeof WriteFileInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof WriteFileOutputSchema>>> =>
-    withToolDiagnostics(
-      'write',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              return await handleWriteFile(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
-        ),
-      { path: args.path }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'write',
+      extra,
+      timedSignal: {},
+      context: { path: args.path },
+      run: (signal) => handleWriteFile(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
+    });
 
   server.registerTool(
     'write',

@@ -1,5 +1,19 @@
 import { availableParallelism } from 'node:os';
 
+const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes', 'y', 'on']);
+const FALSE_ENV_VALUES = new Set(['0', 'false', 'no', 'n', 'off']);
+
+function logInvalidEnvValue(
+  envVar: string,
+  value: string,
+  expected: string,
+  defaultValue: number | boolean
+): void {
+  console.error(
+    `[WARNING] Invalid ${envVar} value: ${value} (must be ${expected}). Using default: ${String(defaultValue)}`
+  );
+}
+
 // Helper for parsing environment variables (only used for configurable values)
 function parseEnvInt(
   envVar: string,
@@ -12,8 +26,11 @@ function parseEnvInt(
 
   const parsed = parseInt(value, 10);
   if (Number.isNaN(parsed) || parsed < min || parsed > max) {
-    console.error(
-      `[WARNING] Invalid ${envVar} value: ${value} (must be ${String(min)}-${String(max)}). Using default: ${String(defaultValue)}`
+    logInvalidEnvValue(
+      envVar,
+      value,
+      `${String(min)}-${String(max)}`,
+      defaultValue
     );
     return defaultValue;
   }
@@ -24,11 +41,9 @@ function parseEnvBool(envVar: string, defaultValue: boolean): boolean {
   const value = process.env[envVar];
   if (value === undefined) return defaultValue;
   const normalized = value.trim().toLowerCase();
-  if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) return true;
-  if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) return false;
-  console.error(
-    `[WARNING] Invalid ${envVar} value: ${value} (must be true/false). Using default: ${String(defaultValue)}`
-  );
+  if (TRUE_ENV_VALUES.has(normalized)) return true;
+  if (FALSE_ENV_VALUES.has(normalized)) return false;
+  logInvalidEnvValue(envVar, value, 'true/false', defaultValue);
   return defaultValue;
 }
 

@@ -65,9 +65,18 @@ interface NormalizedGlob {
 
 const GLOB_MAGIC_RE = /[*?[\]{}!]/u;
 const DEFAULT_MAX_HIDDEN_DEPTH = 10;
+const GLOB_BATCH_CONCURRENCY = 32;
 const SEP = '/';
 const WIN_SEP = '\\';
 const DOT_CHAR_CODE = 46;
+const GLOB_BOOLEAN_OPTION_KEYS: readonly (keyof GlobEntriesOptions)[] = [
+  'includeHidden',
+  'baseNameMatch',
+  'caseSensitiveMatch',
+  'followSymbolicLinks',
+  'onlyFiles',
+  'stats',
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -219,15 +228,7 @@ function assertOptionsShape(options: GlobEntriesOptions): void {
     }
   }
 
-  const boolKeys: (keyof GlobEntriesOptions)[] = [
-    'includeHidden',
-    'baseNameMatch',
-    'caseSensitiveMatch',
-    'followSymbolicLinks',
-    'onlyFiles',
-    'stats',
-  ];
-  for (const key of boolKeys) {
+  for (const key of GLOB_BOOLEAN_OPTION_KEYS) {
     if (typeof o[key] !== 'boolean') {
       throw new TypeError(`globEntries: options.${key} must be a boolean`);
     }
@@ -392,7 +393,6 @@ async function* processIterable(
     suppressErrors,
   } = context;
 
-  const CONCURRENCY = 32;
   const buffer: string[] = [];
 
   const flush = async function* (): AsyncGenerator<GlobEntry> {
@@ -424,7 +424,7 @@ async function* processIterable(
     for await (const match of iterable) {
       if (typeof match === 'string') {
         buffer.push(match);
-        if (buffer.length >= CONCURRENCY) {
+        if (buffer.length >= GLOB_BATCH_CONCURRENCY) {
           yield* flush();
         }
         continue;

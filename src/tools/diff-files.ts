@@ -9,21 +9,20 @@ import { createTwoFilesPatch } from 'diff';
 
 import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode, McpError } from '../lib/errors.js';
-import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { withAbort } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import { DiffFilesInputSchema, DiffFilesOutputSchema } from '../schemas.js';
 import {
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   maybeExternalizeTextContent,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -136,23 +135,15 @@ export function registerDiffFilesTool(
     args: z.infer<typeof DiffFilesInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof DiffFilesOutputSchema>>> =>
-    withToolDiagnostics(
-      'diff_files',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              return await handleDiffFiles(args, signal, options.resourceStore);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.original)
-        ),
-      { path: args.original }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'diff_files',
+      extra,
+      timedSignal: {},
+      context: { path: args.original },
+      run: (signal) => handleDiffFiles(args, signal, options.resourceStore),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.original),
+    });
 
   server.registerTool(
     'diff_files',

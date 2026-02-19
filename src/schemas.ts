@@ -36,7 +36,7 @@ const RequiredPathSchema = PathSchemaBase.min(1, 'Path required');
 
 const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 
-const TreeEntryTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
+const TreeEntryTypeSchema = FileTypeSchema;
 const ListDirectorySortSchema = z.enum(['name', 'size', 'modified', 'type']);
 const SearchFilesSortSchema = z.enum(['name', 'size', 'modified', 'path']);
 const SearchStopReasonSchema = z.enum(['maxResults', 'maxFiles', 'timeout']);

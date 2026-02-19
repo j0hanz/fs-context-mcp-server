@@ -236,10 +236,7 @@ async function collectFromStream(
       normalized.maxFilesScanned
     );
 
-    if (
-      gitignoreMatcher &&
-      isIgnoredByGitignore(gitignoreMatcher, root, entry.path)
-    ) {
+    if (isEntryIgnoredByGitignore(gitignoreMatcher, root, entry.path)) {
       continue;
     }
 
@@ -270,6 +267,15 @@ async function collectFromStream(
     normalized.maxFilesScanned,
     true
   );
+}
+
+function isEntryIgnoredByGitignore(
+  matcher: Awaited<ReturnType<typeof loadRootGitignore>>,
+  root: string,
+  entryPath: string
+): boolean {
+  if (!matcher) return false;
+  return isIgnoredByGitignore(matcher, root, entryPath);
 }
 
 async function isEntryAccessible(

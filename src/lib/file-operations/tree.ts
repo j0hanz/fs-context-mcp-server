@@ -114,19 +114,22 @@ function ensureParentNodes(
 
 function sortTree(node: TreeEntry): void {
   if (!node.children) return;
-  node.children.sort((a, b) => {
-    const typeRank = (t: TreeEntryType): number => {
-      if (t === 'directory') return 0;
-      if (t === 'file') return 1;
-      return 2;
-    };
-    const diff = typeRank(a.type) - typeRank(b.type);
-    if (diff !== 0) return diff;
-    return a.name.localeCompare(b.name);
-  });
+  node.children.sort(compareTreeEntries);
   for (const child of node.children) {
     sortTree(child);
   }
+}
+
+function compareTreeEntries(a: TreeEntry, b: TreeEntry): number {
+  const diff = getTreeTypeRank(a.type) - getTreeTypeRank(b.type);
+  if (diff !== 0) return diff;
+  return a.name.localeCompare(b.name);
+}
+
+function getTreeTypeRank(type: TreeEntryType): number {
+  if (type === 'directory') return 0;
+  if (type === 'file') return 1;
+  return 2;
 }
 
 function getStopReason(

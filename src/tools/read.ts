@@ -9,20 +9,19 @@ import {
   MAX_TEXT_FILE_SIZE,
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
-import { createTimedAbortSignal, readFile } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { readFile } from '../lib/fs-helpers.js';
 import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas.js';
 import {
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   maybeExternalizeTextContent,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -126,26 +125,15 @@ export function registerReadFileTool(
     args: z.infer<typeof ReadFileInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof ReadFileOutputSchema>>> =>
-    withToolDiagnostics(
-      'read',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              DEFAULT_SEARCH_TIMEOUT_MS
-            );
-            try {
-              return await handleReadFile(args, signal, options.resourceStore);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, args.path)
-        ),
-      { path: args.path }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'read',
+      extra,
+      timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
+      context: { path: args.path },
+      run: (signal) => handleReadFile(args, signal, options.resourceStore),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, args.path),
+    });
 
   server.registerTool(
     'read',

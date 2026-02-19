@@ -9,6 +9,13 @@ function normalizeToPosixPath(filePath: string): string {
   return filePath.replace(/\\/gu, '/');
 }
 
+function parseGitignoreLines(contents: string): string[] {
+  return contents
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
 export async function loadRootGitignore(
   root: string,
   signal?: AbortSignal
@@ -29,12 +36,7 @@ export async function loadRootGitignore(
   }
 
   const matcher = ignore();
-  matcher.add(
-    contents
-      .split(/\r?\n/u)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-  );
+  matcher.add(parseGitignoreLines(contents));
 
   return matcher;
 }

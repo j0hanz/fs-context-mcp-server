@@ -87,25 +87,25 @@ function asTaskRequestExtra(value: unknown): TaskRequestHandlerExtra {
   return value;
 }
 
-const TASK_STATUSES = new Set<GetTaskResult['status']>([
+const TASK_STATUS_VALUES = [
   'working',
   'input_required',
   'completed',
   'failed',
   'cancelled',
-]);
+] as const satisfies readonly GetTaskResult['status'][];
+
+const TASK_STATUSES = new Set<GetTaskResult['status']>(TASK_STATUS_VALUES);
+
+function isTaskStatus(value: unknown): value is GetTaskResult['status'] {
+  return (
+    typeof value === 'string' &&
+    TASK_STATUSES.has(value as GetTaskResult['status'])
+  );
+}
 
 function parseTaskStatus(value: unknown): GetTaskResult['status'] | undefined {
-  if (
-    value === 'working' ||
-    value === 'input_required' ||
-    value === 'completed' ||
-    value === 'failed' ||
-    value === 'cancelled'
-  ) {
-    return value;
-  }
-  return undefined;
+  return isTaskStatus(value) ? value : undefined;
 }
 
 function normalizeGetTaskResult(value: unknown): GetTaskResult {
@@ -114,7 +114,7 @@ function normalizeGetTaskResult(value: unknown): GetTaskResult {
   }
 
   const status = parseTaskStatus(value['status']);
-  if (!status || !TASK_STATUSES.has(status)) {
+  if (!status) {
     throw new McpError(ErrorCode.E_INVALID_INPUT, 'Invalid task status.');
   }
 

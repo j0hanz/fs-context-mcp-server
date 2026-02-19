@@ -42,7 +42,7 @@ import {
   registerResultResources,
 } from './resources.js';
 import { registerAllTools } from './tools.js';
-import type { IconInfo } from './tools/shared.js';
+import { type IconInfo, withDefaultIcons } from './tools/shared.js';
 
 const PackageJsonSchema = z.object({
   version: z.string(),
@@ -378,23 +378,16 @@ export async function createServer(
   }
 
   const server = new McpServer(
-    {
-      name: 'filesystem-mcp',
-      title: 'Filesystem MCP',
-      version: SERVER_VERSION,
-      ...(SERVER_DESCRIPTION ? { description: SERVER_DESCRIPTION } : {}),
-      ...(SERVER_HOMEPAGE ? { websiteUrl: SERVER_HOMEPAGE } : {}),
-      ...(localIcon
-        ? {
-            icons: [
-              {
-                src: localIcon.src,
-                mimeType: localIcon.mimeType,
-              },
-            ],
-          }
-        : {}),
-    },
+    withDefaultIcons(
+      {
+        name: 'filesystem-mcp',
+        title: 'Filesystem MCP',
+        version: SERVER_VERSION,
+        ...(SERVER_DESCRIPTION ? { description: SERVER_DESCRIPTION } : {}),
+        ...(SERVER_HOMEPAGE ? { websiteUrl: SERVER_HOMEPAGE } : {}),
+      },
+      localIcon
+    ),
     serverConfig
   );
 

@@ -11,13 +11,12 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations/search-files.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import { SearchFilesInputSchema, SearchFilesOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
   createProgressReporter,
+  executeToolWithDiagnostics,
   getExperimentalTaskRegistration,
   notifyProgress,
   resolvePathOrRoot,
@@ -26,7 +25,6 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 import { createToolTaskHandler } from './task-support.js';
@@ -126,51 +124,36 @@ export function registerSearchFilesTool(
     args: z.infer<typeof SearchFilesInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof SearchFilesOutputSchema>>> =>
-    withToolDiagnostics(
-      'find',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            notifyProgress(extra, {
-              current: 0,
-              message: `🔎︎ find: ${args.pattern}`,
-            });
+    executeToolWithDiagnostics({
+      toolName: 'find',
+      extra,
+      timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
+      context: { path: args.path ?? '.' },
+      run: async (signal) => {
+        notifyProgress(extra, {
+          current: 0,
+          message: `🔎︎ find: ${args.pattern}`,
+        });
 
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              DEFAULT_SEARCH_TIMEOUT_MS
-            );
-            try {
-              const result = await handleSearchFiles(
-                args,
-                signal,
-                createProgressReporter(extra)
-              );
-              const sc = result.structuredContent;
-              const suffix =
-                sc.ok && sc.totalMatches
-                  ? String(sc.totalMatches)
-                  : 'No matches';
-              const finalCurrent = (sc.filesScanned ?? 0) + 1;
+        const result = await handleSearchFiles(
+          args,
+          signal,
+          createProgressReporter(extra)
+        );
+        const sc = result.structuredContent;
+        const suffix =
+          sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
+        const finalCurrent = (sc.filesScanned ?? 0) + 1;
 
-              notifyProgress(extra, {
-                current: finalCurrent,
-                message: `🔎︎ find: ${args.pattern} ➟ ${suffix}`,
-              });
-              return result;
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(
-              error,
-              ErrorCode.E_INVALID_PATTERN,
-              args.path
-            )
-        ),
-      { path: args.path ?? '.' }
-    );
+        notifyProgress(extra, {
+          current: finalCurrent,
+          message: `🔎︎ find: ${args.pattern} ➟ ${suffix}`,
+        });
+        return result;
+      },
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_INVALID_PATTERN, args.path),
+    });
 
   const { isInitialized } = options;
 

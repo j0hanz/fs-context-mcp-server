@@ -7,8 +7,6 @@ import type { FileInfo } from '../config.js';
 import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getMultipleFileInfo } from '../lib/file-operations/file-info.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import {
   GetMultipleFileInfoInputSchema,
   GetMultipleFileInfoOutputSchema,
@@ -17,13 +15,13 @@ import {
   buildFileInfoPayload,
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   getExperimentalTaskRegistration,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 import { createToolTaskHandler } from './task-support.js';
@@ -91,26 +89,15 @@ export function registerGetMultipleFileInfoTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof GetMultipleFileInfoOutputSchema>>> => {
     const primaryPath = args.paths[0] ?? '';
-    return withToolDiagnostics(
-      'stat_many',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              DEFAULT_SEARCH_TIMEOUT_MS
-            );
-            try {
-              return await handleGetMultipleFileInfo(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, primaryPath)
-        ),
-      { path: primaryPath }
-    );
+    return executeToolWithDiagnostics({
+      toolName: 'stat_many',
+      extra,
+      timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
+      context: { path: primaryPath },
+      run: (signal) => handleGetMultipleFileInfo(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, primaryPath),
+    });
   };
 
   const wrappedHandler = wrapToolHandler(handler, {

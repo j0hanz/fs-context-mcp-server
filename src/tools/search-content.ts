@@ -15,7 +15,6 @@ import {
 } from '../lib/errors.js';
 import { searchContent } from '../lib/file-operations/search-content.js';
 import type { SearchContentOptions } from '../lib/file-operations/search-content.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import {
   SearchContentInputSchema,
   SearchContentOutputSchema,
@@ -25,6 +24,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   createProgressReporter,
+  executeToolWithDiagnostics,
   getExperimentalTaskRegistration,
   notifyProgress,
   resolvePathOrRoot,
@@ -33,7 +33,6 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 import { createToolTaskHandler } from './task-support.js';
@@ -272,47 +271,45 @@ export function registerSearchContentTool(
     args: z.infer<typeof SearchContentInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof SearchContentOutputSchema>>> =>
-    withToolDiagnostics(
-      'grep',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const normalizedArgs = SearchContentInputSchema.parse(args);
-            notifyProgress(extra, {
-              current: 0,
-              message: `🔎︎ grep: ${normalizedArgs.pattern}`,
-            });
+    executeToolWithDiagnostics({
+      toolName: 'grep',
+      extra,
+      context: { path: args.path ?? '.' },
+      run: async (signal) => {
+        const normalizedArgs = SearchContentInputSchema.parse(args);
+        notifyProgress(extra, {
+          current: 0,
+          message: `🔎︎ grep: ${normalizedArgs.pattern}`,
+        });
 
-            const result = await handleSearchContent(
-              normalizedArgs,
-              extra.signal,
-              options.resourceStore,
-              createProgressReporter(extra)
-            );
+        const result = await handleSearchContent(
+          normalizedArgs,
+          signal,
+          options.resourceStore,
+          createProgressReporter(extra)
+        );
 
-            const sc = result.structuredContent;
-            const count = sc.ok && sc.totalMatches ? sc.totalMatches : 0;
-            let suffix;
-            if (count === 0) {
-              suffix = 'No matches';
-            } else if (count === 1) {
-              suffix = '1 match';
-            } else {
-              suffix = `${count} matches`;
-            }
-            const finalCurrent = (sc.filesScanned ?? 0) + 1;
+        const sc = result.structuredContent;
+        const count = sc.ok && sc.totalMatches ? sc.totalMatches : 0;
+        let suffix;
+        if (count === 0) {
+          suffix = 'No matches';
+        } else if (count === 1) {
+          suffix = '1 match';
+        } else {
+          suffix = `${count} matches`;
+        }
+        const finalCurrent = (sc.filesScanned ?? 0) + 1;
 
-            notifyProgress(extra, {
-              current: finalCurrent,
-              message: `🔎︎ grep: ${normalizedArgs.pattern} ➟ ${suffix}`,
-            });
-            return result;
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.')
-        ),
-      { path: args.path ?? '.' }
-    );
+        notifyProgress(extra, {
+          current: finalCurrent,
+          message: `🔎︎ grep: ${normalizedArgs.pattern} ➟ ${suffix}`,
+        });
+        return result;
+      },
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path ?? '.'),
+    });
 
   const { isInitialized } = options;
   const wrappedHandler = wrapToolHandler(handler, {

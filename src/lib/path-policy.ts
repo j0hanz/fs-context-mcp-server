@@ -60,6 +60,11 @@ function compilePatterns(patterns: readonly string[]): CompiledPattern[] {
 const DENY_PATTERNS = compilePatterns(SENSITIVE_FILE_DENYLIST);
 const ALLOW_PATTERNS = compilePatterns(SENSITIVE_FILE_ALLOWLIST);
 
+function uniquePair(primary: string, secondary?: string): string[] {
+  if (!secondary || secondary === primary) return [primary];
+  return [primary, secondary];
+}
+
 function matchesAny(
   patterns: readonly CompiledPattern[],
   pathCandidates: readonly string[],
@@ -87,19 +92,11 @@ export function isSensitivePath(
     ? normalizeForMatch(resolvedPath)
     : undefined;
 
-  const pathCandidates = [
-    normalizedRequested,
-    ...(normalizedResolved && normalizedResolved !== normalizedRequested
-      ? [normalizedResolved]
-      : []),
-  ];
-
-  const nameCandidates = [
+  const pathCandidates = uniquePair(normalizedRequested, normalizedResolved);
+  const nameCandidates = uniquePair(
     path.posix.basename(normalizedRequested),
-    ...(normalizedResolved && normalizedResolved !== normalizedRequested
-      ? [path.posix.basename(normalizedResolved)]
-      : []),
-  ];
+    normalizedResolved ? path.posix.basename(normalizedResolved) : undefined
+  );
 
   if (matchesAny(ALLOW_PATTERNS, pathCandidates, nameCandidates)) {
     return false;

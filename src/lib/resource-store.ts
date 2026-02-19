@@ -40,6 +40,21 @@ function computeSha256(text: string): string {
   return hash('sha256', text, 'hex');
 }
 
+function createTextEntry(params: {
+  uri: string;
+  name: string;
+  mimeType: string;
+  text: string;
+}): TextResourceEntry {
+  return {
+    uri: params.uri,
+    name: params.name,
+    mimeType: params.mimeType,
+    text: params.text,
+    hash: computeSha256(params.text),
+  };
+}
+
 export function createInMemoryResourceStore(
   options: Partial<ResourceStoreOptions> = {}
 ): ResourceStore {
@@ -85,15 +100,12 @@ export function createInMemoryResourceStore(
 
     const id = randomUUID();
     const uri = `filesystem-mcp://result/${id}`;
-    const hash = computeSha256(params.text);
-
-    const entry: TextResourceEntry = {
+    const entry = createTextEntry({
       uri,
       name: params.name,
       mimeType,
       text: params.text,
-      hash,
-    };
+    });
 
     byUri.set(uri, entry);
     totalBytes += entryBytes;

@@ -9,19 +9,17 @@ import type { FileInfo } from '../config.js';
 import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getFileInfo } from '../lib/file-operations/file-info.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import { GetFileInfoInputSchema, GetFileInfoOutputSchema } from '../schemas.js';
 import {
   buildFileInfoPayload,
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -77,26 +75,15 @@ export function registerGetFileInfoTool(
     args: z.infer<typeof GetFileInfoInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof GetFileInfoOutputSchema>>> =>
-    withToolDiagnostics(
-      'stat',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              DEFAULT_SEARCH_TIMEOUT_MS
-            );
-            try {
-              return await handleGetFileInfo(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, args.path)
-        ),
-      { path: args.path }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'stat',
+      extra,
+      timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
+      context: { path: args.path },
+      run: (signal) => handleGetFileInfo(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, args.path),
+    });
 
   server.registerTool(
     'stat',

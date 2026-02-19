@@ -122,6 +122,21 @@ function resolveOptions(options: SearchContentOptions): ResolvedOptions {
 
 export type Matcher = (line: string) => number;
 
+interface RegexLikeMatcher {
+  lastIndex: number;
+  exec(input: string): unknown;
+}
+
+function countRegexLineMatches(regex: RegexLikeMatcher, line: string): number {
+  regex.lastIndex = 0;
+  let count = 0;
+  while (regex.exec(line) !== null) {
+    count++;
+    if (regex.lastIndex === 0) regex.lastIndex++;
+  }
+  return count;
+}
+
 function escapeLiteral(pattern: string): string {
   return pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -150,15 +165,7 @@ function buildLiteralMatcher(
   if (!options.caseSensitive) {
     const final = escapeLiteral(pattern);
     const regex = new RegExp(final, 'gi');
-    return (line: string): number => {
-      regex.lastIndex = 0;
-      let count = 0;
-      while (regex.exec(line) !== null) {
-        count++;
-        if (regex.lastIndex === 0) regex.lastIndex++;
-      }
-      return count;
-    };
+    return (line: string): number => countRegexLineMatches(regex, line);
   }
 
   // Fast path for case-sensitive literal
@@ -180,15 +187,7 @@ function buildLiteralMatcher(
 
 function buildRegexMatcher(final: string, caseSensitive: boolean): Matcher {
   const regex = new RE2(final, caseSensitive ? 'g' : 'gi');
-  return (line: string): number => {
-    regex.lastIndex = 0;
-    let count = 0;
-    while (regex.exec(line) !== null) {
-      count++;
-      if (regex.lastIndex === 0) regex.lastIndex++; // Avoid infinite loop on zero-width match
-    }
-    return count;
-  };
+  return (line: string): number => countRegexLineMatches(regex, line);
 }
 
 export function buildMatcher(

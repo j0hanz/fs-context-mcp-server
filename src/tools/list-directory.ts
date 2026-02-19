@@ -8,7 +8,6 @@ import { formatOperationSummary, joinLines } from '../config.js';
 import { DEFAULT_EXCLUDE_PATTERNS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations/list-directory.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import {
   ListDirectoryInputSchema,
   ListDirectoryOutputSchema,
@@ -16,13 +15,13 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -142,20 +141,18 @@ export function registerListDirectoryTool(
     args: z.infer<typeof ListDirectoryInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof ListDirectoryOutputSchema>>> =>
-    withToolDiagnostics(
-      'ls',
-      () =>
-        withToolErrorHandling(
-          () => handleListDirectory(args, extra.signal),
-          (error) =>
-            buildToolErrorResponse(
-              error,
-              ErrorCode.E_NOT_DIRECTORY,
-              args.path ?? '.'
-            )
+    executeToolWithDiagnostics({
+      toolName: 'ls',
+      extra,
+      context: { path: args.path ?? '.' },
+      run: (signal) => handleListDirectory(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(
+          error,
+          ErrorCode.E_NOT_DIRECTORY,
+          args.path ?? '.'
         ),
-      { path: args.path ?? '.' }
-    );
+    });
 
   server.registerTool(
     'ls',

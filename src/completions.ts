@@ -180,37 +180,46 @@ function resolveNamedRootContext(
       prefix: string;
     }
   | undefined {
-  const normalizedInput = currentValue.replace(/\\/gu, '/');
-  const [rootName, ...rest] = normalizedInput.split('/');
-  if (!rootName) return undefined;
+  const parsed = parseNamedRootInput(currentValue);
+  if (!parsed) return undefined;
 
-  const root = allowed.find(
-    (candidate) =>
-      path.basename(candidate).toLowerCase() === rootName.toLowerCase()
-  );
+  const root = findAllowedRootByName(parsed.rootName, allowed);
   if (!root) return undefined;
 
   const trailingSeparator = hasTrailingSeparator(currentValue);
-  const remainder = rest.join(path.sep);
-  return resolveFromBase(root, remainder, trailingSeparator);
+  return resolveFromBase(root, parsed.remainder, trailingSeparator);
 }
 
 function resolveNamedRootPath(
   value: string,
   allowed: string[]
 ): string | undefined {
+  const parsed = parseNamedRootInput(value);
+  if (!parsed) return undefined;
+
+  const root = findAllowedRootByName(parsed.rootName, allowed);
+  if (!root) return undefined;
+
+  return normalizePath(path.resolve(root, parsed.remainder));
+}
+
+function parseNamedRootInput(
+  value: string
+): { rootName: string; remainder: string } | undefined {
   const normalizedInput = value.replace(/\\/gu, '/');
   const [rootName, ...rest] = normalizedInput.split('/');
   if (!rootName) return undefined;
+  return { rootName, remainder: rest.join(path.sep) };
+}
 
-  const root = allowed.find(
-    (candidate) =>
-      path.basename(candidate).toLowerCase() === rootName.toLowerCase()
+function findAllowedRootByName(
+  rootName: string,
+  allowed: readonly string[]
+): string | undefined {
+  const normalizedRootName = rootName.toLowerCase();
+  return allowed.find(
+    (candidate) => path.basename(candidate).toLowerCase() === normalizedRootName
   );
-  if (!root) return undefined;
-
-  const remainder = rest.join(path.sep);
-  return normalizePath(path.resolve(root, remainder));
 }
 
 function chooseContextKeys(argumentName: string): string[] {

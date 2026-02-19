@@ -22,26 +22,32 @@ import { registerWriteFileTool } from './tools/write-file.js';
 
 export { buildToolErrorResponse, buildToolResponse } from './tools/shared.js';
 
+const TOOL_REGISTRARS = [
+  registerListAllowedDirectoriesTool,
+  registerListDirectoryTool,
+  registerSearchFilesTool,
+  registerTreeTool,
+  registerReadFileTool,
+  registerReadMultipleFilesTool,
+  registerGetFileInfoTool,
+  registerGetMultipleFileInfoTool,
+  registerSearchContentTool,
+  registerCreateDirectoryTool,
+  registerWriteFileTool,
+  registerEditFileTool,
+  registerMoveFileTool,
+  registerDeleteFileTool,
+  registerCalculateHashTool,
+  registerDiffFilesTool,
+  registerApplyPatchTool,
+  registerSearchAndReplaceTool,
+] as const;
+
 export function registerAllTools(
   server: McpServer,
   options: ToolRegistrationOptions = {}
 ): void {
-  registerListAllowedDirectoriesTool(server, options);
-  registerListDirectoryTool(server, options);
-  registerSearchFilesTool(server, options);
-  registerTreeTool(server, options);
-  registerReadFileTool(server, options);
-  registerReadMultipleFilesTool(server, options);
-  registerGetFileInfoTool(server, options);
-  registerGetMultipleFileInfoTool(server, options);
-  registerSearchContentTool(server, options);
-  registerCreateDirectoryTool(server, options);
-  registerWriteFileTool(server, options);
-  registerEditFileTool(server, options);
-  registerMoveFileTool(server, options);
-  registerDeleteFileTool(server, options);
-  registerCalculateHashTool(server, options);
-  registerDiffFilesTool(server, options);
-  registerApplyPatchTool(server, options);
-  registerSearchAndReplaceTool(server, options);
+  for (const registerTool of TOOL_REGISTRARS) {
+    registerTool(server, options);
+  }
 }

@@ -92,6 +92,13 @@ function stripTrailingSeparator(normalized: string): string {
     : normalized;
 }
 
+function isFileSystemRootPath(normalized: string, root: string): boolean {
+  return (
+    normalized === root ||
+    normalizeForComparison(normalized) === normalizeForComparison(root)
+  );
+}
+
 function normalizeAllowedDirectory(dir: string): string {
   const trimmed = dir.trim();
   if (trimmed.length === 0) return '';
@@ -100,10 +107,7 @@ function normalizeAllowedDirectory(dir: string): string {
   const { root } = path.parse(normalized);
 
   // Keep filesystem roots as-is ("/", "c:\\", "\\\\server\\share\\").
-  if (
-    normalized === root ||
-    normalizeForComparison(normalized) === normalizeForComparison(root)
-  ) {
+  if (isFileSystemRootPath(normalized, root)) {
     return root;
   }
 

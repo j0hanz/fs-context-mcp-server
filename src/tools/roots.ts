@@ -4,7 +4,6 @@ import type { z } from 'zod';
 
 import { joinLines } from '../config.js';
 import { ErrorCode } from '../lib/errors.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import {
   ListAllowedDirectoriesInputSchema,
@@ -13,11 +12,12 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
+  type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -63,16 +63,16 @@ export function registerListAllowedDirectoriesTool(
   server: McpServer,
   options: ToolRegistrationOptions = {}
 ): void {
-  const handler = (): Promise<
-    ToolResult<z.infer<typeof ListAllowedDirectoriesOutputSchema>>
-  > =>
-    withToolErrorHandling(
-      () =>
-        withToolDiagnostics('roots', () =>
-          Promise.resolve(handleListAllowedDirectories())
-        ),
-      (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN)
-    );
+  const handler = (
+    _args: z.infer<typeof ListAllowedDirectoriesInputSchema>,
+    extra: ToolExtra
+  ): Promise<ToolResult<z.infer<typeof ListAllowedDirectoriesOutputSchema>>> =>
+    executeToolWithDiagnostics({
+      toolName: 'roots',
+      extra,
+      run: () => handleListAllowedDirectories(),
+      onError: (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN),
+    });
 
   server.registerTool(
     'roots',

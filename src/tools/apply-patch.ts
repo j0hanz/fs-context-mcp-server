@@ -9,23 +9,18 @@ import { applyPatch } from 'diff';
 
 import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode, McpError } from '../lib/errors.js';
-import {
-  atomicWriteFile,
-  createTimedAbortSignal,
-  withAbort,
-} from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { atomicWriteFile, withAbort } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import { ApplyPatchInputSchema, ApplyPatchOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -118,23 +113,15 @@ export function registerApplyPatchTool(
     args: z.infer<typeof ApplyPatchInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof ApplyPatchOutputSchema>>> =>
-    withToolDiagnostics(
-      'apply_patch',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              return await handleApplyPatch(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
-        ),
-      { path: args.path }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'apply_patch',
+      extra,
+      timedSignal: {},
+      context: { path: args.path },
+      run: (signal) => handleApplyPatch(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
+    });
 
   server.registerTool(
     'apply_patch',

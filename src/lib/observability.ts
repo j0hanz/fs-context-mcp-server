@@ -309,6 +309,11 @@ function normalizeContext(ctx: OpsTraceContext): OpsTraceContext {
   return { ...ctx, path: normalized };
 }
 
+function clearMeasureMarks(startMark: string, endMark: string): void {
+  performance.clearMarks(startMark);
+  performance.clearMarks(endMark);
+}
+
 export function startPerfMeasure(
   name: string,
   detail?: Record<string, unknown>
@@ -344,13 +349,11 @@ export function startPerfMeasure(
             detail: meta,
           });
         } finally {
-          performance.clearMarks(startMark);
-          performance.clearMarks(endMark);
+          clearMeasureMarks(startMark, endMark);
         }
       });
     } catch {
-      performance.clearMarks(startMark);
-      performance.clearMarks(endMark);
+      clearMeasureMarks(startMark, endMark);
     }
   };
 }

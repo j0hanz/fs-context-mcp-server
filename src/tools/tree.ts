@@ -7,12 +7,11 @@ import type { z } from 'zod';
 import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { formatTreeAscii, treeDirectory } from '../lib/file-operations/tree.js';
-import { createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
 import { TreeInputSchema, TreeOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   getExperimentalTaskRegistration,
   resolvePathOrRoot,
   type ToolExtra,
@@ -20,7 +19,6 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 import { createToolTaskHandler } from './task-support.js';
@@ -77,26 +75,15 @@ export function registerTreeTool(
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof TreeOutputSchema>>> => {
     const targetPath = args.path ?? '.';
-    return withToolDiagnostics(
-      'tree',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(
-              extra.signal,
-              DEFAULT_SEARCH_TIMEOUT_MS
-            );
-            try {
-              return await handleTree(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, targetPath)
-        ),
-      { path: targetPath }
-    );
+    return executeToolWithDiagnostics({
+      toolName: 'tree',
+      extra,
+      timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
+      context: { path: targetPath },
+      run: (signal) => handleTree(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, targetPath),
+    });
   };
 
   const wrappedHandler = wrapToolHandler(handler, {

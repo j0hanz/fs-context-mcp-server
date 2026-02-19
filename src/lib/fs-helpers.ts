@@ -27,6 +27,10 @@ function normalizeAbortReason(reason: unknown, message?: string): Error {
   return createAbortError(message);
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
 export function assertNotAborted(signal?: AbortSignal, message?: string): void {
   if (!signal) return;
   try {
@@ -124,10 +128,9 @@ export function createTimedAbortSignal(
   baseSignal: AbortSignal | undefined,
   timeoutMs?: number
 ): { signal: AbortSignal; cleanup: () => void } {
-  const timeoutSignal =
-    typeof timeoutMs === 'number' && Number.isFinite(timeoutMs)
-      ? AbortSignal.timeout(timeoutMs)
-      : undefined;
+  const timeoutSignal = isFiniteNumber(timeoutMs)
+    ? AbortSignal.timeout(timeoutMs)
+    : undefined;
 
   if (baseSignal && timeoutSignal) {
     return {

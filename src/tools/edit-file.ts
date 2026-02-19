@@ -6,19 +6,18 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
-import { atomicWriteFile, createTimedAbortSignal } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { atomicWriteFile } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import { EditFileInputSchema, EditFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -133,23 +132,15 @@ export function registerEditFileTool(
     args: z.infer<typeof EditFileInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof EditFileOutputSchema>>> =>
-    withToolDiagnostics(
-      'edit',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              return await handleEditFile(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
-        ),
-      { path: args.path }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'edit',
+      extra,
+      timedSignal: {},
+      context: { path: args.path },
+      run: (signal) => handleEditFile(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
+    });
 
   server.registerTool(
     'edit',

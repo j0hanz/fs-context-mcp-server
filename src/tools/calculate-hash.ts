@@ -14,12 +14,7 @@ import {
   loadRootGitignore,
 } from '../lib/file-operations/gitignore.js';
 import { globEntries } from '../lib/file-operations/glob-engine.js';
-import {
-  assertNotAborted,
-  createTimedAbortSignal,
-  withAbort,
-} from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { assertNotAborted, withAbort } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import {
   CalculateHashInputSchema,
@@ -29,6 +24,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   createProgressReporter,
+  executeToolWithDiagnostics,
   getExperimentalTaskRegistration,
   notifyProgress,
   type ToolExtra,
@@ -36,7 +32,6 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 import { createToolTaskHandler } from './task-support.js';
@@ -231,43 +226,36 @@ export function registerCalculateHashTool(
     args: z.infer<typeof CalculateHashInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof CalculateHashOutputSchema>>> =>
-    withToolDiagnostics(
-      'calculate_hash',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            notifyProgress(extra, {
-              current: 0,
-              message: `🕮 calculate_hash: ${path.basename(args.path)}`,
-            });
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              const result = await handleCalculateHash(
-                args,
-                signal,
-                createProgressReporter(extra)
-              );
-              const sc = result.structuredContent;
-              const totalFiles = sc.ok ? (sc.fileCount ?? 1) : 1;
-              const finalCurrent = totalFiles + 1;
-              const suffix = sc.ok
-                ? `${(sc.hash ?? '').slice(0, 8)}...`
-                : 'failed';
+    executeToolWithDiagnostics({
+      toolName: 'calculate_hash',
+      extra,
+      timedSignal: {},
+      context: { path: args.path },
+      run: async (signal) => {
+        notifyProgress(extra, {
+          current: 0,
+          message: `🕮 calculate_hash: ${path.basename(args.path)}`,
+        });
 
-              notifyProgress(extra, {
-                current: finalCurrent,
-                message: `🕮 calculate_hash: ${path.basename(args.path)} ➟ ${suffix}`,
-              });
-              return result;
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
-        ),
-      { path: args.path }
-    );
+        const result = await handleCalculateHash(
+          args,
+          signal,
+          createProgressReporter(extra)
+        );
+        const sc = result.structuredContent;
+        const totalFiles = sc.ok ? (sc.fileCount ?? 1) : 1;
+        const finalCurrent = totalFiles + 1;
+        const suffix = sc.ok ? `${(sc.hash ?? '').slice(0, 8)}...` : 'failed';
+
+        notifyProgress(extra, {
+          current: finalCurrent,
+          message: `🕮 calculate_hash: ${path.basename(args.path)} ➟ ${suffix}`,
+        });
+        return result;
+      },
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
+    });
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,

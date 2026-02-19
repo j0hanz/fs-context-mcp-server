@@ -14,6 +14,17 @@ const SHUTDOWN_TIMEOUT_MS = 5000;
 let activeServer: McpServer | undefined;
 let shutdownStarted = false;
 
+function registerShutdownTrigger(
+  event: NodeJS.Signals | 'end' | 'close'
+): void {
+  const target = event === 'end' || event === 'close' ? process.stdin : process;
+  target.once(event, () => {
+    const reason =
+      event === 'end' || event === 'close' ? `stdin ${event}` : event;
+    void shutdown(reason, 0);
+  });
+}
+
 async function shutdown(reason: string, exitCode = 0): Promise<void> {
   if (shutdownStarted) return;
   shutdownStarted = true;
@@ -89,21 +100,10 @@ async function main(): Promise<void> {
   await startServer(server);
 }
 
-process.once('SIGTERM', () => {
-  void shutdown('SIGTERM', 0);
-});
-
-process.once('SIGINT', () => {
-  void shutdown('SIGINT', 0);
-});
-
-process.stdin.once('end', () => {
-  void shutdown('stdin end', 0);
-});
-
-process.stdin.once('close', () => {
-  void shutdown('stdin close', 0);
-});
+registerShutdownTrigger('SIGTERM');
+registerShutdownTrigger('SIGINT');
+registerShutdownTrigger('end');
+registerShutdownTrigger('close');
 
 process.once('unhandledRejection', (reason: unknown) => {
   console.error('Unhandled rejection:', formatUnknownErrorMessage(reason));

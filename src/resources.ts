@@ -4,7 +4,7 @@ import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { ErrorCode, McpError } from './lib/errors.js';
 import type { ResourceStore } from './lib/resource-store.js';
-import type { IconInfo } from './tools/shared.js';
+import { type IconInfo, withDefaultIcons } from './tools/shared.js';
 
 const RESULT_TEMPLATE = new ResourceTemplate('filesystem-mcp://result/{id}', {
   list: undefined,
@@ -18,26 +18,19 @@ export function registerInstructionResource(
   server.registerResource(
     'filesystem-mcp-instructions',
     'internal://instructions',
-    {
-      title: 'Server Instructions',
-      description:
-        'Guidance for using the filesystem-mcp MCP tools effectively.',
-      mimeType: 'text/markdown',
-      annotations: {
-        audience: ['assistant'],
-        priority: 0.8,
+    withDefaultIcons(
+      {
+        title: 'Server Instructions',
+        description:
+          'Guidance for using the filesystem-mcp MCP tools effectively.',
+        mimeType: 'text/markdown',
+        annotations: {
+          audience: ['assistant'],
+          priority: 0.8,
+        },
       },
-      ...(iconInfo
-        ? {
-            icons: [
-              {
-                src: iconInfo.src,
-                mimeType: iconInfo.mimeType,
-              },
-            ],
-          }
-        : {}),
-    },
+      iconInfo
+    ),
     (uri): ReadResourceResult => ({
       contents: [
         {
@@ -58,26 +51,19 @@ export function registerResultResources(
   server.registerResource(
     'filesystem-mcp-result',
     RESULT_TEMPLATE,
-    {
-      title: 'Cached Tool Result',
-      description:
-        'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.',
-      mimeType: 'text/plain',
-      annotations: {
-        audience: ['assistant'],
-        priority: 0.3,
+    withDefaultIcons(
+      {
+        title: 'Cached Tool Result',
+        description:
+          'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.',
+        mimeType: 'text/plain',
+        annotations: {
+          audience: ['assistant'],
+          priority: 0.3,
+        },
       },
-      ...(iconInfo
-        ? {
-            icons: [
-              {
-                src: iconInfo.src,
-                mimeType: iconInfo.mimeType,
-              },
-            ],
-          }
-        : {}),
-    },
+      iconInfo
+    ),
     (uri, variables): ReadResourceResult => {
       const { id } = variables;
       if (typeof id !== 'string' || id.length === 0) {

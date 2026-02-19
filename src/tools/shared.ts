@@ -17,6 +17,8 @@ import {
   getSuggestion,
   McpError,
 } from '../lib/errors.js';
+import { createTimedAbortSignal } from '../lib/fs-helpers.js';
+import { withToolDiagnostics } from '../lib/observability.js';
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import type { ResourceStore } from '../lib/resource-store.js';
 import type { ToolErrorResponseSchema } from '../schemas.js';
@@ -291,6 +293,55 @@ export async function withToolErrorHandling<T>(
   } catch (error) {
     return onError(error);
   }
+}
+
+interface ToolExecutionOptions<T> {
+  toolName: string;
+  extra: ToolExtra;
+  run: (
+    signal: AbortSignal | undefined
+  ) => ToolResponse<T> | Promise<ToolResponse<T>>;
+  onError: (error: unknown) => ToolResult<T>;
+  context?: Record<string, unknown>;
+  timedSignal?: {
+    timeoutMs?: number;
+  };
+}
+
+function getToolSignal(
+  extraSignal: AbortSignal | undefined,
+  timedSignal: ToolExecutionOptions<unknown>['timedSignal']
+): { signal: AbortSignal | undefined; cleanup: () => void } {
+  if (!timedSignal) {
+    return { signal: extraSignal, cleanup: () => {} };
+  }
+
+  const { signal, cleanup } = createTimedAbortSignal(
+    extraSignal,
+    timedSignal.timeoutMs
+  );
+  return { signal, cleanup };
+}
+
+export async function executeToolWithDiagnostics<T>(
+  options: ToolExecutionOptions<T>
+): Promise<ToolResult<T>> {
+  return await withToolDiagnostics(
+    options.toolName,
+    () =>
+      withToolErrorHandling(async () => {
+        const { signal, cleanup } = getToolSignal(
+          options.extra.signal,
+          options.timedSignal
+        );
+        try {
+          return await options.run(signal);
+        } finally {
+          cleanup();
+        }
+      }, options.onError),
+    options.context
+  );
 }
 
 export function buildToolErrorResponse(

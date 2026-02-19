@@ -40,6 +40,13 @@ function getNodeErrno(error: unknown): number | undefined {
   return errno;
 }
 
+function messageIncludesAny(
+  message: string,
+  patterns: readonly string[]
+): boolean {
+  return patterns.some((pattern) => message.includes(pattern));
+}
+
 const ERRNO_CODE_BY_VALUE = new Map<number, string>();
 const SYSTEM_ERROR_MAP = getSystemErrorMap();
 
@@ -237,19 +244,16 @@ function getDirectErrorCode(error: unknown): ErrorCode | undefined {
     return error.code;
   }
   const code = getNodeErrorCodeLabel(error);
-  if (code) {
-    return getNodeErrorCode(code);
-  }
-  return undefined;
+  return code ? getNodeErrorCode(code) : undefined;
 }
 
 function classifyMessageError(error: unknown): ErrorCode | undefined {
   const message = isNativeError(error) ? error.message : String(error);
   const lower = message.toLowerCase();
-  if (lower.includes('enoent') || lower.includes('no such file or directory')) {
+  if (messageIncludesAny(lower, ['enoent', 'no such file or directory'])) {
     return ErrorCode.E_NOT_FOUND;
   }
-  if (lower.includes('permission denied') || lower.includes('not permitted')) {
+  if (messageIncludesAny(lower, ['permission denied', 'not permitted'])) {
     return ErrorCode.E_PERMISSION_DENIED;
   }
   if (lower.includes('not a directory')) {

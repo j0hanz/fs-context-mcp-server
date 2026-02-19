@@ -127,7 +127,7 @@ export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const unitIndex = Math.floor(Math.log(bytes) / Math.log(1024));
   const unit = BYTE_UNIT_LABELS[unitIndex] ?? 'B';
-  const value = bytes / Math.pow(1024, unitIndex);
+  const value = bytes / 1024 ** unitIndex;
   return `${parseFloat(value.toFixed(2))} ${unit}`;
 }
 

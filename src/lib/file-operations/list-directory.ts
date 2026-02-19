@@ -199,12 +199,7 @@ function createEntryStream(
   needsStats: boolean,
   signal: AbortSignal
 ): AsyncIterable<EntryCandidate> {
-  const canUseFastPath =
-    !normalized.pattern &&
-    normalized.excludePatterns.length === 0 &&
-    maxDepth === 1;
-
-  if (canUseFastPath) {
+  if (shouldUseFastPath(normalized, maxDepth)) {
     return readDirectoryEntries(basePath, normalized, needsStats, signal);
   }
 
@@ -220,6 +215,17 @@ function createEntryStream(
     onlyFiles: false,
     stats: needsStats,
   });
+}
+
+function shouldUseFastPath(
+  normalized: NormalizedOptions,
+  maxDepth: number
+): boolean {
+  return (
+    !normalized.pattern &&
+    normalized.excludePatterns.length === 0 &&
+    maxDepth === 1
+  );
 }
 
 function resolveRelativePath(basePath: string, entryPath: string): string {

@@ -15,12 +15,7 @@ import {
   McpError,
 } from '../lib/errors.js';
 import { globEntries } from '../lib/file-operations/glob-engine.js';
-import {
-  atomicWriteFile,
-  createTimedAbortSignal,
-  withAbort,
-} from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { atomicWriteFile, withAbort } from '../lib/fs-helpers.js';
 import {
   validateExistingPath,
   validatePathForWrite,
@@ -33,6 +28,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   createProgressReporter,
+  executeToolWithDiagnostics,
   getExperimentalTaskRegistration,
   notifyProgress,
   resolvePathOrRoot,
@@ -41,7 +37,6 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 import { createToolTaskHandler } from './task-support.js';
@@ -352,38 +347,32 @@ export function registerSearchAndReplaceTool(
     args: z.infer<typeof SearchAndReplaceInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof SearchAndReplaceOutputSchema>>> =>
-    withToolDiagnostics(
-      'search_and_replace',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            notifyProgress(extra, {
-              current: 0,
-              message: `🛠 search_and_replace: ${args.filePattern}`,
-            });
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              const result = await handleSearchAndReplace(
-                args,
-                signal,
-                createProgressReporter(extra)
-              );
-              const sc = result.structuredContent;
-              const finalCurrent = (sc.processedFiles ?? 0) + 1;
-              notifyProgress(extra, {
-                current: finalCurrent,
-                message: `🛠 search_and_replace: ${args.filePattern} ➟ ${String(sc.filesChanged ?? 0)} files`,
-              });
-              return result;
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
-        ),
-      args.path ? { path: args.path } : {}
-    );
+    executeToolWithDiagnostics({
+      toolName: 'search_and_replace',
+      extra,
+      timedSignal: {},
+      ...(args.path ? { context: { path: args.path } } : {}),
+      run: async (signal) => {
+        notifyProgress(extra, {
+          current: 0,
+          message: `🛠 search_and_replace: ${args.filePattern}`,
+        });
+        const result = await handleSearchAndReplace(
+          args,
+          signal,
+          createProgressReporter(extra)
+        );
+        const sc = result.structuredContent;
+        const finalCurrent = (sc.processedFiles ?? 0) + 1;
+        notifyProgress(extra, {
+          current: finalCurrent,
+          message: `🛠 search_and_replace: ${args.filePattern} ➟ ${String(sc.filesChanged ?? 0)} files`,
+        });
+        return result;
+      },
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
+    });
 
   const { isInitialized } = options;
 

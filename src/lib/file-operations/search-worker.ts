@@ -25,6 +25,7 @@ interface ShutdownRequest {
 type WorkerRequest = ScanRequest | CancelRequest | ShutdownRequest;
 
 const matcherCache = new Map<string, Matcher>();
+const MAX_MATCHER_CACHE_SIZE = 100;
 
 function getMatcherCacheKey(pattern: string, options: MatcherOptions): string {
   const cs = options.caseSensitive ? '1' : '0';
@@ -38,22 +39,28 @@ function getCachedMatcher(pattern: string, options: MatcherOptions): Matcher {
   const cached = matcherCache.get(key);
 
   if (cached) {
-    matcherCache.delete(key);
-    matcherCache.set(key, cached);
+    refreshMatcherCacheEntry(key, cached);
     return cached;
   }
 
   const matcher = buildMatcher(pattern, options);
-  matcherCache.set(key, matcher);
-
-  if (matcherCache.size > 100) {
-    const firstKey = matcherCache.keys().next().value;
-    if (firstKey !== undefined) {
-      matcherCache.delete(firstKey);
-    }
-  }
+  refreshMatcherCacheEntry(key, matcher);
+  evictOldestMatcherIfNeeded();
 
   return matcher;
+}
+
+function refreshMatcherCacheEntry(key: string, matcher: Matcher): void {
+  matcherCache.delete(key);
+  matcherCache.set(key, matcher);
+}
+
+function evictOldestMatcherIfNeeded(): void {
+  if (matcherCache.size <= MAX_MATCHER_CACHE_SIZE) return;
+  const firstKey = matcherCache.keys().next().value;
+  if (firstKey !== undefined) {
+    matcherCache.delete(firstKey);
+  }
 }
 
 const cancelledRequests = new Set<number>();

@@ -54,6 +54,12 @@ interface FileReadTask {
   stats?: Stats;
 }
 
+interface LineSelectionOptions {
+  head?: number;
+  startLine?: number;
+  endLine?: number;
+}
+
 function estimateReadSize(stats: Stats, maxSize: number): number {
   // `readFile`/`readFileWithStats` are always invoked with a `maxSize` cap, so the
   // combined budget should reflect the maximum number of bytes we might actually read.
@@ -67,15 +73,18 @@ function buildReadOptions(options: NormalizedReadMultipleOptions): {
   startLine?: number;
   endLine?: number;
 } {
-  return {
+  const readOptions: {
+    encoding: BufferEncoding;
+    maxSize: number;
+    head?: number;
+    startLine?: number;
+    endLine?: number;
+  } = {
     encoding: options.encoding,
     maxSize: options.maxSize,
-    ...(options.head !== undefined ? { head: options.head } : {}),
-    ...(options.startLine !== undefined
-      ? { startLine: options.startLine }
-      : {}),
-    ...(options.endLine !== undefined ? { endLine: options.endLine } : {}),
   };
+  applyLineSelection(readOptions, options);
+  return readOptions;
 }
 
 function buildReadMultipleResult(
@@ -140,19 +149,25 @@ async function readFilesInParallel(
 function normalizeReadMultipleOptions(
   options: ReadMultipleOptions
 ): NormalizedReadMultipleOptions {
-  return {
+  const normalized: NormalizedReadMultipleOptions = {
     encoding: options.encoding ?? 'utf-8',
     maxSize: Math.min(
       options.maxSize ?? MAX_TEXT_FILE_SIZE,
       MAX_TEXT_FILE_SIZE
     ),
     maxTotalSize: options.maxTotalSize ?? DEFAULT_READ_MANY_MAX_TOTAL_SIZE,
-    ...(options.head !== undefined ? { head: options.head } : {}),
-    ...(options.startLine !== undefined
-      ? { startLine: options.startLine }
-      : {}),
-    ...(options.endLine !== undefined ? { endLine: options.endLine } : {}),
   };
+  applyLineSelection(normalized, options);
+  return normalized;
+}
+
+function applyLineSelection(
+  target: LineSelectionOptions,
+  source: LineSelectionOptions
+): void {
+  if (source.head !== undefined) target.head = source.head;
+  if (source.startLine !== undefined) target.startLine = source.startLine;
+  if (source.endLine !== undefined) target.endLine = source.endLine;
 }
 
 function resolveNormalizedOptions(options: ReadMultipleOptions): {

@@ -6,8 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode, isNodeError } from '../lib/errors.js';
-import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { withAbort } from '../lib/fs-helpers.js';
 import {
   validateExistingPath,
   validatePathForWrite,
@@ -16,12 +15,12 @@ import { MoveFileInputSchema, MoveFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -86,23 +85,15 @@ export function registerMoveFileTool(
     args: z.infer<typeof MoveFileInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof MoveFileOutputSchema>>> =>
-    withToolDiagnostics(
-      'mv',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              return await handleMoveFile(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.source)
-        ),
-      { path: args.source }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'mv',
+      extra,
+      timedSignal: {},
+      context: { path: args.source },
+      run: (signal) => handleMoveFile(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.source),
+    });
 
   server.registerTool(
     'mv',

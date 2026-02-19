@@ -6,8 +6,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { z } from 'zod';
 
 import { ErrorCode } from '../lib/errors.js';
-import { createTimedAbortSignal, withAbort } from '../lib/fs-helpers.js';
-import { withToolDiagnostics } from '../lib/observability.js';
+import { withAbort } from '../lib/fs-helpers.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import {
   CreateDirectoryInputSchema,
@@ -16,12 +15,12 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
-  withToolErrorHandling,
   wrapToolHandler,
 } from './shared.js';
 
@@ -59,23 +58,15 @@ export function registerCreateDirectoryTool(
     args: z.infer<typeof CreateDirectoryInputSchema>,
     extra: ToolExtra
   ): Promise<ToolResult<z.infer<typeof CreateDirectoryOutputSchema>>> =>
-    withToolDiagnostics(
-      'mkdir',
-      () =>
-        withToolErrorHandling(
-          async () => {
-            const { signal, cleanup } = createTimedAbortSignal(extra.signal);
-            try {
-              return await handleCreateDirectory(args, signal);
-            } finally {
-              cleanup();
-            }
-          },
-          (error) =>
-            buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path)
-        ),
-      { path: args.path }
-    );
+    executeToolWithDiagnostics({
+      toolName: 'mkdir',
+      extra,
+      timedSignal: {},
+      context: { path: args.path },
+      run: (signal) => handleCreateDirectory(args, signal),
+      onError: (error) =>
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
+    });
 
   server.registerTool(
     'mkdir',

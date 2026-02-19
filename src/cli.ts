@@ -46,15 +46,25 @@ function validateCliPath(inputPath: string): void {
   }
 }
 
-function getNodeErrorCode(error: unknown): string | undefined {
+function getNodeErrorProperty(
+  error: unknown,
+  key: 'code' | 'errno'
+): string | number | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
-  const { code } = error as Record<string, unknown>;
+  const value = (error as Record<string, unknown>)[key];
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  return undefined;
+}
+
+function getNodeErrorCode(error: unknown): string | undefined {
+  const code = getNodeErrorProperty(error, 'code');
   return typeof code === 'string' ? code : undefined;
 }
 
 function getNodeErrorErrno(error: unknown): number | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const { errno } = error as Record<string, unknown>;
+  const errno = getNodeErrorProperty(error, 'errno');
   return typeof errno === 'number' ? errno : undefined;
 }
 
