@@ -133,23 +133,55 @@ export function registerSearchFilesTool(
       timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
       context: { path: args.path ?? '.' },
       run: async (signal) => {
+        const scope = args.path ?? '.';
         notifyProgress(extra, {
           current: 0,
-          message: `🔎︎ find: ${args.pattern}`,
+          message: `🔎︎ find: ${args.pattern} in ${scope}`,
         });
+
+        const baseReporter = createProgressReporter(extra);
+        const progressWithMessage = ({
+          current,
+          total,
+        }: {
+          total?: number;
+          current: number;
+        }): void => {
+          const fileWord = current === 1 ? 'file' : 'files';
+          baseReporter({
+            current,
+            ...(total !== undefined ? { total } : {}),
+            message: `🔎︎ find: ${args.pattern} — ${current} ${fileWord} scanned`,
+          });
+        };
 
         const result = await handleSearchFiles(
           args,
           signal,
-          createProgressReporter(extra)
+          progressWithMessage
         );
         const sc = result.structuredContent;
-        const suffix =
-          sc.ok && sc.totalMatches ? String(sc.totalMatches) : 'No matches';
-        const finalCurrent = (sc.filesScanned ?? 0) + 1;
+        const count = sc.ok ? (sc.totalMatches ?? 0) : 0;
+        const stoppedReason = sc.ok ? sc.stoppedReason : undefined;
 
+        let suffix: string;
+        if (count === 0) {
+          suffix = `No matches in ${scope}`;
+        } else {
+          suffix = `${count} ${count === 1 ? 'match' : 'matches'}`;
+          if (stoppedReason === 'timeout') {
+            suffix += ' [stopped — timeout]';
+          } else if (stoppedReason === 'maxResults') {
+            suffix += ' [truncated — max results]';
+          } else if (stoppedReason === 'maxFiles') {
+            suffix += ' [truncated — max files]';
+          }
+        }
+
+        const finalCurrent = (sc.filesScanned ?? 0) + 1;
         notifyProgress(extra, {
           current: finalCurrent,
+          total: finalCurrent,
           message: `🔎︎ find: ${args.pattern} • ${suffix}`,
         });
         return result;

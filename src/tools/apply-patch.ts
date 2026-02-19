@@ -129,7 +129,17 @@ export function registerApplyPatchTool(
     guard: options.isInitialized,
     progressMessage: (args) => {
       const name = path.basename(args.path);
-      return `🛠 apply_patch: ${name}`;
+      return args.dryRun
+        ? `🛠 apply_patch: ${name} [dry run]`
+        : `🛠 apply_patch: ${name}`;
+    },
+    completionMessage: (args, result) => {
+      const name = path.basename(args.path);
+      if (result.isError) return `🛠 apply_patch: ${name} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `🛠 apply_patch: ${name} • failed`;
+      if (args.dryRun) return `🛠 apply_patch: ${name} • dry run OK`;
+      return `🛠 apply_patch: ${name} • applied`;
     },
   });
   if (

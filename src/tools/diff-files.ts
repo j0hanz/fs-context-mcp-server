@@ -155,6 +155,16 @@ export function registerDiffFilesTool(
         const name2 = path.basename(args.modified);
         return `🕮 diff_files: ${name1} ⟷ ${name2}`;
       },
+      completionMessage: (args, result) => {
+        const n1 = path.basename(args.original);
+        const n2 = path.basename(args.modified);
+        if (result.isError) return `🕮 diff_files: ${n1} ⟷ ${n2} • failed`;
+        const sc = result.structuredContent;
+        if (!sc.ok) return `🕮 diff_files: ${n1} ⟷ ${n2} • failed`;
+        if (sc.isIdentical) return `🕮 diff_files: ${n1} ⟷ ${n2} • identical`;
+        const hunks = (sc.diff?.match(/@@/g) ?? []).length;
+        return `🕮 diff_files: ${n1} ⟷ ${n2} • ${hunks} hunk${hunks !== 1 ? 's' : ''}`;
+      },
     })
   );
 }

@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
@@ -111,7 +113,23 @@ export function registerGetMultipleFileInfoTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => `🕮 stat_many: ${args.paths.length} paths`,
+    progressMessage: (args) => {
+      const first = path.basename(args.paths[0] ?? '');
+      const extra =
+        args.paths.length > 1 ? `, ${path.basename(args.paths[1] ?? '')}…` : '';
+      return `🕮 stat_many: ${args.paths.length} paths [${first}${extra}]`;
+    },
+    completionMessage: (_args, result) => {
+      if (result.isError) return `🕮 stat_many • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `🕮 stat_many • failed`;
+      const total = sc.summary?.total ?? 0;
+      const succeeded = sc.summary?.succeeded ?? 0;
+      const failed = sc.summary?.failed ?? 0;
+      if (failed)
+        return `🕮 stat_many: ${succeeded}/${total} OK, ${failed} failed`;
+      return `🕮 stat_many: ${total} OK`;
+    },
   });
 
   if (

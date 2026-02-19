@@ -362,20 +362,43 @@ export function registerSearchAndReplaceTool(
       timedSignal: {},
       ...(args.path ? { context: { path: args.path } } : {}),
       run: async (signal) => {
+        const dryLabel = args.dryRun ? ' [dry run]' : '';
         notifyProgress(extra, {
           current: 0,
-          message: `🛠 search_and_replace: ${args.filePattern}`,
+          message: `🛠 search_and_replace: "${args.searchPattern}" in ${args.filePattern}${dryLabel}`,
         });
+
+        const baseReporter = createProgressReporter(extra);
+        const progressWithMessage = ({
+          current,
+          total,
+        }: {
+          total?: number;
+          current: number;
+        }): void => {
+          baseReporter({
+            current,
+            ...(total !== undefined ? { total } : {}),
+            message: `🛠 search_and_replace: "${args.searchPattern}" — ${current} files processed`,
+          });
+        };
+
         const result = await handleSearchAndReplace(
           args,
           signal,
-          createProgressReporter(extra)
+          progressWithMessage
         );
         const sc = result.structuredContent;
         const finalCurrent = (sc.processedFiles ?? 0) + 1;
+        const matchWord = (sc.matches ?? 0) === 1 ? 'match' : 'matches';
+        const fileWord = (sc.filesChanged ?? 0) === 1 ? 'file' : 'files';
+        let endSuffix = `${sc.matches ?? 0} ${matchWord} in ${sc.filesChanged ?? 0} ${fileWord}`;
+        if (sc.failedFiles) endSuffix += `, ${sc.failedFiles} failed`;
+        if (sc.dryRun) endSuffix += ' [dry run]';
         notifyProgress(extra, {
           current: finalCurrent,
-          message: `🛠 search_and_replace: ${args.filePattern} • ${String(sc.filesChanged ?? 0)} files`,
+          total: finalCurrent,
+          message: `🛠 search_and_replace: "${args.searchPattern}" • ${endSuffix}`,
         });
         return result;
       },

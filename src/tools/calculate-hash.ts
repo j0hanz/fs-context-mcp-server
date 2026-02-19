@@ -245,24 +245,48 @@ export function registerCalculateHashTool(
       timedSignal: {},
       context: { path: args.path },
       run: async (signal) => {
+        const baseName = path.basename(args.path);
         notifyProgress(extra, {
           current: 0,
-          message: `🕮 calculate_hash: ${path.basename(args.path)}`,
+          message: `🕮 calculate_hash: ${baseName}`,
         });
+
+        const baseReporter = createProgressReporter(extra);
+        const progressWithMessage = ({
+          current,
+          total,
+        }: {
+          total?: number;
+          current: number;
+        }): void => {
+          const fileWord = current === 1 ? 'file' : 'files';
+          baseReporter({
+            current,
+            ...(total !== undefined ? { total } : {}),
+            message: `🕮 calculate_hash: ${baseName} — ${current} ${fileWord} hashed`,
+          });
+        };
 
         const result = await handleCalculateHash(
           args,
           signal,
-          createProgressReporter(extra)
+          progressWithMessage
         );
         const sc = result.structuredContent;
         const totalFiles = sc.ok ? (sc.fileCount ?? 1) : 1;
         const finalCurrent = totalFiles + 1;
-        const suffix = sc.ok ? `${(sc.hash ?? '').slice(0, 8)}...` : 'failed';
-
+        let suffix: string;
+        if (!sc.ok) {
+          suffix = 'failed';
+        } else if (sc.fileCount !== undefined && sc.fileCount > 1) {
+          suffix = `${sc.fileCount} files • ${(sc.hash ?? '').slice(0, 8)}...`;
+        } else {
+          suffix = `${(sc.hash ?? '').slice(0, 8)}...`;
+        }
         notifyProgress(extra, {
           current: finalCurrent,
-          message: `🕮 calculate_hash: ${path.basename(args.path)} • ${suffix}`,
+          total: finalCurrent,
+          message: `🕮 calculate_hash: ${baseName} • ${suffix}`,
         });
         return result;
       },

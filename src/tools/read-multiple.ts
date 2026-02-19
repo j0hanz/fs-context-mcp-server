@@ -184,7 +184,23 @@ export function registerReadMultipleFilesTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => `🕮 read_many: ${args.paths.length} files`,
+    progressMessage: (args) => {
+      const first = path.basename(args.paths[0] ?? '');
+      const extra =
+        args.paths.length > 1 ? `, ${path.basename(args.paths[1] ?? '')}…` : '';
+      return `🕮 read_many: ${args.paths.length} files [${first}${extra}]`;
+    },
+    completionMessage: (_args, result) => {
+      if (result.isError) return `🕮 read_many • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `🕮 read_many • failed`;
+      const total = sc.summary?.total ?? 0;
+      const succeeded = sc.summary?.succeeded ?? 0;
+      const failed = sc.summary?.failed ?? 0;
+      if (failed)
+        return `🕮 read_many: ${succeeded}/${total} read, ${failed} failed`;
+      return `🕮 read_many: ${total} files read`;
+    },
   });
 
   if (

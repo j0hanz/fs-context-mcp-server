@@ -149,7 +149,7 @@ export function registerEditFileTool(
       guard: options.isInitialized,
       progressMessage: (args) => {
         const name = path.basename(args.path);
-        return `🛠 edit: ${name} (${args.edits.length} edits)`;
+        return `🛠 edit: ${name} [${args.edits.length} edits]`;
       },
       completionMessage: (args, result) => {
         const name = path.basename(args.path);
@@ -160,7 +160,7 @@ export function registerEditFileTool(
         if (sc.lineRange) {
           return `🛠 edit: ${name} • [${sc.lineRange[0]}-${sc.lineRange[1]}]`;
         }
-        return `🛠 edit: ${name} • (${sc.appliedEdits ?? 0} edits)`;
+        return `🛠 edit: ${name} • [${sc.appliedEdits ?? 0} edits]`;
       },
     })
   );

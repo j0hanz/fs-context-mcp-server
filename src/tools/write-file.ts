@@ -75,7 +75,15 @@ export function registerWriteFileTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => `🛠 write: ${path.basename(args.path)}`,
+    progressMessage: (args) =>
+      `🛠 write: ${path.basename(args.path)} [${args.content.length} chars]`,
+    completionMessage: (args, result) => {
+      const name = path.basename(args.path);
+      if (result.isError) return `🛠 write: ${name} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `🛠 write: ${name} • failed`;
+      return `🛠 write: ${name} • ${sc.bytesWritten ?? 0} bytes`;
+    },
   });
   if (
     registerToolTaskIfAvailable(

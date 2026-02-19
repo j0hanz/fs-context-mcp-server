@@ -137,6 +137,17 @@ export function registerReadFileTool(
       }
       return `🕮 read: ${name}`;
     },
+    completionMessage: (args, result) => {
+      const name = path.basename(args.path);
+      if (result.isError) return `🕮 read: ${name} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `🕮 read: ${name} • failed`;
+      if (sc.hasMoreLines)
+        return `🕮 read: ${name} • truncated [${sc.totalLines ?? '?'} lines]`;
+      if (sc.startLine !== undefined)
+        return `🕮 read: ${name} • lines ${sc.startLine}–${sc.endLine ?? '?'}`;
+      return `🕮 read: ${name} • ${sc.totalLines ?? '?'} lines`;
+    },
   });
   if (
     registerToolTaskIfAvailable(

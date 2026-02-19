@@ -339,11 +339,11 @@ export function registerSearchContentTool(
               : '';
           suffix = `${count} ${matchWord}${fileInfo}`;
           if (stoppedReason === 'timeout') {
-            suffix += ' (stopped — timeout)';
+            suffix += ' [stopped — timeout]';
           } else if (stoppedReason === 'maxResults') {
-            suffix += ' (truncated — max results)';
+            suffix += ' [truncated — max results]';
           } else if (stoppedReason === 'maxFiles') {
-            suffix += ' (truncated — max files)';
+            suffix += ' [truncated — max files]';
           }
         }
 

@@ -88,6 +88,13 @@ export function registerGetFileInfoTool(
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: (args) => `🕮 stat: ${path.basename(args.path)}`,
+      completionMessage: (args, result) => {
+        const name = path.basename(args.path);
+        if (result.isError) return `🕮 stat: ${name} • failed`;
+        const sc = result.structuredContent;
+        if (!sc.ok || !sc.info) return `🕮 stat: ${name} • failed`;
+        return `🕮 stat: ${sc.info.name} [${sc.info.type}, ${formatBytes(sc.info.size)}]`;
+      },
     })
   );
 }

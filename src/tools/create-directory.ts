@@ -1,5 +1,4 @@
 import * as fs from 'node:fs/promises';
-import * as path from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -68,7 +67,11 @@ export function registerCreateDirectoryTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => `🛠 mkdir: ${path.basename(args.path)}`,
+    progressMessage: (args) => `🛠 mkdir: ${args.path}`,
+    completionMessage: (args, result) => {
+      if (result.isError) return `🛠 mkdir: ${args.path} • failed`;
+      return `🛠 mkdir: ${args.path} • created`;
+    },
   });
   if (
     registerToolTaskIfAvailable(
