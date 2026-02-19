@@ -16,6 +16,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
+  getExperimentalTaskRegistration,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -23,6 +24,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
+import { createToolTaskHandler } from './task-support.js';
 
 const APPLY_PATCH_TOOL = {
   title: 'Apply Patch',
@@ -123,15 +125,37 @@ export function registerApplyPatchTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => {
+      const name = path.basename(args.path);
+      return `🛠 apply_patch: ${name}`;
+    },
+  });
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+
+  const tasks = getExperimentalTaskRegistration(server);
+
+  if (tasks?.registerToolTask) {
+    tasks.registerToolTask(
+      'apply_patch',
+      withDefaultIcons(
+        {
+          ...APPLY_PATCH_TOOL,
+          execution: { taskSupport: 'optional' },
+        },
+        options.iconInfo
+      ),
+      createToolTaskHandler(wrappedHandler, taskOptions)
+    );
+    return;
+  }
+
   server.registerTool(
     'apply_patch',
     withDefaultIcons({ ...APPLY_PATCH_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        const name = path.basename(args.path);
-        return `🛠 apply_patch: ${name}`;
-      },
-    })
+    wrappedHandler
   );
 }

@@ -8,6 +8,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { PARALLEL_CONCURRENCY } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import {
   isIgnoredByGitignore,
@@ -127,9 +128,8 @@ async function hashDirectory(
   const { signal, onProgress } = options;
   const gitignoreMatcher = await loadRootGitignore(dirPath, signal);
 
-  // Enumerate all files in directory.
-  const entries: { path: string; hash: Buffer }[] = [];
-  let filesHashed = 0;
+  // Phase 1: collect all file paths that pass gitignore filtering.
+  const filteredPaths: { filePath: string; relativePath: string }[] = [];
 
   for await (const entry of globEntries({
     cwd: dirPath,
@@ -150,13 +150,30 @@ async function hashDirectory(
     ) {
       continue;
     }
+    filteredPaths.push({
+      filePath: entry.path,
+      relativePath: toStableRelativePath(dirPath, entry.path),
+    });
+  }
 
-    // entry.path is already absolute, no need to join
-    const fileHash = await hashFile(entry.path, undefined, signal);
-    // Use posix separators so hashes are stable across OS path separators.
-    const relativePath = toStableRelativePath(dirPath, entry.path);
-    entries.push({ path: relativePath, hash: fileHash });
-    filesHashed++;
+  assertNotAborted(signal);
+
+  // Phase 2: hash files concurrently with bounded pool.
+  const concurrency = Math.min(PARALLEL_CONCURRENCY, 8);
+  const entries: { path: string; hash: Buffer }[] = [];
+  let filesHashed = 0;
+
+  for (let i = 0; i < filteredPaths.length; i += concurrency) {
+    assertNotAborted(signal);
+    const batch = filteredPaths.slice(i, i + concurrency);
+    const batchResults = await Promise.all(
+      batch.map(async ({ filePath, relativePath }) => {
+        const fileHash = await hashFile(filePath, undefined, signal);
+        return { path: relativePath, hash: fileHash };
+      })
+    );
+    entries.push(...batchResults);
+    filesHashed += batchResults.length;
     reportHashProgress(onProgress, filesHashed);
   }
 

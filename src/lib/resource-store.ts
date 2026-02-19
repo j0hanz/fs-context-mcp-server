@@ -68,6 +68,7 @@ export function createInMemoryResourceStore(
   };
 
   const byUri = new Map<string, TextResourceEntry>();
+  const byHashIndex = new Map<string, string>(); // sha256hex → uri
   let totalBytes = 0;
 
   function evictOldest(): void {
@@ -78,6 +79,7 @@ export function createInMemoryResourceStore(
     if (!existing) return;
     totalBytes -= estimateBytes(existing.text);
     byUri.delete(uri);
+    byHashIndex.delete(existing.hash);
   }
 
   function enforceLimits(): void {
@@ -102,6 +104,15 @@ export function createInMemoryResourceStore(
       );
     }
 
+    const contentHash = computeSha256(params.text);
+    const existingUri = byHashIndex.get(contentHash);
+    if (existingUri !== undefined) {
+      const cached = byUri.get(existingUri);
+      if (cached !== undefined) {
+        return cached;
+      }
+    }
+
     const id = randomUUID();
     const uri = `filesystem-mcp://result/${id}`;
     const entry = createTextEntry({
@@ -112,6 +123,7 @@ export function createInMemoryResourceStore(
     });
 
     byUri.set(uri, entry);
+    byHashIndex.set(contentHash, uri);
     totalBytes += entryBytes;
 
     enforceLimits();
@@ -136,6 +148,7 @@ export function createInMemoryResourceStore(
 
   function clear(): void {
     byUri.clear();
+    byHashIndex.clear();
     totalBytes = 0;
   }
 
