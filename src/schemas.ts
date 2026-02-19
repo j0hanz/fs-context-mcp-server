@@ -61,9 +61,7 @@ const TreeEntrySchema: z.ZodType<TreeEntry> = z.lazy(() =>
 );
 
 const ErrorSchema = z.strictObject({
-  code: z
-    .enum(Object.values(ErrorCode) as [string, ...string[]])
-    .describe('Error code (e.g. E_NOT_FOUND)'),
+  code: z.enum(ErrorCode).describe('Error code (e.g. E_NOT_FOUND)'),
   message: z.string().describe('Human-readable message'),
   path: z.string().optional().describe('Relevant path'),
   suggestion: z.string().optional().describe('Fix suggestion'),
@@ -150,11 +148,11 @@ const OperationSummarySchema = z.object({
   failed: z.number().describe('Failed'),
 });
 
-const ReadRangeInputSchema = z.strictObject({
+const ReadRangeInputShape = {
   head: HeadLinesSchema,
   startLine: LineNumberSchema.optional(),
   endLine: LineNumberSchema.optional(),
-});
+};
 
 export const ListDirectoryInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(DESC_PATH_ROOT),
@@ -344,34 +342,36 @@ export const SearchContentInputSchema = z.strictObject({
     .describe('Include ignored items (node_modules, etc).'),
 });
 
-export const ReadFileInputSchema = ReadRangeInputSchema.extend({
-  path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
-  head: HeadLinesSchema.describe('Read first N lines (preview)'),
-  startLine: LineNumberSchema.optional().describe(
-    'Start line (1-based, inclusive)'
-  ),
-  endLine: LineNumberSchema.optional().describe(
-    'End line (1-based, inclusive). Requires startLine.'
-  ),
-})
-  .strict()
+export const ReadFileInputSchema = z
+  .strictObject({
+    ...ReadRangeInputShape,
+    path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
+    head: HeadLinesSchema.describe('Read first N lines (preview)'),
+    startLine: LineNumberSchema.optional().describe(
+      'Start line (1-based, inclusive)'
+    ),
+    endLine: LineNumberSchema.optional().describe(
+      'End line (1-based, inclusive). Requires startLine.'
+    ),
+  })
   .superRefine(validateReadRange);
 
-export const ReadMultipleFilesInputSchema = ReadRangeInputSchema.extend({
-  paths: z
-    .array(RequiredPathSchema)
-    .min(1, 'Min 1 path required')
-    .max(100, 'Max 100 files')
-    .describe('Files to read. e.g. ["src/index.ts"]'),
-  head: HeadLinesSchema.describe('Read first N lines of each file'),
-  startLine: LineNumberSchema.optional().describe(
-    'Start line (1-based, inclusive) per file'
-  ),
-  endLine: LineNumberSchema.optional().describe(
-    'End line (1-based, inclusive) per file. Requires startLine.'
-  ),
-})
-  .strict()
+export const ReadMultipleFilesInputSchema = z
+  .strictObject({
+    ...ReadRangeInputShape,
+    paths: z
+      .array(RequiredPathSchema)
+      .min(1, 'Min 1 path required')
+      .max(100, 'Max 100 files')
+      .describe('Files to read. e.g. ["src/index.ts"]'),
+    head: HeadLinesSchema.describe('Read first N lines of each file'),
+    startLine: LineNumberSchema.optional().describe(
+      'Start line (1-based, inclusive) per file'
+    ),
+    endLine: LineNumberSchema.optional().describe(
+      'End line (1-based, inclusive) per file. Requires startLine.'
+    ),
+  })
   .superRefine(validateReadRange);
 
 export const GetFileInfoInputSchema = z.strictObject({
