@@ -68,13 +68,13 @@ async function handleApplyPatch(
   args: z.infer<typeof ApplyPatchInputSchema>,
   signal?: AbortSignal
 ): Promise<ToolResponse<z.infer<typeof ApplyPatchOutputSchema>>> {
-  const maxFileSize = args.maxFileSize ?? MAX_TEXT_FILE_SIZE;
+  const maxFileSize = MAX_TEXT_FILE_SIZE;
   const validPath = await validateExistingPath(args.path, signal);
   const stats = await withAbort(fs.stat(validPath), signal);
   assertPatchTargetSizeWithinLimit(validPath, stats.size, maxFileSize);
   const content = await fs.readFile(validPath, { encoding: 'utf-8', signal });
 
-  const fuzzFactor = args.fuzzFactor ?? (args.fuzzy ? 2 : 0);
+  const fuzzFactor = args.fuzzFactor ?? 0;
 
   assertPatchHasHunks(args.patch);
 
@@ -86,7 +86,7 @@ async function handleApplyPatch(
   if (patched === false) {
     throw new McpError(
       ErrorCode.E_INVALID_INPUT,
-      'Patch application failed. The file content may have changed or patch context is insufficient. Generate a fresh patch via diff_files against the current file, then retry. If differences are minor, enable fuzzy matching (fuzzy=true or fuzzFactor).'
+      'Patch application failed. The file content may have changed or patch context is insufficient. Generate a fresh patch via diff_files against the current file, then retry. If differences are minor, enable fuzzy matching with the fuzzFactor parameter.'
     );
   }
 

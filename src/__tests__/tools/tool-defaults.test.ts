@@ -22,7 +22,6 @@ void it('grep includes includeHidden=false by default', () => {
   assert.strictEqual(parsed.wholeWord, false);
   assert.strictEqual(parsed.contextLines, 0);
   assert.strictEqual(parsed.maxResults, 500);
-  assert.strictEqual(parsed.maxFilesScanned, 20000);
   assert.strictEqual(parsed.filePattern, '**/*');
 });
 

@@ -8,7 +8,11 @@ import type { z } from 'zod';
 import RE2 from 're2';
 import safeRegex from 'safe-regex2';
 
-import { MAX_TEXT_FILE_SIZE, PARALLEL_CONCURRENCY } from '../lib/constants.js';
+import {
+  DEFAULT_EXCLUDE_PATTERNS,
+  MAX_TEXT_FILE_SIZE,
+  PARALLEL_CONCURRENCY,
+} from '../lib/constants.js';
 import {
   ErrorCode,
   formatUnknownErrorMessage,
@@ -287,14 +291,14 @@ async function handleSearchAndReplace(
   signal?: AbortSignal,
   onProgress: (progress: { total?: number; current: number }) => void = () => {}
 ): Promise<ToolResponse<z.infer<typeof SearchAndReplaceOutputSchema>>> {
-  const maxFileSize = args.maxFileSize ?? MAX_TEXT_FILE_SIZE;
+  const maxFileSize = MAX_TEXT_FILE_SIZE;
   const root = await resolveSearchRoot(args.path, signal);
   const regex = createReplacementRegex(args);
 
   const entries = globEntries({
     cwd: root,
     pattern: args.filePattern,
-    excludePatterns: args.excludePatterns,
+    excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
     includeHidden: false,
     baseNameMatch: false,
     caseSensitiveMatch: true, // Default to sensitive for file paths

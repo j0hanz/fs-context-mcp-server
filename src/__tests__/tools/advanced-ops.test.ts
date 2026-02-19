@@ -90,21 +90,6 @@ await it('advanced operations integration test', async () => {
       assert.equal(identical.isError, undefined);
       assert.strictEqual(identical.structuredContent.isIdentical, true);
       assert.strictEqual(identical.structuredContent.diff, '');
-
-      const tooLarge = (await handler(
-        {
-          original: fileA,
-          modified: fileB,
-          maxFileSize: 1,
-        },
-        {}
-      )) as any;
-
-      assert.equal(tooLarge.isError, true);
-      assert.strictEqual(
-        tooLarge.structuredContent.error?.code,
-        ErrorCode.E_TOO_LARGE
-      );
     }
 
     // 3. Apply Patch
@@ -124,17 +109,14 @@ await it('advanced operations integration test', async () => {
       const { fakeServer, getHandler } = createSingleToolCapture();
       registerApplyPatchTool(fakeServer);
       const handler = getHandler();
-      const result = (await handler(
-        { path: fileC, patch, fuzzy: false },
-        {}
-      )) as any;
+      const result = (await handler({ path: fileC, patch }, {})) as any;
       assert.equal(result.isError, undefined);
 
       const content = await fs.readFile(fileC, 'utf-8');
       assert.strictEqual(content, 'foo\nbaz\n');
 
       const stalePatchResult = (await handler(
-        { path: fileC, patch, fuzzy: false },
+        { path: fileC, patch },
         {}
       )) as any;
       assert.equal(stalePatchResult.isError, true);
@@ -145,22 +127,6 @@ await it('advanced operations integration test', async () => {
       assert.match(
         stalePatchResult.structuredContent.error?.message ?? '',
         /diff_files/u
-      );
-
-      const tooLarge = (await handler(
-        {
-          path: fileC,
-          patch,
-          fuzzy: false,
-          maxFileSize: 1,
-        },
-        {}
-      )) as any;
-
-      assert.equal(tooLarge.isError, true);
-      assert.strictEqual(
-        tooLarge.structuredContent.error?.code,
-        ErrorCode.E_TOO_LARGE
       );
     }
 
@@ -180,7 +146,6 @@ await it('advanced operations integration test', async () => {
         {
           path: tmpDir,
           filePattern: '**/*.ts',
-          excludePatterns: [],
           searchPattern: '1',
           replacement: '2',
           dryRun: true,
@@ -211,7 +176,6 @@ await it('advanced operations integration test', async () => {
         {
           path: tmpDir,
           filePattern: '**/*.ts',
-          excludePatterns: [],
           searchPattern: '1',
           replacement: '2',
           dryRun: false,
@@ -226,29 +190,6 @@ await it('advanced operations integration test', async () => {
       const c2 = await fs.readFile(path.join(subDir, 'f2.ts'), 'utf-8');
       assert.strictEqual(c1, 'const x = 2;');
       assert.strictEqual(c2, 'const y = 2;');
-
-      const tooLarge = (await handler(
-        {
-          path: tmpDir,
-          filePattern: '**/*.ts',
-          excludePatterns: [],
-          searchPattern: '2',
-          replacement: '3',
-          maxFileSize: 1,
-          dryRun: false,
-        },
-        {}
-      )) as any;
-
-      assert.equal(tooLarge.isError, undefined);
-      assert.strictEqual(tooLarge.structuredContent.failedFiles, 2);
-      assert.strictEqual(tooLarge.structuredContent.filesChanged, 0);
-
-      const unchangedAfterLimit = await fs.readFile(
-        path.join(subDir, 'f1.ts'),
-        'utf-8'
-      );
-      assert.strictEqual(unchangedAfterLimit, 'const x = 2;');
     }
   } finally {
     await setAllowedDirectoriesResolved(previousAllowed);

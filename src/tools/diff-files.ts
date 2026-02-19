@@ -57,7 +57,7 @@ async function handleDiffFiles(
   signal?: AbortSignal,
   resourceStore?: ToolRegistrationOptions['resourceStore']
 ): Promise<ToolResponse<z.infer<typeof DiffFilesOutputSchema>>> {
-  const maxFileSize = args.maxFileSize ?? MAX_TEXT_FILE_SIZE;
+  const maxFileSize = MAX_TEXT_FILE_SIZE;
   const [originalPath, modifiedPath] = await Promise.all([
     validateExistingPath(args.original, signal),
     validateExistingPath(args.modified, signal),

@@ -57,9 +57,6 @@ async function handleSearchFiles(
     sortBy: args.sortBy,
     respectGitignore: !args.includeIgnored,
     ...(args.maxDepth !== undefined ? { maxDepth: args.maxDepth } : {}),
-    ...(args.maxFilesScanned !== undefined
-      ? { maxFilesScanned: args.maxFilesScanned }
-      : {}),
     ...(onProgress ? { onProgress } : {}),
     ...(signal ? { signal } : {}),
   };

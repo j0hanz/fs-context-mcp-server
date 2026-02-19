@@ -194,7 +194,6 @@ async function handleSearchContent(
     wholeWord: args.wholeWord,
     contextLines: args.contextLines,
     maxResults: args.maxResults,
-    maxFilesScanned: args.maxFilesScanned,
     isLiteral: !args.isRegex,
   };
   if (signal) {

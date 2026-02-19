@@ -446,7 +446,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
         arguments: {
           path: path.join(tmpRoot, 'patch-target.txt'),
           patch: diffText,
-          fuzzy: true,
+          fuzzFactor: 2,
         },
       }),
       'apply_patch(apply)'
@@ -480,8 +480,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
         name: 'search_and_replace',
         arguments: {
           path: tmpRoot,
-          filePattern: 'replace-*.txt',
-          excludePatterns: ['*b.txt'],
+          filePattern: 'replace-a.txt',
           searchPattern: 'apple',
           replacement: 'orange',
         },

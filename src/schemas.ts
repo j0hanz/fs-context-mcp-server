@@ -145,12 +145,6 @@ const OperationSummarySchema = z.object({
   failed: z.number().describe('Failed'),
 });
 
-const ReadRangeInputShape = {
-  head: HeadLinesSchema,
-  startLine: LineNumberSchema.optional(),
-  endLine: LineNumberSchema.optional(),
-};
-
 export const ListDirectoryInputSchema = z.strictObject({
   path: OptionalPathSchema.describe(DESC_PATH_ROOT),
   includeHidden: z
@@ -235,13 +229,6 @@ export const SearchFilesInputSchema = z.strictObject({
     .max(100, 'Max: 100')
     .optional()
     .describe('Maximum directory depth to scan'),
-  maxFilesScanned: z
-    .number()
-    .int({ error: 'Must be integer' })
-    .min(1, 'Min: 1')
-    .max(200000, 'Max: 200,000')
-    .optional()
-    .describe('Hard cap on files scanned'),
 });
 
 export const TreeInputSchema = z.strictObject({
@@ -312,14 +299,6 @@ export const SearchContentInputSchema = z.strictObject({
     .optional()
     .default(500)
     .describe('Maximum match rows to return'),
-  maxFilesScanned: z
-    .number()
-    .int({ error: 'Must be integer' })
-    .min(1, 'Min: 1')
-    .max(200000, 'Max: 200,000')
-    .optional()
-    .default(20000)
-    .describe('Hard cap on files scanned'),
   filePattern: z
     .string()
     .min(1, 'Pattern required')
@@ -341,7 +320,6 @@ export const SearchContentInputSchema = z.strictObject({
 
 export const ReadFileInputSchema = z
   .strictObject({
-    ...ReadRangeInputShape,
     path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
     head: HeadLinesSchema.describe('Read first N lines (preview)'),
     startLine: LineNumberSchema.optional().describe(
@@ -355,7 +333,6 @@ export const ReadFileInputSchema = z
 
 export const ReadMultipleFilesInputSchema = z
   .strictObject({
-    ...ReadRangeInputShape,
     paths: z
       .array(RequiredPathSchema)
       .min(1, 'Min 1 path required')
@@ -671,13 +648,6 @@ export const DiffFilesInputSchema = z.strictObject({
     .optional()
     .default(false)
     .describe('Strip trailing carriage returns before diffing'),
-  maxFileSize: z
-    .number()
-    .int({ error: 'Must be integer' })
-    .min(1, 'Min: 1')
-    .max(100 * 1024 * 1024, 'Max: 104,857,600 (100 MiB)')
-    .optional()
-    .describe('Maximum bytes per input file to diff'),
 });
 
 export const DiffFilesOutputSchema = z.object({
@@ -692,7 +662,6 @@ export const DiffFilesOutputSchema = z.object({
 export const ApplyPatchInputSchema = z.strictObject({
   path: RequiredPathSchema.describe('Path to file to patch'),
   patch: z.string().describe('Unified diff content to apply'),
-  fuzzy: z.boolean().optional().default(false).describe('Allow fuzzy patching'),
   fuzzFactor: z
     .number()
     .int({ error: 'Must be integer' })
@@ -705,13 +674,6 @@ export const ApplyPatchInputSchema = z.strictObject({
     .optional()
     .default(true)
     .describe('Auto-convert line endings to match target file'),
-  maxFileSize: z
-    .number()
-    .int({ error: 'Must be integer' })
-    .min(1, 'Min: 1')
-    .max(100 * 1024 * 1024, 'Max: 104,857,600 (100 MiB)')
-    .optional()
-    .describe('Maximum bytes for the target file before patching'),
   dryRun: z.boolean().optional().default(false).describe('Check only'),
 });
 
@@ -732,17 +694,9 @@ export const SearchAndReplaceInputSchema = z.strictObject({
       error: 'Invalid glob or unsafe path (absolute/.. forbidden)',
     })
     .describe('Glob pattern (e.g. "**/*.ts")'),
-  excludePatterns: z.array(z.string()).optional().default([]),
   searchPattern: z.string().min(1, 'Search pattern required'),
   replacement: z.string().describe('Replacement text'),
   isRegex: z.boolean().optional().default(false),
-  maxFileSize: z
-    .number()
-    .int({ error: 'Must be integer' })
-    .min(1, 'Min: 1')
-    .max(100 * 1024 * 1024, 'Max: 104,857,600 (100 MiB)')
-    .optional()
-    .describe('Maximum bytes to read/replace per matched file'),
   dryRun: z.boolean().optional().default(false),
 });
 
