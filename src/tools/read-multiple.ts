@@ -157,7 +157,7 @@ async function handleReadMultipleFiles(
     })
     .join('\n');
 
-  return buildToolResponse(text, structured, resourceLinks, resourceStore);
+  return buildToolResponse(text, structured, resourceLinks);
 }
 
 export function registerReadMultipleFilesTool(

@@ -1,5 +1,3 @@
-import { inspect } from 'node:util';
-
 import type {
   ContentBlock,
   Icon,
@@ -71,46 +69,10 @@ export function buildResourceLink(params: {
 function buildContentBlock<T>(
   text: string,
   structuredContent: T,
-  extraContent: ContentBlock[] = [],
-  resourceStore?: ResourceStore
+  extraContent: ContentBlock[] = []
 ): { content: ContentBlock[]; structuredContent: T } {
-  let json: string;
-  try {
-    json = JSON.stringify(structuredContent);
-  } catch (error: unknown) {
-    const preview = inspect(structuredContent, {
-      depth: 4,
-      colors: false,
-      compact: 3,
-      breakLength: 80,
-    });
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    json = JSON.stringify({
-      ok: false,
-      error: `Failed to serialize structuredContent: ${errorMessage}`,
-      preview,
-    });
-  }
-
-  const externalized = maybeExternalizeTextContent(resourceStore, json, {
-    name: 'tool:structuredContent',
-    mimeType: 'application/json',
-  });
-
-  const jsonContent: ContentBlock[] = externalized
-    ? [
-        { type: 'text', text: externalized.preview },
-        buildResourceLink({
-          uri: externalized.entry.uri,
-          name: externalized.entry.name,
-          mimeType: externalized.entry.mimeType,
-          description: 'Full structuredContent JSON',
-        }),
-      ]
-    : [{ type: 'text', text: json }];
-
   return {
-    content: [{ type: 'text', text }, ...extraContent, ...jsonContent],
+    content: [{ type: 'text', text }, ...extraContent],
     structuredContent,
   };
 }
@@ -137,18 +99,12 @@ function resolveDetailedError(
 export function buildToolResponse<T>(
   text: string,
   structuredContent: T,
-  extraContent: ContentBlock[] = [],
-  resourceStore?: ResourceStore
+  extraContent: ContentBlock[] = []
 ): {
   content: ContentBlock[];
   structuredContent: T;
 } {
-  return buildContentBlock(
-    text,
-    structuredContent,
-    extraContent,
-    resourceStore
-  );
+  return buildContentBlock(text, structuredContent, extraContent);
 }
 
 export type ToolResponse<T> = ReturnType<typeof buildToolResponse<T>> &
