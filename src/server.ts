@@ -37,6 +37,7 @@ import {
   setAllowedDirectoriesResolved,
 } from './lib/path-validation.js';
 import { createInMemoryResourceStore } from './lib/resource-store.js';
+import { isRecord } from './lib/type-guards.js';
 import { registerGetHelpPrompt } from './prompts.js';
 import {
   registerInstructionResource,
@@ -88,7 +89,7 @@ const LOG_LEVEL_ORDER: Record<LoggingLevel, number> = {
 
 function canSendMcpLogs(server: McpServer): boolean {
   const capabilities = server.server.getClientCapabilities();
-  if (!capabilities || typeof capabilities !== 'object') return false;
+  if (!isRecord(capabilities)) return false;
   if (!('logging' in capabilities)) return false;
   return Boolean((capabilities as { logging?: unknown }).logging);
 }
@@ -297,12 +298,7 @@ async function resolveRootDirectories(roots: Root[]): Promise<string[]> {
 }
 
 function isRoot(value: unknown): value is Root {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'uri' in value &&
-    typeof value.uri === 'string'
-  );
+  return isRecord(value) && typeof value['uri'] === 'string';
 }
 
 function normalizeRoot(root: Root): Root {

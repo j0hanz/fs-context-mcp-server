@@ -24,6 +24,24 @@ const MAX_INLINE_CONTENT_CHARS = 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
 const PROGRESS_RATE_LIMIT_MS = 50;
 
+export const READ_ONLY_TOOL_ANNOTATIONS = {
+  readOnlyHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+export const DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  openWorldHint: false,
+} as const;
+
+export const IDEMPOTENT_WRITE_TOOL_ANNOTATIONS = {
+  readOnlyHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
 type ResourceEntry = ReturnType<ResourceStore['putText']>;
 
 function buildTextPreview(text: string): string {

@@ -17,6 +17,7 @@ import {
   buildToolResponse,
   executeToolWithDiagnostics,
   maybeExternalizeTextContent,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -24,7 +25,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const READ_FILE_TOOL = {
   title: 'Read File',
@@ -33,11 +34,7 @@ const READ_FILE_TOOL = {
     'Use head parameter to preview the first N lines of large files. ' +
     'For multiple files, use read_many for efficiency.',
   inputSchema: ReadFileInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 async function handleReadFile(
@@ -140,16 +137,14 @@ export function registerReadFileTool(
       return `🕮 read: ${name}`;
     },
   });
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'read',
       READ_FILE_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

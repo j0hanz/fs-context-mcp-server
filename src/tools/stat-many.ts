@@ -16,6 +16,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -23,17 +24,13 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const GET_MULTIPLE_FILE_INFO_TOOL = {
   title: 'Get Multiple File Info',
   description: 'Get metadata for multiple files or directories in one request.',
   inputSchema: GetMultipleFileInfoInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 function formatFileInfoDetail(info: FileInfo): string {
@@ -116,17 +113,14 @@ export function registerGetMultipleFileInfoTool(
     progressMessage: (args) => `🕮 stat_many: ${args.paths.length} paths`,
   });
 
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
-
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'stat_many',
       GET_MULTIPLE_FILE_INFO_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

@@ -21,6 +21,7 @@ import {
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
+import { needsStatsForSort, withOptionalStoppedReason } from './common.js';
 import { globEntries, resolveEntryType } from './glob-engine.js';
 
 interface ListDirectoryOptions {
@@ -109,10 +110,6 @@ function sortEntries(
   }[sortBy];
 
   entries.sort(compare);
-}
-
-function needsStatsForSort(sortBy: NormalizedOptions['sortBy']): boolean {
-  return sortBy === 'size' || sortBy === 'modified';
 }
 
 function resolveMaxDepth(normalized: NormalizedOptions): number {
@@ -388,8 +385,7 @@ function buildSummary(
     symlinksNotFollowed: counters.symlinksNotFollowed,
   };
 
-  if (stoppedReason === undefined) return summary;
-  return { ...summary, stoppedReason };
+  return withOptionalStoppedReason(summary, stoppedReason);
 }
 
 async function collectEntries(

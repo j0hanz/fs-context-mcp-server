@@ -4,11 +4,13 @@ import * as path from 'node:path';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CompleteRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
+import { toPosixPath } from './lib/path-format.js';
 import {
   getAllowedDirectories,
   isPathWithinDirectories,
   normalizePath,
 } from './lib/path-validation.js';
+import { isRecord } from './lib/type-guards.js';
 
 const MAX_COMPLETION_ITEMS = 100;
 
@@ -39,10 +41,6 @@ const PATH_ARGUMENTS = new Set([
   'root',
   'cwd',
 ]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
 
 function isPathLikeArgumentName(argName: string): boolean {
   return (
@@ -208,7 +206,7 @@ function resolveNamedRootPath(
 function parseNamedRootInput(
   value: string
 ): { rootName: string; remainder: string } | undefined {
-  const normalizedInput = value.replace(/\\/gu, '/');
+  const normalizedInput = toPosixPath(value);
   const [rootName, ...rest] = normalizedInput.split('/');
   if (!rootName) return undefined;
   return { rootName, remainder: rest.join(path.sep) };
@@ -370,7 +368,7 @@ function findRootPrefixMatches(
   currentValue: string,
   allowed: string[]
 ): string[] {
-  const normalizedInput = currentValue.replace(/\\/gu, '/');
+  const normalizedInput = toPosixPath(currentValue);
   const rootPrefix = (normalizedInput.split('/')[0] ?? '').toLowerCase();
   if (!rootPrefix) {
     const matches: string[] = [];

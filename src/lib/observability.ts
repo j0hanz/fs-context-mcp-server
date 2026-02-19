@@ -7,6 +7,8 @@ import {
   PerformanceObserver,
 } from 'node:perf_hooks';
 
+import { isRecord } from './type-guards.js';
+
 // --- Configuration ---
 
 const ENV = process.env;
@@ -119,12 +121,8 @@ let traceCounter = 0;
 
 // --- Helpers: Result Analysis ---
 
-function isObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
-}
-
 function extractOutcome(result: unknown): { ok: boolean; error?: string } {
-  if (!isObject(result)) {
+  if (!isRecord(result)) {
     return { ok: true };
   }
 
@@ -139,7 +137,7 @@ function extractOutcome(result: unknown): { ok: boolean; error?: string } {
   }
 
   const content = result['structuredContent'];
-  if (isObject(content) && typeof content['ok'] === 'boolean') {
+  if (isRecord(content) && typeof content['ok'] === 'boolean') {
     if (content['ok']) return { ok: true };
     const err = extractResultError(content);
     return err ? { ok: false, error: err } : { ok: false };
@@ -151,16 +149,16 @@ function extractOutcome(result: unknown): { ok: boolean; error?: string } {
 function extractErrorMessage(source: unknown): string {
   if (typeof source === 'string') return source;
   if (source instanceof Error) return source.message;
-  if (isObject(source)) {
+  if (isRecord(source)) {
     const struct = source['structuredContent'];
-    if (isObject(struct)) {
+    if (isRecord(struct)) {
       const err = struct['error'];
-      if (isObject(err) && typeof err['message'] === 'string')
+      if (isRecord(err) && typeof err['message'] === 'string')
         return err['message'];
     }
     if (typeof source['message'] === 'string') return source['message'];
     const errObj = source['error'];
-    if (isObject(errObj) && typeof errObj['message'] === 'string') {
+    if (isRecord(errObj) && typeof errObj['message'] === 'string') {
       return errObj['message'];
     }
   }
@@ -175,7 +173,7 @@ function extractResultError(
   structured: Record<string, unknown>
 ): string | undefined {
   const err = structured['error'];
-  return isObject(err) && typeof err['message'] === 'string'
+  return isRecord(err) && typeof err['message'] === 'string'
     ? err['message']
     : undefined;
 }

@@ -14,13 +14,16 @@ const SHUTDOWN_TIMEOUT_MS = 5000;
 let activeServer: McpServer | undefined;
 let shutdownStarted = false;
 
+function isStdinEvent(event: NodeJS.Signals | 'end' | 'close'): boolean {
+  return event === 'end' || event === 'close';
+}
+
 function registerShutdownTrigger(
   event: NodeJS.Signals | 'end' | 'close'
 ): void {
-  const target = event === 'end' || event === 'close' ? process.stdin : process;
+  const target = isStdinEvent(event) ? process.stdin : process;
   target.once(event, () => {
-    const reason =
-      event === 'end' || event === 'close' ? `stdin ${event}` : event;
+    const reason = isStdinEvent(event) ? `stdin ${event}` : event;
     void shutdown(reason, 0);
   });
 }

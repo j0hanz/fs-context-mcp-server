@@ -9,6 +9,13 @@ import { type IconInfo, withDefaultIcons } from './tools/shared.js';
 const RESULT_TEMPLATE = new ResourceTemplate('filesystem-mcp://result/{id}', {
   list: undefined,
 });
+const INSTRUCTIONS_RESOURCE_NAME = 'filesystem-mcp-instructions';
+const INSTRUCTIONS_RESOURCE_URI = 'internal://instructions';
+const INSTRUCTIONS_RESOURCE_DESCRIPTION =
+  'Guidance for using the filesystem-mcp MCP tools effectively.';
+const RESULT_RESOURCE_NAME = 'filesystem-mcp-result';
+const RESULT_RESOURCE_DESCRIPTION =
+  'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.';
 
 export function registerInstructionResource(
   server: McpServer,
@@ -16,13 +23,12 @@ export function registerInstructionResource(
   iconInfo?: IconInfo
 ): void {
   server.registerResource(
-    'filesystem-mcp-instructions',
-    'internal://instructions',
+    INSTRUCTIONS_RESOURCE_NAME,
+    INSTRUCTIONS_RESOURCE_URI,
     withDefaultIcons(
       {
         title: 'Server Instructions',
-        description:
-          'Guidance for using the filesystem-mcp MCP tools effectively.',
+        description: INSTRUCTIONS_RESOURCE_DESCRIPTION,
         mimeType: 'text/markdown',
         annotations: {
           audience: ['assistant'],
@@ -49,13 +55,12 @@ export function registerResultResources(
   iconInfo?: IconInfo
 ): void {
   server.registerResource(
-    'filesystem-mcp-result',
+    RESULT_RESOURCE_NAME,
     RESULT_TEMPLATE,
     withDefaultIcons(
       {
         title: 'Cached Tool Result',
-        description:
-          'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.',
+        description: RESULT_RESOURCE_DESCRIPTION,
         mimeType: 'text/plain',
         annotations: {
           audience: ['assistant'],

@@ -6,6 +6,7 @@ import {
   SENSITIVE_FILE_DENYLIST,
 } from './constants.js';
 import { ErrorCode, McpError } from './errors.js';
+import { toPosixPath } from './path-format.js';
 
 interface CompiledPattern {
   raw: string;
@@ -17,7 +18,7 @@ const IS_WINDOWS = platform() === 'win32';
 const WINDOWS_ABSOLUTE_RE = /^[a-z]:\//iu;
 
 function normalizePathForMatch(input: string): string {
-  return path.normalize(input).replace(/\\/gu, '/');
+  return toPosixPath(path.normalize(input));
 }
 
 function normalizeForMatch(input: string): string {

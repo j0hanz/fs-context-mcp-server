@@ -15,6 +15,7 @@ import { MoveFileInputSchema, type MoveFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -23,17 +24,13 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const MOVE_FILE_TOOL = {
   title: 'Move File',
   description: 'Move or rename a file or directory.',
   inputSchema: MoveFileInputSchema,
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: false,
-  },
+  annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
 async function handleMoveFile(
@@ -100,16 +97,14 @@ export function registerMoveFileTool(
     progressMessage: (args) =>
       `🛠 mv: ${path.basename(args.source)} ➟ ${path.basename(args.destination)}`,
   });
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'mv',
       MOVE_FILE_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

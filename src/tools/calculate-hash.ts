@@ -27,6 +27,7 @@ import {
   createProgressReporter,
   executeToolWithDiagnostics,
   notifyProgress,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -34,7 +35,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const WINDOWS_PATH_SEPARATOR = /\\/gu;
 
@@ -42,11 +43,7 @@ const CALCULATE_HASH_TOOL = {
   title: 'Calculate Hash',
   description: 'Calculate SHA-256 hash of a file or directory.',
   inputSchema: CalculateHashInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 async function hashFile(
@@ -275,17 +272,14 @@ export function registerCalculateHashTool(
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
   });
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
-
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'calculate_hash',
       CALCULATE_HASH_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

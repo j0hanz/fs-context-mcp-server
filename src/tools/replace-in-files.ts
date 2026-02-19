@@ -32,6 +32,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   createProgressReporter,
+  DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
   notifyProgress,
   resolvePathOrRoot,
@@ -42,7 +43,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const SEARCH_AND_REPLACE_TOOL = {
   title: 'Search and Replace',
@@ -53,11 +54,7 @@ const SEARCH_AND_REPLACE_TOOL = {
     'Always run with `dryRun: true` first to verify matches before writing. ' +
     'Literal mode (default) matches exact text; `isRegex: true` enables RE2 regex with capture groups ($1, $2).',
   inputSchema: SearchAndReplaceInputSchema,
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: false,
-  },
+  annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
 const MAX_FAILURES = 20;
@@ -390,15 +387,14 @@ export function registerSearchAndReplaceTool(
   const wrappedHandler = wrapToolHandler(handler, {
     guard: isInitialized,
   });
-  const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
-
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'search_and_replace',
       SEARCH_AND_REPLACE_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      isInitialized
     )
   )
     return;

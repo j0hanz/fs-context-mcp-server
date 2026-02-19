@@ -12,6 +12,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
+  READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -20,7 +21,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const TREE_TOOL = {
   title: 'Tree',
@@ -29,11 +30,7 @@ const TREE_TOOL = {
     'Returns an ASCII tree for quick scanning and a structured JSON tree for programmatic use. ' +
     'Note: maxDepth=0 returns only the root node with empty children array.',
   inputSchema: TreeInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 async function handleTree(
@@ -94,17 +91,14 @@ export function registerTreeTool(
     },
   });
 
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
-
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'tree',
       TREE_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

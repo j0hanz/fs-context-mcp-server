@@ -16,6 +16,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
+  IDEMPOTENT_WRITE_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -23,17 +24,13 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const CREATE_DIRECTORY_TOOL = {
   title: 'Create Directory',
   description: 'Create a new directory at the specified path (recursive)',
   inputSchema: CreateDirectoryInputSchema,
-  annotations: {
-    readOnlyHint: false,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: IDEMPOTENT_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
 async function handleCreateDirectory(
@@ -72,16 +69,14 @@ export function registerCreateDirectoryTool(
     guard: options.isInitialized,
     progressMessage: (args) => `🛠 mkdir: ${path.basename(args.path)}`,
   });
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'mkdir',
       CREATE_DIRECTORY_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

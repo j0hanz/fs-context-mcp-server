@@ -4,10 +4,7 @@ import * as path from 'node:path';
 import ignore, { type Ignore } from 'ignore';
 
 import { isNodeError } from '../errors.js';
-
-function normalizeToPosixPath(filePath: string): string {
-  return filePath.replace(/\\/gu, '/');
-}
+import { toPosixPath } from '../path-format.js';
 
 function parseGitignoreLines(contents: string): string[] {
   const lines: string[] = [];
@@ -54,7 +51,7 @@ export function isIgnoredByGitignore(
   const relative = path.relative(root, absolutePath);
   if (relative.length === 0) return false;
 
-  const normalized = normalizeToPosixPath(relative);
+  const normalized = toPosixPath(relative);
   if (options.isDirectory) {
     return matcher.ignores(
       normalized.endsWith('/') ? normalized : `${normalized}/`

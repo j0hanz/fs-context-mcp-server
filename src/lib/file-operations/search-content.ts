@@ -36,6 +36,7 @@ import {
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
+import { withOptionalStoppedReason } from './common.js';
 import { globEntries } from './glob-engine.js';
 
 // --- Configuration & Schemas ---
@@ -467,24 +468,23 @@ function buildSearchResult(
   matches: ContentMatch[],
   summary: ScanSummary
 ): SearchContentResult {
+  const baseSummary = {
+    filesScanned: summary.filesScanned,
+    filesMatched: summary.filesMatched,
+    matches: matches.length,
+    truncated: summary.truncated,
+    skippedTooLarge: summary.skippedTooLarge,
+    skippedBinary: summary.skippedBinary,
+    skippedInaccessible: summary.skippedInaccessible,
+    linesSkippedDueToRegexTimeout: 0,
+  };
+
   return {
     basePath: root,
     pattern,
     filePattern,
     matches,
-    summary: {
-      filesScanned: summary.filesScanned,
-      filesMatched: summary.filesMatched,
-      matches: matches.length,
-      truncated: summary.truncated,
-      skippedTooLarge: summary.skippedTooLarge,
-      skippedBinary: summary.skippedBinary,
-      skippedInaccessible: summary.skippedInaccessible,
-      linesSkippedDueToRegexTimeout: 0,
-      ...(summary.stoppedReason
-        ? { stoppedReason: summary.stoppedReason }
-        : {}),
-    },
+    summary: withOptionalStoppedReason(baseSummary, summary.stoppedReason),
   };
 }
 

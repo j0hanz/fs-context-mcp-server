@@ -21,6 +21,7 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { ErrorCode, McpError } from '../lib/errors.js';
+import { isRecord } from '../lib/type-guards.js';
 import type { IconInfo, ToolExtra, ToolResult } from './shared.js';
 import { buildToolErrorResponse, withDefaultIcons } from './shared.js';
 
@@ -60,10 +61,6 @@ type ToolArgs<Args extends ZodRawShapeCompat | AnySchema | undefined> =
 
 const RELATED_TASK_META_KEY = 'io.modelcontextprotocol/related-task';
 const TASK_STATUS_NOTIFICATION_METHOD = 'notifications/tasks/status';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object';
-}
 
 function isRequestTaskStore(value: unknown): value is RequestTaskStore {
   if (!isRecord(value)) return false;
@@ -355,6 +352,30 @@ export function tryRegisterToolTask<
     taskHandler
   );
   return true;
+}
+
+export function registerToolTaskIfAvailable<
+  Args extends ZodRawShapeCompat | AnySchema | undefined,
+  Result,
+>(
+  server: McpServer,
+  toolName: string,
+  toolDef: object,
+  run: (
+    args: ToolArgs<Args>,
+    extra: TaskToolExtra
+  ) => Promise<ToolResult<Result>>,
+  iconInfo: IconInfo | undefined,
+  guard?: () => boolean
+): boolean {
+  const taskOptions = guard ? { guard } : undefined;
+  return tryRegisterToolTask(
+    server,
+    toolName,
+    toolDef,
+    createToolTaskHandler(run, taskOptions),
+    iconInfo
+  );
 }
 
 export function createToolTaskHandler<Result>(

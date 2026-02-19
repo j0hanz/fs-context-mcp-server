@@ -5,6 +5,7 @@ import {
   DEFAULT_SEARCH_TIMEOUT_MS,
 } from '../constants.js';
 import { createTimedAbortSignal } from '../fs-helpers.js';
+import { toPosixPath } from '../path-format.js';
 import { isSensitivePath } from '../path-policy.js';
 import {
   isPathWithinDirectories,
@@ -80,7 +81,7 @@ function ensureParentNodes(
   nodeByPath: Map<string, TreeEntry>,
   relativePath: string
 ): TreeEntry {
-  const normalized = relativePath.replace(/\\/gu, '/');
+  const normalized = toPosixPath(relativePath);
   if (normalized.length === 0 || normalized === '.') return rootNode;
 
   const segments: string[] = [];
@@ -202,7 +203,7 @@ async function resolveTreeEntry(
   }
 
   const relative = path.relative(root, entry.path) || path.basename(entry.path);
-  const relativePosix = relative.replace(/\\/gu, '/');
+  const relativePosix = toPosixPath(relative);
   const name = path.basename(entry.path);
   return { type, relativePosix, name };
 }

@@ -21,6 +21,7 @@ import {
   buildToolResponse,
   executeToolWithDiagnostics,
   maybeExternalizeTextContent,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -36,11 +37,7 @@ const DIFF_FILES_TOOL = {
     'Output feeds directly into `apply_patch`. ' +
     'Check `isIdentical` in the response — if true, the files are already in sync and no patch is needed.',
   inputSchema: DiffFilesInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 function assertDiffFileSizeWithinLimit(

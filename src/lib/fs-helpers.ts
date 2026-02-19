@@ -33,6 +33,12 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function normalizeUnknownError(error: unknown): Error {
+  return error instanceof Error
+    ? error
+    : new Error(formatUnknownErrorMessage(error));
+}
+
 export function assertNotAborted(signal?: AbortSignal, message?: string): void {
   if (!signal) return;
   try {
@@ -116,11 +122,7 @@ export function withAbort<T>(
       })
       .catch((error: unknown) => {
         finish(() => {
-          reject(
-            error instanceof Error
-              ? error
-              : new Error(formatUnknownErrorMessage(error))
-          );
+          reject(normalizeUnknownError(error));
         });
       });
   });
@@ -208,10 +210,7 @@ export async function processInParallel<T, R>(
 
         errors.push({
           index,
-          error:
-            error instanceof Error
-              ? error
-              : new Error(formatUnknownErrorMessage(error)),
+          error: normalizeUnknownError(error),
         });
       }
     }

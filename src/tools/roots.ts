@@ -13,6 +13,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -28,11 +29,7 @@ const LIST_ALLOWED_DIRECTORIES_TOOL = {
     'Call this first to see available directories. ' +
     'All other tools only work within these directories.',
   inputSchema: ListAllowedDirectoriesInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 function buildTextRoots(dirs: string[]): string {

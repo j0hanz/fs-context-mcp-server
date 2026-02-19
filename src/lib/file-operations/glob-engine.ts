@@ -11,6 +11,8 @@ import {
   shouldPublishOpsTrace,
   startPerfMeasure,
 } from '../observability.js';
+import { toPosixPath } from '../path-format.js';
+import { isRecord } from '../type-guards.js';
 
 interface DirentLike {
   isDirectory(): boolean;
@@ -67,7 +69,6 @@ const GLOB_MAGIC_RE = /[*?[\]{}!]/u;
 const DEFAULT_MAX_HIDDEN_DEPTH = 10;
 const GLOB_BATCH_CONCURRENCY = 32;
 const SEP = '/';
-const WIN_SEP = '\\';
 const DOT_CHAR_CODE = 46;
 const GLOB_BOOLEAN_OPTION_KEYS: readonly (keyof GlobEntriesOptions)[] = [
   'includeHidden',
@@ -78,16 +79,8 @@ const GLOB_BOOLEAN_OPTION_KEYS: readonly (keyof GlobEntriesOptions)[] = [
   'stats',
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function toPosixSlashes(value: string): string {
-  return value.includes(WIN_SEP) ? value.replace(/\\/gu, SEP) : value;
-}
-
 function normalizePattern(pattern: string, baseNameMatch: boolean): string {
-  const normalized = toPosixSlashes(pattern);
+  const normalized = toPosixPath(pattern);
 
   if (!baseNameMatch) return normalized;
   if (normalized.includes(SEP)) return normalized;
@@ -97,7 +90,7 @@ function normalizePattern(pattern: string, baseNameMatch: boolean): string {
 function normalizeIgnorePatterns(
   patterns: readonly string[]
 ): readonly string[] {
-  return patterns.map(toPosixSlashes);
+  return patterns.map(toPosixPath);
 }
 
 function splitPatternPrefix(normalizedPattern: string): {

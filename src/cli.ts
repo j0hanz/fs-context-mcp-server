@@ -12,6 +12,7 @@ import {
   isWindowsDriveRelativePath,
   normalizePath,
 } from './lib/path-validation.js';
+import { isRecord } from './lib/type-guards.js';
 
 const PackageJsonSchema = z.object({ version: z.string() });
 const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
@@ -50,12 +51,22 @@ function getNodeErrorProperty(
   error: unknown,
   key: 'code' | 'errno'
 ): string | number | undefined {
-  if (typeof error !== 'object' || error === null) return undefined;
-  const value = (error as Record<string, unknown>)[key];
+  if (!isRecord(error)) return undefined;
+  const value = error[key];
   if (typeof value === 'string' || typeof value === 'number') {
     return value;
   }
   return undefined;
+}
+
+function collectStringValues(values: readonly unknown[]): string[] {
+  const result: string[] = [];
+  for (const value of values) {
+    if (typeof value === 'string') {
+      result.push(value);
+    }
+  }
+  return result;
 }
 
 function getNodeErrorCode(error: unknown): string | undefined {
@@ -123,29 +134,14 @@ async function normalizeCliDirectories(
 
 function parseAllowedDirArgument(value: string, previous: unknown): string[] {
   validateCliPath(value);
-
-  const values: string[] = [];
-  if (Array.isArray(previous)) {
-    for (const item of previous) {
-      if (typeof item === 'string') {
-        values.push(item);
-      }
-    }
-  }
-
+  const values = Array.isArray(previous) ? collectStringValues(previous) : [];
   return [...values, value];
 }
 
 function getParsedAllowedDirs(cli: Command): string[] {
   const [allowedDirs] = cli.processedArgs as unknown[];
   if (!Array.isArray(allowedDirs)) return [];
-  const parsed: string[] = [];
-  for (const candidate of allowedDirs) {
-    if (typeof candidate === 'string') {
-      parsed.push(candidate);
-    }
-  }
-  return parsed;
+  return collectStringValues(allowedDirs);
 }
 
 function createCliProgram(output: string[]): Command {

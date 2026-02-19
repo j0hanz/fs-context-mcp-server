@@ -22,6 +22,11 @@ import { registerWriteFileTool } from './tools/write-file.js';
 
 export { buildToolErrorResponse, buildToolResponse } from './tools/shared.js';
 
+type ToolRegistrar = (
+  server: McpServer,
+  options?: ToolRegistrationOptions
+) => void;
+
 const TOOL_REGISTRARS = [
   registerListAllowedDirectoriesTool,
   registerListDirectoryTool,
@@ -41,7 +46,7 @@ const TOOL_REGISTRARS = [
   registerDiffFilesTool,
   registerApplyPatchTool,
   registerSearchAndReplaceTool,
-] as const;
+] as const satisfies readonly ToolRegistrar[];
 
 export function registerAllTools(
   server: McpServer,

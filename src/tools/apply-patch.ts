@@ -18,6 +18,7 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -26,7 +27,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const APPLY_PATCH_TOOL = {
   title: 'Apply Patch',
@@ -35,11 +36,7 @@ const APPLY_PATCH_TOOL = {
     'Generate the patch with `diff_files`, then validate with `dryRun: true` before writing. ' +
     'On failure, regenerate a fresh patch via `diff_files` against the current file content and retry.',
   inputSchema: ApplyPatchInputSchema,
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: false,
-  },
+  annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
 function assertPatchTargetSizeWithinLimit(
@@ -137,17 +134,14 @@ export function registerApplyPatchTool(
       return `🛠 apply_patch: ${name}`;
     },
   });
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
-
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'apply_patch',
       APPLY_PATCH_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

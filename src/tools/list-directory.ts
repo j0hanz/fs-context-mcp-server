@@ -16,6 +16,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
+  READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -34,11 +35,7 @@ const LIST_DIRECTORY_TOOL = {
     'Use includeIgnored=true to include ignored directories like node_modules. ' +
     'For recursive searches, use find instead.',
   inputSchema: ListDirectoryInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 function buildListTextResult(

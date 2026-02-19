@@ -18,6 +18,7 @@ import {
   buildToolErrorResponse,
   buildToolResponse,
   executeToolWithDiagnostics,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -31,11 +32,7 @@ const GET_FILE_INFO_TOOL = {
   description:
     'Get metadata (size, modified time, permissions, mime type) for a file or directory.',
   inputSchema: GetFileInfoInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 function formatFileInfoDetails(info: FileInfo): string {

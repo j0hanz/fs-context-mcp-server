@@ -87,6 +87,18 @@ interface ReadRangeValue {
   endLine?: number | undefined;
 }
 
+function addReadRangeIssue(
+  ctx: z.RefinementCtx,
+  path: keyof ReadRangeValue,
+  message: string
+): void {
+  ctx.addIssue({
+    code: 'custom',
+    path: [path],
+    message,
+  });
+}
+
 const validateReadRange = (
   value: ReadRangeValue,
   ctx: z.RefinementCtx
@@ -96,19 +108,15 @@ const validateReadRange = (
   const hasEnd = value.endLine !== undefined;
 
   if (hasHead && (hasStart || hasEnd)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['head'],
-      message: "Cannot use 'head' with 'startLine'/'endLine'",
-    });
+    addReadRangeIssue(
+      ctx,
+      'head',
+      "Cannot use 'head' with 'startLine'/'endLine'"
+    );
   }
 
   if (hasEnd && !hasStart) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['endLine'],
-      message: "'endLine' requires 'startLine'",
-    });
+    addReadRangeIssue(ctx, 'endLine', "'endLine' requires 'startLine'");
   }
 
   if (
@@ -116,11 +124,7 @@ const validateReadRange = (
     value.endLine !== undefined &&
     value.endLine < value.startLine
   ) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['endLine'],
-      message: "'endLine' must be >= 'startLine'",
-    });
+    addReadRangeIssue(ctx, 'endLine', "'endLine' must be >= 'startLine'");
   }
 };
 

@@ -26,6 +26,7 @@ import {
   createProgressReporter,
   executeToolWithDiagnostics,
   notifyProgress,
+  READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -34,7 +35,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const MAX_INLINE_MATCHES = 50;
 
@@ -47,11 +48,7 @@ const SEARCH_CONTENT_TOOL = {
     'Use `filePattern` to scope by file type (e.g. `**/*.ts`) and avoid noisy results. ' +
     'Use includeHidden=true to include hidden files and directories.',
   inputSchema: SearchContentInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 function assertValidRegexPattern(pattern: string): void {
@@ -334,15 +331,14 @@ export function registerSearchContentTool(
     guard: isInitialized,
   });
 
-  const taskOptions = isInitialized ? { guard: isInitialized } : undefined;
-
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'grep',
       SEARCH_CONTENT_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      isInitialized
     )
   )
     return;

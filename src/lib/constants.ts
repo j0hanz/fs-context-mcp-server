@@ -2,6 +2,8 @@ import { availableParallelism } from 'node:os';
 
 const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes', 'y', 'on']);
 const FALSE_ENV_VALUES = new Set(['0', 'false', 'no', 'n', 'off']);
+const KIB = 1024;
+const MIB = 1024 * KIB;
 
 function logInvalidEnvValue(
   envVar: string,
@@ -61,8 +63,8 @@ function parseEnvList(envVar: string): string[] {
 }
 
 // Auto-tuned parallelism based on CPU cores (no env override)
-const BYTES_PER_PARALLEL_TASK = 64 * 1024 * 1024;
-const BYTES_PER_SEARCH_WORKER = 128 * 1024 * 1024;
+const BYTES_PER_PARALLEL_TASK = 64 * MIB;
+const BYTES_PER_SEARCH_WORKER = 128 * MIB;
 
 function getAvailableMemory(): number | undefined {
   if (typeof process.availableMemory !== 'function') return undefined;
@@ -98,22 +100,22 @@ export const PARALLEL_CONCURRENCY = getOptimalParallelism();
 // Configurable via environment variables
 export const MAX_SEARCHABLE_FILE_SIZE = parseEnvInt(
   'MAX_SEARCH_SIZE',
-  1024 * 1024,
-  100 * 1024,
-  10 * 1024 * 1024
+  MIB,
+  100 * KIB,
+  10 * MIB
 );
 export const MAX_TEXT_FILE_SIZE = parseEnvInt(
   'MAX_FILE_SIZE',
-  10 * 1024 * 1024,
-  1024 * 1024,
-  100 * 1024 * 1024
+  10 * MIB,
+  MIB,
+  100 * MIB
 );
 
 export const DEFAULT_READ_MANY_MAX_TOTAL_SIZE = parseEnvInt(
   'MAX_READ_MANY_TOTAL_SIZE',
-  512 * 1024,
-  10 * 1024,
-  100 * 1024 * 1024
+  512 * KIB,
+  10 * KIB,
+  100 * MIB
 );
 export const DEFAULT_SEARCH_TIMEOUT_MS = parseEnvInt(
   'DEFAULT_SEARCH_TIMEOUT',

@@ -93,10 +93,7 @@ function stripTrailingSeparator(normalized: string): string {
 }
 
 function isFileSystemRootPath(normalized: string, root: string): boolean {
-  return (
-    normalized === root ||
-    normalizeForComparison(normalized) === normalizeForComparison(root)
-  );
+  return isSamePath(normalized, root);
 }
 
 function normalizeAllowedDirectory(dir: string): string {

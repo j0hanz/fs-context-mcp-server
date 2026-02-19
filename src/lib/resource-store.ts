@@ -77,7 +77,7 @@ export function createInMemoryResourceStore(
     const uri = first.value;
     const existing = byUri.get(uri);
     if (!existing) return;
-    totalBytes -= estimateBytes(existing.text);
+    totalBytes -= existing.size;
     byUri.delete(uri);
     byHashIndex.delete(existing.hash);
   }

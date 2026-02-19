@@ -135,10 +135,12 @@ export function joinLines(lines: readonly string[]): string {
   return lines.join('\n');
 }
 
-export function formatOperationSummary(summary: {
+export interface OperationSummary {
   truncated?: boolean;
   truncatedReason?: string;
-}): string {
+}
+
+export function formatOperationSummary(summary: OperationSummary): string {
   if (!summary.truncated) return '';
   return `\n[truncated: ${summary.truncatedReason ?? 'limit reached'}]`;
 }

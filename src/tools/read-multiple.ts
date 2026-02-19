@@ -20,6 +20,7 @@ import {
   buildToolResponse,
   executeToolWithDiagnostics,
   maybeExternalizeTextContent,
+  READ_ONLY_TOOL_ANNOTATIONS,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -27,7 +28,7 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const READ_MULTIPLE_FILES_TOOL = {
   title: 'Read Multiple Files',
@@ -36,11 +37,7 @@ const READ_MULTIPLE_FILES_TOOL = {
     'Returns contents and metadata for each file. ' +
     'For single file, use read for simpler output.',
   inputSchema: ReadMultipleFilesInputSchema,
-  annotations: {
-    readOnlyHint: true,
-    idempotentHint: true,
-    openWorldHint: false,
-  },
+  annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 
 async function handleReadMultipleFiles(
@@ -189,17 +186,14 @@ export function registerReadMultipleFilesTool(
     progressMessage: (args) => `🕮 read_many: ${args.paths.length} files`,
   });
 
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
-
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'read_many',
       READ_MULTIPLE_FILES_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

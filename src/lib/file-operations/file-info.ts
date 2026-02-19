@@ -35,6 +35,8 @@ interface FileInfoOptions {
   signal?: AbortSignal | undefined;
 }
 
+const UNKNOWN_PATH = '(unknown)';
+
 function getPermissions(mode: number): string {
   const ownerIndex = (mode >> 6) & 0b111;
   const groupIndex = (mode >> 3) & 0b111;
@@ -191,7 +193,7 @@ function applyErrors(
     const { index } = failure;
     if (!isValidOutputIndex(index, output.length)) continue;
 
-    const filePath = paths[index] ?? '(unknown)';
+    const filePath = paths[index] ?? UNKNOWN_PATH;
     output[index] = { path: filePath, error: failure.error.message };
   }
 }
@@ -235,7 +237,7 @@ export async function getMultipleFileInfo(
 
   const output = new Array<MultipleFileInfoResult>(paths.length);
   for (let index = 0; index < paths.length; index += 1) {
-    output[index] = { path: paths[index] ?? '(unknown)' };
+    output[index] = { path: paths[index] ?? UNKNOWN_PATH };
   }
   const { results, errors } = await readFileInfoInParallel(paths, options);
 

@@ -81,6 +81,12 @@ function consumeCancelled(id: number): boolean {
   return true;
 }
 
+function markCancelledIfActive(id: number): void {
+  if (activeRequests.has(id)) {
+    cancelledRequests.add(id);
+  }
+}
+
 function buildScanResponse(
   id: number,
   result: ScanResult['result']
@@ -155,14 +161,12 @@ function handleMessage(message: WorkerRequest): void {
       void handleScanRequest(message);
       break;
     case 'cancel':
-      if (activeRequests.has(message.id)) {
-        cancelledRequests.add(message.id);
-      }
+      markCancelledIfActive(message.id);
       break;
     case 'shutdown':
       shuttingDown = true;
       for (const id of activeRequests) {
-        cancelledRequests.add(id);
+        markCancelledIfActive(id);
       }
       maybeFinishShutdown();
       break;

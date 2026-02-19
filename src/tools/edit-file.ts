@@ -12,6 +12,7 @@ import { EditFileInputSchema, type EditFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -29,11 +30,7 @@ const EDIT_FILE_TOOL = {
     '`oldText` must match exactly — include 3–5 lines of surrounding context to uniquely target the location. ' +
     'Use `dryRun: true` to validate edits before writing.',
   inputSchema: EditFileInputSchema,
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: false,
-  },
+  annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
 interface EditResult {

@@ -239,6 +239,12 @@ const ERROR_SUGGESTIONS: Readonly<Record<ErrorCode, string>> = {
     'An unexpected error occurred. Check the error message for details.',
 } as const;
 
+const NOT_FOUND_PATTERNS = ['enoent', 'no such file or directory'] as const;
+const PERMISSION_DENIED_PATTERNS = [
+  'permission denied',
+  'not permitted',
+] as const;
+
 function getDirectErrorCode(error: unknown): ErrorCode | undefined {
   if (error instanceof McpError) {
     return error.code;
@@ -250,10 +256,10 @@ function getDirectErrorCode(error: unknown): ErrorCode | undefined {
 function classifyMessageError(error: unknown): ErrorCode | undefined {
   const message = isNativeError(error) ? error.message : String(error);
   const lower = message.toLowerCase();
-  if (messageIncludesAny(lower, ['enoent', 'no such file or directory'])) {
+  if (messageIncludesAny(lower, NOT_FOUND_PATTERNS)) {
     return ErrorCode.E_NOT_FOUND;
   }
-  if (messageIncludesAny(lower, ['permission denied', 'not permitted'])) {
+  if (messageIncludesAny(lower, PERMISSION_DENIED_PATTERNS)) {
     return ErrorCode.E_PERMISSION_DENIED;
   }
   if (lower.includes('not a directory')) {

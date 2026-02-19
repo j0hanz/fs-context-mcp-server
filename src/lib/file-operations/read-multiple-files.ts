@@ -60,6 +60,8 @@ interface LineSelectionOptions {
   endLine?: number;
 }
 
+const UNKNOWN_PATH = '(unknown)';
+
 function estimateReadSize(stats: Stats, maxSize: number): number {
   // `readFile`/`readFileWithStats` are always invoked with a `maxSize` cap, so the
   // combined budget should reflect the maximum number of bytes we might actually read.
@@ -371,7 +373,7 @@ async function resolveValidatedInfo(
 function buildOutput(filePaths: readonly string[]): ReadMultipleResult[] {
   const output = new Array<ReadMultipleResult>(filePaths.length);
   for (let index = 0; index < filePaths.length; index += 1) {
-    output[index] = { path: filePaths[index] ?? '(unknown)' };
+    output[index] = { path: filePaths[index] ?? UNKNOWN_PATH };
   }
   return output;
 }
@@ -419,7 +421,7 @@ function applyErrors(
       filePaths.length
     );
     if (originalIndex === undefined) continue;
-    const filePath = filePaths[originalIndex] ?? '(unknown)';
+    const filePath = filePaths[originalIndex] ?? UNKNOWN_PATH;
     output[originalIndex] = {
       path: filePath,
       error: failure.error.message,

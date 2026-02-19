@@ -14,6 +14,7 @@ import {
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
+import { needsStatsForSort, withOptionalStoppedReason } from './common.js';
 import { isIgnoredByGitignore, loadRootGitignore } from './gitignore.js';
 import { globEntries, resolveEntryType } from './glob-engine.js';
 
@@ -110,10 +111,6 @@ function buildSearchResult(
     ...(size !== undefined ? { size } : {}),
     ...(modified !== undefined ? { modified } : {}),
   };
-}
-
-function needsStatsForSort(sortBy: NormalizedOptions['sortBy']): boolean {
-  return sortBy === 'size' || sortBy === 'modified';
 }
 
 function markStopped(state: CollectState, reason: StopReason): void {
@@ -350,8 +347,7 @@ function buildSearchSummary(
     skippedInaccessible,
     filesScanned,
   };
-  if (stoppedReason === undefined) return summary;
-  return { ...summary, stoppedReason };
+  return withOptionalStoppedReason(summary, stoppedReason);
 }
 
 interface Sortable {

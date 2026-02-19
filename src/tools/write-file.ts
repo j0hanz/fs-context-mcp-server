@@ -15,6 +15,7 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -23,18 +24,14 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const WRITE_FILE_TOOL = {
   title: 'Write File',
   description:
     'Write content to a file. Creates the file if it does not exist.',
   inputSchema: WriteFileInputSchema,
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: false,
-  },
+  annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
 async function handleWriteFile(
@@ -82,16 +79,14 @@ export function registerWriteFileTool(
     guard: options.isInitialized,
     progressMessage: (args) => `🛠 write: ${path.basename(args.path)}`,
   });
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'write',
       WRITE_FILE_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;

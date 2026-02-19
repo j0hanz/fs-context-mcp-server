@@ -15,6 +15,7 @@ import {
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
   type ToolExtra,
   type ToolRegistrationOptions,
@@ -23,17 +24,13 @@ import {
   withDefaultIcons,
   wrapToolHandler,
 } from './shared.js';
-import { createToolTaskHandler, tryRegisterToolTask } from './task-support.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 const DELETE_FILE_TOOL = {
   title: 'Delete File',
   description: 'Delete a file or directory.',
   inputSchema: DeleteFileInputSchema,
-  annotations: {
-    readOnlyHint: false,
-    destructiveHint: true,
-    openWorldHint: false,
-  },
+  annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
 async function handleDeleteFile(
@@ -145,16 +142,14 @@ export function registerDeleteFileTool(
     guard: options.isInitialized,
     progressMessage: (args) => `🛠 rm: ${path.basename(args.path)}`,
   });
-  const taskOptions = options.isInitialized
-    ? { guard: options.isInitialized }
-    : undefined;
   if (
-    tryRegisterToolTask(
+    registerToolTaskIfAvailable(
       server,
       'rm',
       DELETE_FILE_TOOL,
-      createToolTaskHandler(wrappedHandler, taskOptions),
-      options.iconInfo
+      wrappedHandler,
+      options.iconInfo,
+      options.isInitialized
     )
   )
     return;
