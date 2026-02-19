@@ -4,15 +4,11 @@ import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { ErrorCode, McpError } from './lib/errors.js';
 import type { ResourceStore } from './lib/resource-store.js';
+import type { IconInfo } from './tools/shared.js';
 
 const RESULT_TEMPLATE = new ResourceTemplate('filesystem-mcp://result/{id}', {
   list: undefined,
 });
-
-interface IconInfo {
-  src: string;
-  mimeType: string;
-}
 
 export function registerInstructionResource(
   server: McpServer,

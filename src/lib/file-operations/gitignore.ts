@@ -3,6 +3,8 @@ import * as path from 'node:path';
 
 import ignore, { type Ignore } from 'ignore';
 
+import { isNodeError } from '../errors.js';
+
 function normalizeToPosixPath(filePath: string): string {
   return filePath.replace(/\\/gu, '/');
 }
@@ -20,12 +22,7 @@ export async function loadRootGitignore(
       signal,
     });
   } catch (error) {
-    if (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code?: unknown }).code === 'ENOENT'
-    ) {
+    if (isNodeError(error) && error.code === 'ENOENT') {
       return null;
     }
     throw error;

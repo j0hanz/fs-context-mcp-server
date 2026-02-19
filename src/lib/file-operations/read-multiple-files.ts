@@ -67,47 +67,37 @@ function buildReadOptions(options: NormalizedReadMultipleOptions): {
   startLine?: number;
   endLine?: number;
 } {
-  const readOptions: {
-    encoding: BufferEncoding;
-    maxSize: number;
-    head?: number;
-    startLine?: number;
-    endLine?: number;
-  } = {
+  return {
     encoding: options.encoding,
     maxSize: options.maxSize,
+    ...(options.head !== undefined ? { head: options.head } : {}),
+    ...(options.startLine !== undefined
+      ? { startLine: options.startLine }
+      : {}),
+    ...(options.endLine !== undefined ? { endLine: options.endLine } : {}),
   };
-  if (options.head !== undefined) {
-    readOptions.head = options.head;
-  }
-  if (options.startLine !== undefined) {
-    readOptions.startLine = options.startLine;
-  }
-  if (options.endLine !== undefined) {
-    readOptions.endLine = options.endLine;
-  }
-  return readOptions;
 }
 
 function buildReadMultipleResult(
   filePath: string,
   result: Awaited<ReturnType<typeof readFile>>
 ): ReadMultipleResult {
-  const value: ReadMultipleResult = {
+  return {
     path: filePath,
     content: result.content,
     truncated: result.truncated,
     readMode: result.readMode,
+    ...(result.totalLines !== undefined
+      ? { totalLines: result.totalLines }
+      : {}),
+    ...(result.head !== undefined ? { head: result.head } : {}),
+    ...(result.startLine !== undefined ? { startLine: result.startLine } : {}),
+    ...(result.endLine !== undefined ? { endLine: result.endLine } : {}),
+    ...(result.linesRead !== undefined ? { linesRead: result.linesRead } : {}),
+    ...(result.hasMoreLines !== undefined
+      ? { hasMoreLines: result.hasMoreLines }
+      : {}),
   };
-  if (result.totalLines !== undefined) value.totalLines = result.totalLines;
-  if (result.head !== undefined) value.head = result.head;
-  if (result.startLine !== undefined) value.startLine = result.startLine;
-  if (result.endLine !== undefined) value.endLine = result.endLine;
-  if (result.linesRead !== undefined) value.linesRead = result.linesRead;
-  if (result.hasMoreLines !== undefined) {
-    value.hasMoreLines = result.hasMoreLines;
-  }
-  return value;
 }
 
 async function readSingleFile(
@@ -150,24 +140,19 @@ async function readFilesInParallel(
 function normalizeReadMultipleOptions(
   options: ReadMultipleOptions
 ): NormalizedReadMultipleOptions {
-  const normalized: NormalizedReadMultipleOptions = {
+  return {
     encoding: options.encoding ?? 'utf-8',
     maxSize: Math.min(
       options.maxSize ?? MAX_TEXT_FILE_SIZE,
       MAX_TEXT_FILE_SIZE
     ),
     maxTotalSize: options.maxTotalSize ?? DEFAULT_READ_MANY_MAX_TOTAL_SIZE,
+    ...(options.head !== undefined ? { head: options.head } : {}),
+    ...(options.startLine !== undefined
+      ? { startLine: options.startLine }
+      : {}),
+    ...(options.endLine !== undefined ? { endLine: options.endLine } : {}),
   };
-  if (options.head !== undefined) {
-    normalized.head = options.head;
-  }
-  if (options.startLine !== undefined) {
-    normalized.startLine = options.startLine;
-  }
-  if (options.endLine !== undefined) {
-    normalized.endLine = options.endLine;
-  }
-  return normalized;
 }
 
 function resolveNormalizedOptions(options: ReadMultipleOptions): {
@@ -175,14 +160,10 @@ function resolveNormalizedOptions(options: ReadMultipleOptions): {
   signal?: AbortSignal;
 } {
   const { signal, ...rest } = options;
-  const resolved: {
-    normalized: NormalizedReadMultipleOptions;
-    signal?: AbortSignal;
-  } = { normalized: normalizeReadMultipleOptions(rest) };
-  if (signal) {
-    resolved.signal = signal;
-  }
-  return resolved;
+  return {
+    normalized: normalizeReadMultipleOptions(rest),
+    ...(signal ? { signal } : {}),
+  };
 }
 
 interface ValidatedFileInfo {

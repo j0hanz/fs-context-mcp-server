@@ -21,7 +21,7 @@ import {
   validateExistingDirectory,
   validateExistingPathDetailed,
 } from '../path-validation.js';
-import { globEntries } from './glob-engine.js';
+import { globEntries, resolveEntryType } from './glob-engine.js';
 
 interface ListDirectoryOptions {
   includeHidden?: boolean;
@@ -220,13 +220,6 @@ function createEntryStream(
     onlyFiles: false,
     stats: needsStats,
   });
-}
-
-function resolveEntryType(dirent: EntryCandidate['dirent']): EntryType {
-  if (dirent.isDirectory()) return 'directory';
-  if (dirent.isSymbolicLink()) return 'symlink';
-  if (dirent.isFile()) return 'file';
-  return 'other';
 }
 
 function resolveRelativePath(basePath: string, entryPath: string): string {

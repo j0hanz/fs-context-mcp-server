@@ -15,7 +15,7 @@ import {
   validateExistingPathDetailed,
 } from '../path-validation.js';
 import { isIgnoredByGitignore, loadRootGitignore } from './gitignore.js';
-import { globEntries } from './glob-engine.js';
+import { globEntries, resolveEntryType } from './glob-engine.js';
 
 // Internal default for find tool - not exposed to MCP users
 const INTERNAL_MAX_RESULTS = 1000;
@@ -88,13 +88,6 @@ interface CollectOutcome {
   truncated: boolean;
   stoppedReason?: StopReason;
   skippedInaccessible: number;
-}
-
-function resolveEntryType(dirent: SearchEntry['dirent']): SearchEntryType {
-  if (dirent.isDirectory()) return 'directory';
-  if (dirent.isSymbolicLink()) return 'symlink';
-  if (dirent.isFile()) return 'file';
-  return 'other';
 }
 
 function buildSearchResult(

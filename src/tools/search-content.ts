@@ -235,21 +235,9 @@ async function handleSearchContent(
 
   const previewMatches = normalizedMatches.slice(0, MAX_INLINE_MATCHES);
   const previewStructured: z.infer<typeof SearchContentOutputSchema> = {
-    ok: true,
-    patternType,
-    caseSensitive: args.caseSensitive,
+    ...structuredFull,
     matches: previewMatches.map(buildSearchMatchPayload),
-    totalMatches: structuredFull.totalMatches,
     truncated: true,
-    filesScanned: structuredFull.filesScanned,
-    filesMatched: structuredFull.filesMatched,
-    skippedTooLarge: structuredFull.skippedTooLarge,
-    skippedBinary: structuredFull.skippedBinary,
-    skippedInaccessible: structuredFull.skippedInaccessible,
-    linesSkippedDueToRegexTimeout: structuredFull.linesSkippedDueToRegexTimeout,
-    ...(structuredFull.stoppedReason
-      ? { stoppedReason: structuredFull.stoppedReason }
-      : {}),
     resourceUri: undefined,
   };
 

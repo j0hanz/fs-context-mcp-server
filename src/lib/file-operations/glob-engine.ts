@@ -12,10 +12,19 @@ import {
   startPerfMeasure,
 } from '../observability.js';
 
-interface DirentLike {
+export interface DirentLike {
   isDirectory(): boolean;
   isFile(): boolean;
   isSymbolicLink(): boolean;
+}
+
+export function resolveEntryType(
+  dirent: DirentLike
+): 'file' | 'directory' | 'symlink' | 'other' {
+  if (dirent.isDirectory()) return 'directory';
+  if (dirent.isSymbolicLink()) return 'symlink';
+  if (dirent.isFile()) return 'file';
+  return 'other';
 }
 
 interface GlobDirentLike extends DirentLike {

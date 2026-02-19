@@ -234,12 +234,10 @@ function getRootsManager(server: McpServer): RootsManager {
   return manager;
 }
 
-const RootSchema = z
-  .object({
-    uri: z.string(),
-    name: z.string().optional(),
-  })
-  .strict();
+const RootSchema = z.strictObject({
+  uri: z.string(),
+  name: z.string().optional(),
+});
 
 const RootsResponseSchema = z.object({
   roots: z.array(RootSchema).optional(),

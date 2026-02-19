@@ -54,16 +54,10 @@ async function handleReadMultipleFiles(
 ): Promise<ToolResponse<z.infer<typeof ReadMultipleFilesOutputSchema>>> {
   const options: Parameters<typeof readMultipleFiles>[1] = {
     ...(signal ? { signal } : {}),
+    ...(args.head !== undefined ? { head: args.head } : {}),
+    ...(args.startLine !== undefined ? { startLine: args.startLine } : {}),
+    ...(args.endLine !== undefined ? { endLine: args.endLine } : {}),
   };
-  if (args.head !== undefined) {
-    options.head = args.head;
-  }
-  if (args.startLine !== undefined) {
-    options.startLine = args.startLine;
-  }
-  if (args.endLine !== undefined) {
-    options.endLine = args.endLine;
-  }
   const results = await readMultipleFiles(args.paths, options);
 
   const maxTotalSize = DEFAULT_READ_MANY_MAX_TOTAL_SIZE;

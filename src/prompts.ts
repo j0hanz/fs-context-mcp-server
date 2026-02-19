@@ -1,10 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { GetPromptResult } from '@modelcontextprotocol/sdk/types.js';
 
-interface IconInfo {
-  src: string;
-  mimeType: string;
-}
+import type { IconInfo } from './tools/shared.js';
 
 export function registerGetHelpPrompt(
   server: McpServer,

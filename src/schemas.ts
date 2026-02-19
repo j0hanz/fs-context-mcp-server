@@ -39,17 +39,10 @@ const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 const TreeEntryTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 const ListDirectorySortSchema = z.enum(['name', 'size', 'modified', 'type']);
 const SearchFilesSortSchema = z.enum(['name', 'size', 'modified', 'path']);
-const SearchFilesStopReasonSchema = z.enum([
-  'maxResults',
-  'maxFiles',
-  'timeout',
-]);
+const SearchStopReasonSchema = z.enum(['maxResults', 'maxFiles', 'timeout']);
+const SearchFilesStopReasonSchema = SearchStopReasonSchema;
 const ListDirectoryStopReasonSchema = z.enum(['maxEntries', 'aborted']);
-const SearchContentStopReasonSchema = z.enum([
-  'maxResults',
-  'maxFiles',
-  'timeout',
-]);
+const SearchContentStopReasonSchema = SearchStopReasonSchema;
 
 interface TreeEntry {
   name: string;
@@ -136,7 +129,7 @@ const validateReadRange = (
   }
 };
 
-const FileInfoSchema = z.object({
+const FileInfoSchema = z.strictObject({
   name: z.string().describe('Name'),
   path: z.string().describe('Absolute path'),
   type: FileTypeSchema.describe('Type'),

@@ -13,7 +13,7 @@ import {
   validateExistingPathDetailed,
 } from '../path-validation.js';
 import { isIgnoredByGitignore, loadRootGitignore } from './gitignore.js';
-import { globEntries } from './glob-engine.js';
+import { globEntries, resolveEntryType } from './glob-engine.js';
 
 type TreeEntryType = 'file' | 'directory' | 'symlink' | 'other';
 
@@ -73,17 +73,6 @@ function normalizeOptions(options: TreeOptions): NormalizedOptions {
     includeIgnored: toSafeBoolean(options.includeIgnored, false),
     timeoutMs: toSafePositiveInt(options.timeoutMs, DEFAULT_SEARCH_TIMEOUT_MS),
   };
-}
-
-function resolveEntryType(dirent: {
-  isDirectory(): boolean;
-  isSymbolicLink(): boolean;
-  isFile(): boolean;
-}): TreeEntryType {
-  if (dirent.isDirectory()) return 'directory';
-  if (dirent.isSymbolicLink()) return 'symlink';
-  if (dirent.isFile()) return 'file';
-  return 'other';
 }
 
 function ensureParentNodes(
