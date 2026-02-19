@@ -2,7 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
-import { formatBytes } from '../config.js';
+import { formatBytes, joinLines } from '../config.js';
 import type { FileInfo } from '../config.js';
 import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
@@ -37,8 +37,16 @@ const GET_MULTIPLE_FILE_INFO_TOOL = {
   },
 } as const;
 
-function formatFileInfoSummary(pathValue: string, info: FileInfo): string {
-  return `${pathValue} (${info.type}, ${formatBytes(info.size)})`;
+function formatFileInfoDetail(info: FileInfo): string {
+  const lines = [
+    `${info.name} (${info.type})`,
+    `  Path: ${info.path}`,
+    `  Size: ${formatBytes(info.size)}`,
+    `  Modified: ${info.modified.toISOString()}`,
+  ];
+  if (info.mimeType) lines.push(`  Type: ${info.mimeType}`);
+  if (info.symlinkTarget) lines.push(`  Target: ${info.symlinkTarget}`);
+  return joinLines(lines);
 }
 
 async function handleGetMultipleFileInfo(
@@ -53,7 +61,7 @@ async function handleGetMultipleFileInfo(
   const structuredResults: z.infer<
     typeof GetMultipleFileInfoOutputSchema
   >['results'] = [];
-  const textLines: string[] = [];
+  const textBlocks: string[] = [];
   for (const entry of result.results) {
     structuredResults.push({
       path: entry.path,
@@ -61,11 +69,11 @@ async function handleGetMultipleFileInfo(
       error: entry.error,
     });
     if (entry.error) {
-      textLines.push(`${entry.path}: ${entry.error}`);
+      textBlocks.push(`${entry.path}: ${entry.error}`);
     } else if (entry.info) {
-      textLines.push(formatFileInfoSummary(entry.path, entry.info));
+      textBlocks.push(formatFileInfoDetail(entry.info));
     } else {
-      textLines.push(entry.path);
+      textBlocks.push(entry.path);
     }
   }
 
@@ -79,7 +87,7 @@ async function handleGetMultipleFileInfo(
     },
   };
 
-  const text = textLines.join('\n');
+  const text = textBlocks.join('\n\n');
 
   return buildToolResponse(text, structured);
 }

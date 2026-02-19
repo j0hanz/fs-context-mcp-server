@@ -150,12 +150,13 @@ async function handleReadMultipleFiles(
 
   const text = mappedResults
     .map((result) => {
+      const header = `=== ${result.path} ===`;
       if (result.error) {
-        return `${result.path}: ${result.error}`;
+        return `${header}\nError: ${result.error}`;
       }
-      return result.path;
+      return `${header}\n${result.content ?? ''}`;
     })
-    .join('\n');
+    .join('\n\n');
 
   return buildToolResponse(text, structured, resourceLinks);
 }
