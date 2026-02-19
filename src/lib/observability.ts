@@ -408,15 +408,15 @@ async function runAndObserve<T>(
   if (pubTool) publishToolStart(tool, pathVal);
 
   let result: T;
-  let ok: boolean;
-  let errorMsg: string | undefined;
+  const obs = { ok: false, errorMsg: undefined as string | undefined };
 
   try {
     result = await run();
-    ({ ok, error: errorMsg } = extractOutcome(result));
+    const { ok, error } = extractOutcome(result);
+    obs.ok = ok;
+    obs.errorMsg = error;
   } catch (err) {
-    ok = false;
-    errorMsg = extractErrorMessage(err);
+    obs.errorMsg = extractErrorMessage(err);
     throw err;
   } finally {
     const durationMs = performance.now() - startMs;
@@ -424,11 +424,11 @@ async function runAndObserve<T>(
 
     if (pubPerf && eluStart)
       publishPerfEnd(tool, durationMs, eluStart, loopMonitor);
-    if (pubTool) publishToolEnd(tool, ok, durationMs, errorMsg);
+    if (pubTool) publishToolEnd(tool, obs.ok, durationMs, obs.errorMsg);
 
-    updateMetrics(tool, ok, durationMs);
+    updateMetrics(tool, obs.ok, durationMs);
 
-    if (logErrors && !ok) logError(tool, durationMs, errorMsg);
+    if (logErrors && !obs.ok) logError(tool, durationMs, obs.errorMsg);
   }
 
   return result;
