@@ -1,6 +1,5 @@
 import { inspect } from 'node:util';
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type {
   ContentBlock,
   Icon,
@@ -255,28 +254,6 @@ export function buildFileInfoPayload(info: FileInfo): FileInfoPayload {
       ? { symlinkTarget: info.symlinkTarget }
       : {}),
   };
-}
-
-function isExperimentalTaskRegistration(
-  value: unknown
-): value is { registerToolTask?: (...args: unknown[]) => unknown } {
-  if (!value || typeof value !== 'object') return false;
-  const { registerToolTask } = value as { registerToolTask?: unknown };
-  return (
-    registerToolTask === undefined || typeof registerToolTask === 'function'
-  );
-}
-
-export function getExperimentalTaskRegistration(
-  server: McpServer
-): { registerToolTask?: (...args: unknown[]) => unknown } | undefined {
-  const serverWithExperimental = server as { experimental?: unknown };
-  const { experimental } = serverWithExperimental;
-  if (!experimental || typeof experimental !== 'object') return undefined;
-  const experimentalObject = experimental as { tasks?: unknown };
-  const { tasks } = experimentalObject;
-  if (!isExperimentalTaskRegistration(tasks)) return undefined;
-  return tasks;
 }
 
 const NOT_INITIALIZED_ERROR = new McpError(

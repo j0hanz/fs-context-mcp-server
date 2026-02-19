@@ -101,7 +101,22 @@ export function registerMoveFileTool(
     progressMessage: (args) =>
       `🛠 mv: ${path.basename(args.source)} ➟ ${path.basename(args.destination)}`,
   });
-  const taskOptions = options.isInitialized ? { guard: options.isInitialized } : undefined;
-  if (tryRegisterToolTask(server, 'mv', MOVE_FILE_TOOL, createToolTaskHandler(wrappedHandler, taskOptions), options.iconInfo)) return;
-  server.registerTool('mv', withDefaultIcons({ ...MOVE_FILE_TOOL }, options.iconInfo), wrappedHandler);
+  const taskOptions = options.isInitialized
+    ? { guard: options.isInitialized }
+    : undefined;
+  if (
+    tryRegisterToolTask(
+      server,
+      'mv',
+      MOVE_FILE_TOOL,
+      createToolTaskHandler(wrappedHandler, taskOptions),
+      options.iconInfo
+    )
+  )
+    return;
+  server.registerTool(
+    'mv',
+    withDefaultIcons({ ...MOVE_FILE_TOOL }, options.iconInfo),
+    wrappedHandler
+  );
 }

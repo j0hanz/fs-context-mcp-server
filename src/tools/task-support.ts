@@ -22,11 +22,28 @@ import type {
 
 import { ErrorCode, McpError } from '../lib/errors.js';
 import type { IconInfo, ToolExtra, ToolResult } from './shared.js';
-import {
-  buildToolErrorResponse,
-  getExperimentalTaskRegistration,
-  withDefaultIcons,
-} from './shared.js';
+import { buildToolErrorResponse, withDefaultIcons } from './shared.js';
+
+function isExperimentalTaskRegistration(
+  value: unknown
+): value is { registerToolTask?: (...args: unknown[]) => unknown } {
+  if (!value || typeof value !== 'object') return false;
+  const { registerToolTask } = value as { registerToolTask?: unknown };
+  return (
+    registerToolTask === undefined || typeof registerToolTask === 'function'
+  );
+}
+
+function getExperimentalTaskRegistration(
+  server: McpServer
+): { registerToolTask?: (...args: unknown[]) => unknown } | undefined {
+  const serverWithExperimental = server as { experimental?: unknown };
+  const { experimental } = serverWithExperimental;
+  if (!experimental || typeof experimental !== 'object') return undefined;
+  const { tasks } = experimental as { tasks?: unknown };
+  if (!isExperimentalTaskRegistration(tasks)) return undefined;
+  return tasks;
+}
 
 type TaskToolExtra = ToolExtra & {
   taskId?: string;
@@ -92,15 +109,13 @@ function asTaskRequestExtra(value: unknown): TaskRequestHandlerExtra {
   return value;
 }
 
-const TASK_STATUS_VALUES = [
+const TASK_STATUSES = new Set<GetTaskResult['status']>([
   'working',
   'input_required',
   'completed',
   'failed',
   'cancelled',
-] as const satisfies readonly GetTaskResult['status'][];
-
-const TASK_STATUSES = new Set<GetTaskResult['status']>(TASK_STATUS_VALUES);
+]);
 
 function isTaskStatus(value: unknown): value is GetTaskResult['status'] {
   return (
@@ -164,22 +179,10 @@ function normalizeCallToolResult(value: Result): CallToolResult {
 }
 
 function withRelatedTaskMeta(result: Result, taskId: string): Result {
-  if (!isRecord(result)) {
-    return {
-      _meta: {
-        [RELATED_TASK_META_KEY]: { taskId },
-      },
-    };
-  }
-
   const existingMeta = isRecord(result['_meta']) ? result['_meta'] : {};
-
   return {
     ...result,
-    _meta: {
-      ...existingMeta,
-      [RELATED_TASK_META_KEY]: { taskId },
-    },
+    _meta: { ...existingMeta, [RELATED_TASK_META_KEY]: { taskId } },
   };
 }
 
@@ -188,31 +191,20 @@ type TaskStatusNotificationSender = (notification: {
   params: TaskStatusNotificationParams;
 }) => Promise<void>;
 
-function getTaskStatusNotificationSender(
-  extra: TaskToolExtra
-): TaskStatusNotificationSender | undefined {
-  const candidate = (extra as { sendNotification?: unknown }).sendNotification;
-  return typeof candidate === 'function'
-    ? (candidate as TaskStatusNotificationSender)
-    : undefined;
-}
-
 function buildTaskStatusNotificationParams(
   task: GetTaskResult
 ): TaskStatusNotificationParams {
-  return {
+  const params: TaskStatusNotificationParams = {
     taskId: task.taskId,
     status: task.status,
     ttl: task.ttl,
     createdAt: task.createdAt,
     lastUpdatedAt: task.lastUpdatedAt,
-    ...(task.pollInterval !== undefined
-      ? { pollInterval: task.pollInterval }
-      : {}),
-    ...(task.statusMessage !== undefined
-      ? { statusMessage: task.statusMessage }
-      : {}),
   };
+  if (task.pollInterval !== undefined) params.pollInterval = task.pollInterval;
+  if (task.statusMessage !== undefined)
+    params.statusMessage = task.statusMessage;
+  return params;
 }
 
 async function notifyTaskStatusIfPossible(
@@ -220,13 +212,13 @@ async function notifyTaskStatusIfPossible(
   taskStore: RequestTaskStore,
   taskId: string
 ): Promise<void> {
-  const sendNotification = getTaskStatusNotificationSender(extra);
-  if (!sendNotification) return;
-
+  const { sendNotification } = extra as { sendNotification?: unknown };
+  if (typeof sendNotification !== 'function') return;
+  const notify = sendNotification as TaskStatusNotificationSender;
   try {
     const task = await taskStore.getTask(taskId);
     const normalized = normalizeGetTaskResult(task);
-    await sendNotification({
+    await notify({
       method: TASK_STATUS_NOTIFICATION_METHOD,
       params: buildTaskStatusNotificationParams(normalized),
     });
@@ -259,18 +251,11 @@ function isErrorResult(result: ToolResult<unknown>): boolean {
   return 'isError' in result && result.isError === true;
 }
 
-const TERMINAL_TASK_STATUSES = new Set(['completed', 'failed', 'cancelled']);
-
-function getTaskStatus(task: unknown): string | undefined {
-  if (!isRecord(task)) return undefined;
-  const { status } = task;
-  return typeof status === 'string' ? status : undefined;
-}
-
-function isTerminalTaskStatus(status: string | undefined): boolean {
-  if (!status) return false;
-  return TERMINAL_TASK_STATUSES.has(status);
-}
+const TERMINAL_TASK_STATUSES = new Set<GetTaskResult['status']>([
+  'completed',
+  'failed',
+  'cancelled',
+]);
 
 function isTerminalTaskStoreError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
@@ -281,15 +266,17 @@ function isTerminalTaskStoreError(error: unknown): boolean {
   );
 }
 
-async function getCurrentTaskStatus(
+async function isTaskAlreadyTerminal(
   taskStore: RequestTaskStore,
   taskId: string
-): Promise<string | undefined> {
+): Promise<boolean> {
   try {
     const task = await taskStore.getTask(taskId);
-    return getTaskStatus(task);
+    if (!isRecord(task)) return false;
+    const { status } = task;
+    return typeof status === 'string' && TERMINAL_TASK_STATUSES.has(status);
   } catch {
-    return undefined;
+    return false;
   }
 }
 
@@ -303,11 +290,43 @@ async function tryStoreTaskResult(
   try {
     await taskStore.storeTaskResult(taskId, status, resultWithTaskMeta);
   } catch (error) {
-    const afterStatus = await getCurrentTaskStatus(taskStore, taskId);
-    if (isTerminalTaskStatus(afterStatus) || isTerminalTaskStoreError(error)) {
+    if (
+      isTerminalTaskStoreError(error) ||
+      (await isTaskAlreadyTerminal(taskStore, taskId))
+    )
       return;
-    }
     throw error;
+  }
+}
+
+async function runTaskInBackground<
+  Args extends ZodRawShapeCompat | AnySchema | undefined,
+>(
+  run: (
+    args: ToolArgs<Args>,
+    extra: TaskToolExtra
+  ) => Promise<ToolResult<unknown>>,
+  args: ToolArgs<Args>,
+  extra: TaskToolExtra,
+  taskStore: RequestTaskStore,
+  taskId: string
+): Promise<void> {
+  try {
+    const result = await run(args, extra);
+    const status = isErrorResult(result) ? 'failed' : 'completed';
+    await tryStoreTaskResult(taskStore, taskId, status, result);
+    await notifyTaskStatusIfPossible(extra, taskStore, taskId);
+  } catch (error) {
+    const fallback = buildToolErrorResponse(error, ErrorCode.E_UNKNOWN);
+    try {
+      await tryStoreTaskResult(taskStore, taskId, 'failed', fallback);
+      await notifyTaskStatusIfPossible(extra, taskStore, taskId);
+    } catch (innerError) {
+      console.error(
+        `Failed to store task failure result for task ${taskId}:`,
+        innerError
+      );
+    }
   }
 }
 
@@ -386,28 +405,7 @@ export function createToolTaskHandler<
       taskId: task.taskId,
     };
     void notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
-
-    void (async () => {
-      try {
-        const result = await run(args, taskExtra);
-        const status = isErrorResult(result) ? 'failed' : 'completed';
-        await tryStoreTaskResult(taskStore, task.taskId, status, result);
-        await notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
-      } catch (error) {
-        const fallback = buildToolErrorResponse(error, ErrorCode.E_UNKNOWN);
-        try {
-          await tryStoreTaskResult(taskStore, task.taskId, 'failed', fallback);
-          await notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
-        } catch (innerError) {
-          // Swallow to avoid unhandled rejections from background task writes.
-          console.error(
-            `Failed to store task failure result for task ${task.taskId}:`,
-            innerError
-          );
-        }
-      }
-    })();
-
+    void runTaskInBackground(run, args, taskExtra, taskStore, task.taskId);
     return { task };
   }) as ToolTaskHandler<Args>['createTask'];
 
