@@ -100,13 +100,13 @@ void it('createDetailedError classifies timeout errors in cause chains', () => {
   assert.strictEqual(detailed.code, ErrorCode.E_TIMEOUT);
 });
 
-void it('createDetailedError classifies ABORT_ERR in cause chains as timeout', () => {
+void it('createDetailedError classifies ABORT_ERR in cause chains as cancelled', () => {
   const abortCause = Object.assign(new Error('aborted'), { code: 'ABORT_ERR' });
   const wrapped = new Error('outer wrapper', { cause: abortCause });
 
   const detailed = createDetailedError(wrapped);
 
-  assert.strictEqual(detailed.code, ErrorCode.E_TIMEOUT);
+  assert.strictEqual(detailed.code, ErrorCode.E_CANCELLED);
 });
 
 void it('createDetailedError maps errno-only errors via system errno name', () => {

@@ -173,7 +173,6 @@ export function isAbortError(error: unknown): boolean {
 function isTimeoutErrorSingle(error: unknown): boolean {
   if (!isNativeError(error)) return false;
   if (error.name === 'TimeoutError') return true;
-  if (isAbortErrorSingle(error)) return true;
 
   const code = getNodeErrorCodeLabel(error);
   if (code === 'ETIMEDOUT') return true;
@@ -227,6 +226,8 @@ const ERROR_SUGGESTIONS: Readonly<Record<ErrorCode, string>> = {
     'The file exceeds the size limit. Use head to read a partial preview, or narrow the scope of what you read.',
   [ErrorCode.E_TIMEOUT]:
     'The operation timed out. Try a smaller scope (narrower path), fewer results (maxResults), or search fewer files.',
+  [ErrorCode.E_CANCELLED]:
+    'The operation was cancelled. This is not an error — no retry is needed unless you want to re-run the operation.',
   [ErrorCode.E_INVALID_PATTERN]:
     'The glob or regex pattern is invalid. Check syntax and escape special characters.',
   [ErrorCode.E_INVALID_INPUT]:
@@ -272,6 +273,9 @@ function classifyMessageError(error: unknown): ErrorCode | undefined {
 }
 
 function classifyError(error: unknown): ErrorCode {
+  if (isAbortError(error)) {
+    return ErrorCode.E_CANCELLED;
+  }
   if (isTimeoutLikeError(error)) {
     return ErrorCode.E_TIMEOUT;
   }

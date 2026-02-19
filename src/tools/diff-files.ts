@@ -11,10 +11,7 @@ import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode, McpError } from '../lib/errors.js';
 import { withAbort } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
-import {
-  DiffFilesInputSchema,
-  type DiffFilesOutputSchema,
-} from '../schemas.js';
+import { DiffFilesInputSchema, DiffFilesOutputSchema } from '../schemas.js';
 import {
   buildResourceLink,
   buildToolErrorResponse,
@@ -37,6 +34,7 @@ const DIFF_FILES_TOOL = {
     'Output feeds directly into `apply_patch`. ' +
     'Check `isIdentical` in the response — if true, the files are already in sync and no patch is needed.',
   inputSchema: DiffFilesInputSchema,
+  outputSchema: DiffFilesOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 

@@ -7,7 +7,7 @@ import { ErrorCode } from '../lib/errors.js';
 import { getAllowedDirectories } from '../lib/path-validation.js';
 import {
   ListAllowedDirectoriesInputSchema,
-  type ListAllowedDirectoriesOutputSchema,
+  ListAllowedDirectoriesOutputSchema,
 } from '../schemas.js';
 import {
   buildToolErrorResponse,
@@ -29,6 +29,7 @@ const LIST_ALLOWED_DIRECTORIES_TOOL = {
     'Call this first to see available directories. ' +
     'All other tools only work within these directories.',
   inputSchema: ListAllowedDirectoriesInputSchema,
+  outputSchema: ListAllowedDirectoriesOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 

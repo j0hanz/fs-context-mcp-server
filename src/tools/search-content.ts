@@ -17,7 +17,7 @@ import { searchContent } from '../lib/file-operations/search-content.js';
 import type { SearchContentOptions } from '../lib/file-operations/search-content.js';
 import {
   SearchContentInputSchema,
-  type SearchContentOutputSchema,
+  SearchContentOutputSchema,
 } from '../schemas.js';
 import {
   buildResourceLink,
@@ -48,6 +48,7 @@ const SEARCH_CONTENT_TOOL = {
     'Use `filePattern` to scope by file type (e.g. `**/*.ts`) and avoid noisy results. ' +
     'Use includeHidden=true to include hidden files and directories.',
   inputSchema: SearchContentInputSchema,
+  outputSchema: SearchContentOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 

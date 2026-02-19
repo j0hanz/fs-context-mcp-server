@@ -8,10 +8,7 @@ import type { z } from 'zod';
 import { ErrorCode } from '../lib/errors.js';
 import { atomicWriteFile, withAbort } from '../lib/fs-helpers.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
-import {
-  WriteFileInputSchema,
-  type WriteFileOutputSchema,
-} from '../schemas.js';
+import { WriteFileInputSchema, WriteFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -31,6 +28,7 @@ const WRITE_FILE_TOOL = {
   description:
     'Write content to a file. Creates the file if it does not exist.',
   inputSchema: WriteFileInputSchema,
+  outputSchema: WriteFileOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 

@@ -26,7 +26,7 @@ import {
 } from '../lib/path-validation.js';
 import {
   SearchAndReplaceInputSchema,
-  type SearchAndReplaceOutputSchema,
+  SearchAndReplaceOutputSchema,
 } from '../schemas.js';
 import {
   buildToolErrorResponse,
@@ -54,6 +54,7 @@ const SEARCH_AND_REPLACE_TOOL = {
     'Always run with `dryRun: true` first to verify matches before writing. ' +
     'Literal mode (default) matches exact text; `isRegex: true` enables RE2 regex with capture groups ($1, $2).',
   inputSchema: SearchAndReplaceInputSchema,
+  outputSchema: SearchAndReplaceOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 

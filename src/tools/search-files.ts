@@ -11,10 +11,7 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { searchFiles } from '../lib/file-operations/search-files.js';
-import {
-  SearchFilesInputSchema,
-  type SearchFilesOutputSchema,
-} from '../schemas.js';
+import { SearchFilesInputSchema, SearchFilesOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -40,6 +37,7 @@ const SEARCH_FILES_TOOL = {
     'For text search inside files, use grep. ' +
     'To bulk-edit the matched files, pass the same glob pattern to search_and_replace.',
   inputSchema: SearchFilesInputSchema,
+  outputSchema: SearchFilesOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
 } as const;
 

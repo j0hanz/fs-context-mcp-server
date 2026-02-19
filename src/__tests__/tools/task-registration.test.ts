@@ -29,8 +29,14 @@ await it('registers optional task handlers for long-running tools', async () => 
     'calculate_hash',
     'search_and_replace',
     'tree',
+    'read',
     'read_many',
     'stat_many',
+    'mkdir',
+    'write',
+    'mv',
+    'rm',
+    'apply_patch',
   ];
 
   for (const toolName of expectedTaskTools) {

@@ -11,10 +11,7 @@ import { MAX_TEXT_FILE_SIZE } from '../lib/constants.js';
 import { ErrorCode, McpError } from '../lib/errors.js';
 import { atomicWriteFile, withAbort } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
-import {
-  ApplyPatchInputSchema,
-  type ApplyPatchOutputSchema,
-} from '../schemas.js';
+import { ApplyPatchInputSchema, ApplyPatchOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -36,6 +33,7 @@ const APPLY_PATCH_TOOL = {
     'Generate the patch with `diff_files`, then validate with `dryRun: true` before writing. ' +
     'On failure, regenerate a fresh patch via `diff_files` against the current file content and retry.',
   inputSchema: ApplyPatchInputSchema,
+  outputSchema: ApplyPatchOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
 } as const;
 
