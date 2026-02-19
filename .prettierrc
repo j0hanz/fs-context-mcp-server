@@ -14,9 +14,9 @@
   "plugins": ["@trivago/prettier-plugin-sort-imports"],
   "importOrder": [
     "^node:(.*)$",
-    "^(fs|path|os|crypto|util|stream|events|buffer|url|http|https|child_process)(/.*)?$",
     "^@modelcontextprotocol/(.*)$",
     "^(zod|glob)(.*)$",
+    "^(fs|path|os|crypto|util|stream|events|buffer|url|http|https|child_process)(/.*)?$",
     "^[a-zA-Z@]",
     "^[./]"
   ],
