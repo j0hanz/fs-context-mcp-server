@@ -153,14 +153,14 @@ export function registerEditFileTool(
       },
       completionMessage: (args, result) => {
         const name = path.basename(args.path);
-        if (result.isError) return `🛠 edit: ${name} ➟ Failed`;
+        if (result.isError) return `🛠 edit: ${name} • Failed`;
         const sc = result.structuredContent;
-        if (!sc.ok) return `🛠 edit: ${name} ➟ Failed`;
+        if (!sc.ok) return `🛠 edit: ${name} • Failed`;
 
         if (sc.lineRange) {
-          return `🛠 edit: ${name} ➟ [${sc.lineRange[0]}-${sc.lineRange[1]}]`;
+          return `🛠 edit: ${name} • [${sc.lineRange[0]}-${sc.lineRange[1]}]`;
         }
-        return `🛠 edit: ${name} ➟ (${sc.appliedEdits ?? 0} edits)`;
+        return `🛠 edit: ${name} • (${sc.appliedEdits ?? 0} edits)`;
       },
     })
   );

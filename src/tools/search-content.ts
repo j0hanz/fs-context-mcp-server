@@ -319,7 +319,7 @@ export function registerSearchContentTool(
 
         notifyProgress(extra, {
           current: finalCurrent,
-          message: `🔎︎ grep: ${normalizedArgs.pattern} ➟ ${suffix}`,
+          message: `🔎︎ grep: ${normalizedArgs.pattern} • ${suffix}`,
         });
         return result;
       },

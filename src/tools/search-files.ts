@@ -150,7 +150,7 @@ export function registerSearchFilesTool(
 
         notifyProgress(extra, {
           current: finalCurrent,
-          message: `🔎︎ find: ${args.pattern} ➟ ${suffix}`,
+          message: `🔎︎ find: ${args.pattern} • ${suffix}`,
         });
         return result;
       },

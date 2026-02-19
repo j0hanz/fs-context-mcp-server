@@ -96,7 +96,7 @@ export function registerMoveFileTool(
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) =>
-      `🛠 mv: ${path.basename(args.source)} ➟ ${path.basename(args.destination)}`,
+      `🛠 mv: ${path.basename(args.source)} • ${path.basename(args.destination)}`,
   });
   if (
     registerToolTaskIfAvailable(

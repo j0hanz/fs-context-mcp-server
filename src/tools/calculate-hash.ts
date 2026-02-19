@@ -262,7 +262,7 @@ export function registerCalculateHashTool(
 
         notifyProgress(extra, {
           current: finalCurrent,
-          message: `🕮 calculate_hash: ${path.basename(args.path)} ➟ ${suffix}`,
+          message: `🕮 calculate_hash: ${path.basename(args.path)} • ${suffix}`,
         });
         return result;
       },
