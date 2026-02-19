@@ -310,7 +310,8 @@ async function readMatches(
   signal?: AbortSignal
 ): Promise<ContentMatch[]> {
   const matches: ContentMatch[] = [];
-  const ctx = new ContextBuffer(options.contextLines);
+  const hasContext = options.contextLines > 0;
+  const ctx = hasContext ? new ContextBuffer(options.contextLines) : undefined;
   let lineNumber = 1;
 
   // Use for-await with readLines for memory efficiency
@@ -322,24 +323,35 @@ async function readMatches(
       if (isCancelled()) break;
 
       const matchCount = matcher(rawLine);
-      const content = trimContent(rawLine);
+      let content: string | undefined;
+      const getContent = (): string => {
+        content ??= trimContent(rawLine);
+        return content;
+      };
 
       if (matchCount > 0) {
-        matches.push({
-          file: requestedPath,
-          line: lineNumber,
-          content,
-          matchCount,
-          ...(options.contextLines > 0
-            ? {
-                contextBefore: ctx.snapshotBefore(),
-                contextAfter: ctx.scheduleAfter(),
-              }
-            : {}),
-        });
+        if (ctx) {
+          matches.push({
+            file: requestedPath,
+            line: lineNumber,
+            content: getContent(),
+            matchCount,
+            contextBefore: ctx.snapshotBefore(),
+            contextAfter: ctx.scheduleAfter(),
+          });
+        } else {
+          matches.push({
+            file: requestedPath,
+            line: lineNumber,
+            content: getContent(),
+            matchCount,
+          });
+        }
       }
 
-      ctx.add(content);
+      if (ctx) {
+        ctx.add(getContent());
+      }
       lineNumber++;
     }
   } finally {
@@ -826,9 +838,13 @@ function processScanResult(
     if (res.skippedBinary) summary.skippedBinary++;
     if (res.skippedTooLarge) summary.skippedTooLarge++;
 
-    const take = maxResults - matches.length;
-    if (take > 0 && res.matches.length > 0) {
-      matches.push(...res.matches.slice(0, take));
+    const remaining = maxResults - matches.length;
+    if (remaining > 0 && res.matches.length > 0) {
+      const take = Math.min(remaining, res.matches.length);
+      for (let index = 0; index < take; index += 1) {
+        const match = res.matches[index];
+        if (match) matches.push(match);
+      }
     }
   }
 }
@@ -1041,6 +1057,7 @@ export async function searchContent(
     }
 
     const root = await validateExistingDirectory(details.resolvedPath, signal);
+    const rootDirectories = [root];
 
     // Glob
     const stream = globEntries({
@@ -1068,7 +1085,7 @@ export async function searchContent(
         // Helper to resolve
         // We duplicate simple resolution logic to keep it fast
         const normalized = normalizePath(entry.path);
-        if (!isPathWithinDirectories(normalized, [root])) continue;
+        if (!isPathWithinDirectories(normalized, rootDirectories)) continue;
         if (isSensitivePath(entry.path, normalized)) continue;
 
         scanned++;

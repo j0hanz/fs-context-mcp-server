@@ -326,7 +326,7 @@ function getToolSignal(
 export async function executeToolWithDiagnostics<T>(
   options: ToolExecutionOptions<T>
 ): Promise<ToolResult<T>> {
-  return await withToolDiagnostics(
+  return withToolDiagnostics(
     options.toolName,
     () =>
       withToolErrorHandling(async () => {
@@ -433,7 +433,7 @@ async function withProgress<T>(
   getCompletionMessage?: (result: T) => string | undefined
 ): Promise<T> {
   if (!canSendProgress(extra)) {
-    return await run();
+    return run();
   }
   const token = extra._meta.progressToken;
 
@@ -489,7 +489,7 @@ export function wrapToolHandler<Args, Result>(
       const completionFn = completionMessage
         ? (result: ToolResult<Result>) => completionMessage(args, result)
         : undefined;
-      return await withProgress(
+      return withProgress(
         message,
         resolvedExtra,
         () => handler(args, resolvedExtra),
@@ -497,7 +497,7 @@ export function wrapToolHandler<Args, Result>(
       );
     }
 
-    return await handler(args, resolvedExtra);
+    return handler(args, resolvedExtra);
   };
 }
 

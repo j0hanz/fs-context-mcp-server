@@ -450,9 +450,9 @@ export async function withToolDiagnostics<T>(
     ...(options?.path ? { path: options.path } : {}),
   };
 
-  return await toolContext.run(context, async () => {
+  return toolContext.run(context, async () => {
     if (!config.enabled) {
-      if (!config.logToolErrors) return await run();
+      if (!config.logToolErrors) return run();
       const start = performance.now();
       try {
         const res = await run();
@@ -483,7 +483,7 @@ export async function withToolDiagnostics<T>(
       }
     }
 
-    return await runAndObserve(
+    return runAndObserve(
       tool,
       run,
       pubTool,

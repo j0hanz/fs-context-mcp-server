@@ -91,34 +91,28 @@ function buildReadMultipleResult(
   filePath: string,
   result: Awaited<ReturnType<typeof readFile>>
 ): ReadMultipleResult {
-  return {
+  const output: ReadMultipleResult = {
     path: filePath,
     content: result.content,
     truncated: result.truncated,
     readMode: result.readMode,
-    ...(result.totalLines !== undefined
-      ? { totalLines: result.totalLines }
-      : {}),
-    ...(result.head !== undefined ? { head: result.head } : {}),
-    ...(result.startLine !== undefined ? { startLine: result.startLine } : {}),
-    ...(result.endLine !== undefined ? { endLine: result.endLine } : {}),
-    ...(result.linesRead !== undefined ? { linesRead: result.linesRead } : {}),
-    ...(result.hasMoreLines !== undefined
-      ? { hasMoreLines: result.hasMoreLines }
-      : {}),
   };
+  if (result.totalLines !== undefined) output.totalLines = result.totalLines;
+  if (result.head !== undefined) output.head = result.head;
+  if (result.startLine !== undefined) output.startLine = result.startLine;
+  if (result.endLine !== undefined) output.endLine = result.endLine;
+  if (result.linesRead !== undefined) output.linesRead = result.linesRead;
+  if (result.hasMoreLines !== undefined) {
+    output.hasMoreLines = result.hasMoreLines;
+  }
+  return output;
 }
 
 async function readSingleFile(
   task: FileReadTask,
-  options: NormalizedReadMultipleOptions,
-  signal?: AbortSignal
+  readOptions: Parameters<typeof readFile>[1]
 ): Promise<{ index: number; value: ReadMultipleResult }> {
   const { filePath, index, validPath, stats } = task;
-  const readOptions: Parameters<typeof readFile>[1] = buildReadOptions(options);
-  if (signal) {
-    readOptions.signal = signal;
-  }
   const result =
     validPath && stats
       ? await readFileWithStats(filePath, validPath, stats, readOptions)
@@ -138,9 +132,13 @@ async function readFilesInParallel(
   results: { index: number; value: ReadMultipleResult }[];
   errors: { index: number; error: Error }[];
 }> {
-  return await processInParallel(
+  const readOptions: Parameters<typeof readFile>[1] = buildReadOptions(options);
+  if (signal) {
+    readOptions.signal = signal;
+  }
+  return processInParallel(
     filesToProcess,
-    async (task) => readSingleFile(task, options, signal),
+    async (task) => readSingleFile(task, readOptions),
     PARALLEL_CONCURRENCY,
     signal
   );
@@ -228,7 +226,7 @@ async function validateBatch(
 
   const { results } = await processInParallel(
     tasks,
-    async (task) => await tryValidateFile(task.filePath, task.index, signal),
+    async (task) => tryValidateFile(task.filePath, task.index, signal),
     PARALLEL_CONCURRENCY,
     signal
   );
@@ -353,33 +351,26 @@ async function resolveValidatedInfo(
   validated: Map<number, ValidatedFileInfo>,
   signal?: AbortSignal
 ): Promise<ValidatedFileInfo | undefined> {
-  if (!validated.has(index)) {
-    const info = await tryValidateFile(filePath, index, signal);
-    if (info) {
-      validated.set(index, info);
-    }
+  const existing = validated.get(index);
+  if (existing) {
+    return existing;
   }
-  return validated.get(index);
-}
 
-function applyBudget(
-  totalSize: number,
-  estimatedSize: number,
-  maxTotalSize: number,
-  index: number,
-  totalFiles: number,
-  skippedBudget: Set<number>
-): { totalSize: number; exceeded: boolean } {
-  if (totalSize + estimatedSize > maxTotalSize) {
-    skippedBudget.add(index);
-    markRemainingSkipped(index + 1, totalFiles, skippedBudget);
-    return { totalSize, exceeded: true };
+  const info = await tryValidateFile(filePath, index, signal);
+  if (info) {
+    validated.set(index, info);
+    return info;
   }
-  return { totalSize: totalSize + estimatedSize, exceeded: false };
+
+  return undefined;
 }
 
 function buildOutput(filePaths: readonly string[]): ReadMultipleResult[] {
-  return filePaths.map((filePath) => ({ path: filePath }));
+  const output = new Array<ReadMultipleResult>(filePaths.length);
+  for (let index = 0; index < filePaths.length; index += 1) {
+    output[index] = { path: filePaths[index] ?? '(unknown)' };
+  }
+  return output;
 }
 
 function applyResults(
@@ -444,19 +435,40 @@ function buildFilesToProcess(
   >,
   skippedBudget: Set<number>
 ): FileReadTask[] {
-  return filePaths
-    .map((filePath, index) => {
-      const cached = validated.get(index);
-      return cached
-        ? {
-            filePath,
-            index,
-            validPath: cached.validPath,
-            stats: cached.stats,
-          }
-        : { filePath, index };
-    })
-    .filter(({ index }) => !skippedBudget.has(index));
+  const filesToProcess: FileReadTask[] = [];
+  for (let index = 0; index < filePaths.length; index += 1) {
+    if (skippedBudget.has(index)) continue;
+    const filePath = filePaths[index];
+    if (!filePath) continue;
+    const cached = validated.get(index);
+    if (cached) {
+      filesToProcess.push({
+        filePath,
+        index,
+        validPath: cached.validPath,
+        stats: cached.stats,
+      });
+      continue;
+    }
+    filesToProcess.push({ filePath, index });
+  }
+  return filesToProcess;
+}
+
+function applyBudget(
+  totalSize: number,
+  estimatedSize: number,
+  maxTotalSize: number,
+  index: number,
+  totalFiles: number,
+  skippedBudget: Set<number>
+): { totalSize: number; exceeded: boolean } {
+  if (totalSize + estimatedSize > maxTotalSize) {
+    skippedBudget.add(index);
+    markRemainingSkipped(index + 1, totalFiles, skippedBudget);
+    return { totalSize, exceeded: true };
+  }
+  return { totalSize: totalSize + estimatedSize, exceeded: false };
 }
 
 function applySkippedBudget(

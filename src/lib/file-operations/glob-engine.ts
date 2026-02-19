@@ -397,23 +397,29 @@ async function* processIterable(
 
   const flush = async function* (): AsyncGenerator<GlobEntry> {
     if (buffer.length === 0) return;
-    const batch = buffer.slice();
-    buffer.length = 0;
-
-    const results = await Promise.all(
-      batch.map((m) =>
-        resolveStringMatch(
-          m,
-          cwd,
-          maxDepth,
-          seen,
-          onlyFiles,
-          followSymlinks,
-          returnStats,
-          suppressErrors
-        )
-      )
+    const batch = buffer.splice(0, buffer.length);
+    const pendingResolutions = new Array<Promise<GlobEntry | null>>(
+      batch.length
     );
+    for (let index = 0; index < batch.length; index += 1) {
+      const match = batch[index];
+      if (match === undefined) {
+        pendingResolutions[index] = Promise.resolve(null);
+        continue;
+      }
+      pendingResolutions[index] = resolveStringMatch(
+        match,
+        cwd,
+        maxDepth,
+        seen,
+        onlyFiles,
+        followSymlinks,
+        returnStats,
+        suppressErrors
+      );
+    }
+
+    const results = await Promise.all(pendingResolutions);
 
     for (const res of results) {
       if (res) yield res;

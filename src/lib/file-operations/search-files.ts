@@ -199,7 +199,6 @@ function handleEntry(
   normalized: NormalizedOptions,
   state: CollectState
 ): void {
-  if (!shouldIncludeEntry(entryType, normalized)) return;
   state.results.push(buildSearchResult(entry, entryType, needsStats));
   if (state.results.length >= normalized.maxResults) {
     markStopped(state, 'maxResults');
@@ -220,6 +219,7 @@ function reportSearchFilesProgress(
 async function collectFromStream(
   stream: AsyncIterable<SearchEntry>,
   root: string,
+  rootDirectories: readonly string[],
   gitignoreMatcher: Awaited<ReturnType<typeof loadRootGitignore>>,
   normalized: NormalizedOptions,
   needsStats: boolean,
@@ -249,7 +249,7 @@ async function collectFromStream(
     const isAccessible = await isEntryAccessible(
       entry,
       entryType,
-      root,
+      rootDirectories,
       signal
     );
     if (!isAccessible) {
@@ -281,7 +281,7 @@ function isEntryIgnoredByGitignore(
 async function isEntryAccessible(
   entry: SearchEntry,
   entryType: SearchEntryType,
-  root: string,
+  rootDirectories: readonly string[],
   signal: AbortSignal
 ): Promise<boolean> {
   if (entryType === 'symlink') {
@@ -294,7 +294,7 @@ async function isEntryAccessible(
   }
 
   const resolvedPath = normalizePath(entry.path);
-  if (!isPathWithinDirectories(resolvedPath, [root])) {
+  if (!isPathWithinDirectories(resolvedPath, rootDirectories)) {
     return false;
   }
   return !isSensitivePath(entry.path, resolvedPath);
@@ -317,6 +317,7 @@ async function collectSearchResults(
     needsStats
   );
   const state = createCollectState();
+  const rootDirectories = [root];
 
   const gitignoreMatcher = normalized.respectGitignore
     ? await loadRootGitignore(root, signal)
@@ -325,6 +326,7 @@ async function collectSearchResults(
   await collectFromStream(
     stream,
     root,
+    rootDirectories,
     gitignoreMatcher,
     normalized,
     needsStats,
@@ -417,7 +419,12 @@ export function sortSearchResults(results: Sortable[], sortBy: SortBy): void {
       if (pathCompare !== 0) return pathCompare;
       return a.index - b.index;
     });
-    results.splice(0, results.length, ...decorated.map((entry) => entry.item));
+    for (let index = 0; index < decorated.length; index += 1) {
+      const entry = decorated[index];
+      if (entry) {
+        results[index] = entry.item;
+      }
+    }
     return;
   }
 

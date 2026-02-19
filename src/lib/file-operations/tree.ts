@@ -84,10 +84,13 @@ function ensureParentNodes(
   if (normalized.length === 0 || normalized === '.') return rootNode;
 
   const segments = normalized.split('/').filter((seg) => seg.length > 0);
+  const parentSegmentCount = Math.max(0, segments.length - 1);
   let current = rootNode;
   let currentPath = '';
 
-  for (const segment of segments.slice(0, Math.max(0, segments.length - 1))) {
+  for (let index = 0; index < parentSegmentCount; index += 1) {
+    const segment = segments[index];
+    if (!segment) continue;
     currentPath =
       currentPath.length === 0
         ? segment
@@ -156,7 +159,7 @@ async function resolveTreeEntry(
     };
   },
   root: string,
-  rootNormalized: string,
+  rootDirectories: readonly string[],
   gitignoreMatcher: Awaited<ReturnType<typeof loadRootGitignore>>,
   signal: AbortSignal
 ): Promise<{
@@ -167,7 +170,7 @@ async function resolveTreeEntry(
   const type = resolveEntryType(entry.dirent);
   if (type !== 'symlink') {
     const normalized = normalizePath(entry.path);
-    if (!isPathWithinDirectories(normalized, [rootNormalized])) {
+    if (!isPathWithinDirectories(normalized, rootDirectories)) {
       return null;
     }
     if (isSensitivePath(entry.path, normalized)) {
@@ -313,6 +316,7 @@ export async function treeDirectory(
 
   const root = await validateExistingDirectory(dirPath, signal);
   const rootNormalized = normalizePath(root);
+  const rootDirectories = [rootNormalized];
 
   try {
     const excludePatterns = normalized.includeIgnored
@@ -363,7 +367,7 @@ export async function treeDirectory(
       const resolved = await resolveTreeEntry(
         entry,
         root,
-        rootNormalized,
+        rootDirectories,
         gitignoreMatcher,
         signal
       );

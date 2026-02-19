@@ -139,10 +139,10 @@ export function getAllowedDirectories(): string[] {
   return [...allowedDirectoriesExpanded];
 }
 
-function getAllowedDirectoriesForRelativeResolution(): string[] {
+function getAllowedDirectoriesForRelativeResolution(): readonly string[] {
   return allowedDirectoriesPrimary.length > 0
-    ? [...allowedDirectoriesPrimary]
-    : [...allowedDirectoriesExpanded];
+    ? allowedDirectoriesPrimary
+    : allowedDirectoriesExpanded;
 }
 
 function isPathInsideDirectory(

@@ -141,20 +141,29 @@ async function processFileInfo(
   filePath: string,
   options: GetMultipleFileInfoOptions
 ): Promise<MultipleFileInfoResult> {
-  const info = await getFileInfo(filePath, {
-    includeMimeType: options.includeMimeType,
-    signal: options.signal,
-  });
+  const info = await getFileInfo(filePath, options);
 
   return { path: filePath, info };
+}
+
+function buildIndexedPathTasks(
+  paths: readonly string[]
+): { filePath: string; index: number }[] {
+  const tasks: { filePath: string; index: number }[] = [];
+  for (let index = 0; index < paths.length; index += 1) {
+    const filePath = paths[index];
+    if (filePath === undefined) continue;
+    tasks.push({ filePath, index });
+  }
+  return tasks;
 }
 
 async function readFileInfoInParallel(
   paths: readonly string[],
   options: GetMultipleFileInfoOptions
 ): Promise<{ results: ParallelResult[]; errors: ParallelError[] }> {
-  return await processInParallel(
-    paths.map((filePath, index) => ({ filePath, index })),
+  return processInParallel(
+    buildIndexedPathTasks(paths),
     async ({ filePath, index }) => ({
       index,
       value: await processFileInfo(filePath, options),
@@ -224,7 +233,10 @@ export async function getMultipleFileInfo(
 ): Promise<GetMultipleFileInfoResult> {
   if (paths.length === 0) return buildEmptyResult();
 
-  const output = paths.map((filePath) => ({ path: filePath }));
+  const output = new Array<MultipleFileInfoResult>(paths.length);
+  for (let index = 0; index < paths.length; index += 1) {
+    output[index] = { path: paths[index] ?? '(unknown)' };
+  }
   const { results, errors } = await readFileInfoInParallel(paths, options);
 
   applyResults(output, results);

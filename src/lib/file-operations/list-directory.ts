@@ -240,7 +240,7 @@ async function resolveSymlinkTarget(
   if (entryType !== 'symlink' || !includeSymlinkTargets) {
     return undefined;
   }
-  return await fsp.readlink(entryPath).catch(() => undefined);
+  return fsp.readlink(entryPath).catch(() => undefined);
 }
 
 function updateTotals(entryType: EntryType, totals: EntryTotals): void {
@@ -283,13 +283,13 @@ function trackSymlink(
 async function isEntryAccessible(
   entryPath: string,
   entryType: EntryType,
-  basePath: string,
+  basePathDirectories: readonly string[],
   signal: AbortSignal,
   counters: Counters
 ): Promise<boolean> {
   if (entryType !== 'symlink') {
     const normalized = normalizePath(entryPath);
-    if (!isPathWithinDirectories(normalized, [basePath])) {
+    if (!isPathWithinDirectories(normalized, basePathDirectories)) {
       counters.skippedInaccessible += 1;
       return false;
     }
@@ -404,6 +404,7 @@ async function collectEntries(
   const entries: DirectoryEntry[] = [];
   const totals: EntryTotals = { files: 0, directories: 0 };
   const counters: Counters = { skippedInaccessible: 0, symlinksNotFollowed: 0 };
+  const basePathDirectories = [basePath];
 
   let truncated = false;
   let stoppedReason: StoppedReason | undefined;
@@ -450,7 +451,7 @@ async function collectEntries(
     const accessible = await isEntryAccessible(
       entry.path,
       entryType,
-      basePath,
+      basePathDirectories,
       signal,
       counters
     );

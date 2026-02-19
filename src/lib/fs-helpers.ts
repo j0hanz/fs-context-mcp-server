@@ -22,6 +22,8 @@ function createAbortError(message = 'Operation aborted'): Error {
   return new DOMException(message, 'AbortError');
 }
 
+const SHARED_NOOP_SIGNAL = new AbortController().signal;
+
 function normalizeAbortReason(reason: unknown, message?: string): Error {
   if (reason instanceof Error) return reason;
   return createAbortError(message);
@@ -151,8 +153,7 @@ export function createTimedAbortSignal(
 }
 
 function createNoopSignal(): { signal: AbortSignal; cleanup: () => void } {
-  const controller = new AbortController();
-  return { signal: controller.signal, cleanup: () => {} };
+  return { signal: SHARED_NOOP_SIGNAL, cleanup: () => {} };
 }
 
 function createForwardedSignal(baseSignal: AbortSignal): {
@@ -1013,12 +1014,12 @@ async function readByMode(
 ): Promise<ReadFileResult> {
   const mode = resolveReadMode(normalized);
   if (mode === 'head') {
-    return await readHeadResult(handle, validPath, filePath, normalized);
+    return readHeadResult(handle, validPath, filePath, normalized);
   }
   if (mode === 'range') {
-    return await readRangeResult(handle, validPath, filePath, normalized);
+    return readRangeResult(handle, validPath, filePath, normalized);
   }
-  return await readFullResult(handle, validPath, filePath, stats, normalized);
+  return readFullResult(handle, validPath, filePath, stats, normalized);
 }
 
 function assertFileStats(filePath: string, stats: Stats): void {
@@ -1062,12 +1063,7 @@ export async function readFileWithStats(
   options: ReadFileOptions = {}
 ): Promise<ReadFileResult> {
   const normalized = prepareReadOptions(options);
-  return await readFileWithStatsInternal(
-    filePath,
-    validPath,
-    stats,
-    normalized
-  );
+  return readFileWithStatsInternal(filePath, validPath, stats, normalized);
 }
 
 export async function readFile(
@@ -1079,12 +1075,7 @@ export async function readFile(
   assertNotAborted(normalized.signal);
   const stats = await withAbort(fsp.stat(validPath), normalized.signal);
 
-  return await readFileWithStatsInternal(
-    filePath,
-    validPath,
-    stats,
-    normalized
-  );
+  return readFileWithStatsInternal(filePath, validPath, stats, normalized);
 }
 
 export async function atomicWriteFile(
