@@ -6,9 +6,9 @@ These instructions are available as a resource (internal://instructions) or prom
 
 ## CORE CAPABILITY
 
-- Domain: Filesystem operations via an MCP server, enabling LLMs to interact with the local filesystem — read, write, search, diff, patch, and manage files/directories securely.
-- Primary Resources: Files, Directories, Search Results, File Metadata.
-- Tools: `roots`, `ls`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep`, `calculate_hash`, `diff_files` (READ); `mkdir`, `write`, `edit`, `mv`, `rm`, `apply_patch`, `search_and_replace` (WRITE).
+- Domain: Filesystem operations via an MCP server for LLM agents that need safe read/search/edit/diff/patch workflows within allowed roots.
+- Primary Resources: Files, directories, metadata, search matches, and ephemeral cached result resources.
+- Tools: READ: `roots`, `ls`, `find`, `tree`, `read`, `read_many`, `stat`, `stat_many`, `grep`, `calculate_hash`, `diff_files`. WRITE: `mkdir`, `write`, `edit`, `mv`, `rm`, `apply_patch`, `search_and_replace`.
 
 ---
 
@@ -21,54 +21,55 @@ These instructions are available as a resource (internal://instructions) or prom
 ## RESOURCES & RESOURCE LINKS
 
 - `internal://instructions`: This document.
-- `filesystem-mcp://result/{id}`: Cached large output (ephemeral).
-- If a tool response includes a `resourceUri` or `resource_link`, call `resources/read` with the URI to fetch the full payload.
+- `filesystem-mcp://result/{id}`: Ephemeral cached tool output (in-memory); used when payloads are externalized.
+- If a tool response includes a `resourceUri` or `resource_link`, call `resources/read` with that URI to fetch full content.
 
 ---
 
 ## PROGRESS & TASKS
 
 - Include `_meta.progressToken` in requests to receive `notifications/progress` updates for long-running tools.
-- Task-augmented tool calls are supported for `grep`, `find`, `calculate_hash`, `search_and_replace`, `tree`, `read_many`, and `stat_many`:
-  - These tools declare `execution.taskSupport: "optional"` — invoke normally or as a task.
-  - Send `tools/call` with `task` to get a task id.
-  - Poll `tasks/get` and fetch results via `tasks/result`.
+- Task-augmented tool calls are supported for `find`, `tree`, `read`, `read_many`, `stat_many`, `grep`, `mkdir`, `write`, `mv`, `rm`, `calculate_hash`, `apply_patch`, and `search_and_replace`:
+  - Send `tools/call` with `task` to create a task.
+  - Poll `tasks/get` and fetch final output with `tasks/result`.
   - Use `tasks/cancel` to abort.
-  - Task data is stored in memory and cleared on restart.
-- Tools without task support (e.g., `read`, `stat`, `ls`) execute synchronously and do not support `task` invocation.
+  - Task status notifications are emitted via `notifications/tasks/status` when supported.
 
 ---
 
 ## THE "GOLDEN PATH" WORKFLOWS (CRITICAL)
 
-### WORKFLOW A: DISCOVERY & NAVIGATION
+### WORKFLOW A: DISCOVER AND INSPECT
 
-- Call `roots` to see allowed directories.
-- Call `ls` (single dir) or `tree` (recursive) to map layout.
-- Call `stat` or `stat_many` to check file types/sizes before reading.
-  NOTE: Never guess paths. Always list first.
+- Call `roots` first to get allowed workspace roots.
+- Call `ls` for non-recursive listing, or `tree` for bounded recursive overview.
+- Call `stat` or `stat_many` to confirm path types/sizes before reading.
+- Call `read` for one file or `read_many` for batches.
+  NOTE: Never guess paths. Resolve from `roots`/`ls`/`find` first.
 
-### WORKFLOW B: SEARCH & RETRIEVAL
+### WORKFLOW B: SEARCH CONTENT SAFELY
 
-- Call `find` to locate files by glob (e.g., `**/*.ts`).
-- Call `grep` to search contents by regex or literal text.
-- Call `read` or `read_many` to inspect files.
-- If content is truncated, use `resourceUri` from response or paginated `read` with `startLine`.
+- Call `find` to locate candidate files by glob.
+- Call `grep` with `filePattern` to search content only in relevant file types.
+- If output is truncated or externalized, call `resources/read` on returned `resourceUri`.
+- Call `read` on exact hits to inspect surrounding context.
+  NOTE: `grep` regex uses RE2; do not rely on lookbehind/lookahead/backreferences.
 
-### WORKFLOW C: MODIFICATION (IF PERMITTED)
+### WORKFLOW C: MODIFY FILES WITH LOW RISK
 
-- Call `mkdir` to ensure paths exist.
-- Call `write` to create/overwrite files.
-- Call `edit` for targeted replacements.
-- Call `mv` or `rm` for organization.
-  NOTE: Always confirm destructive actions (delete/overwrite) with the user first.
+- Call `mkdir` to prepare directories if needed.
+- Use `edit` for precise first-occurrence replacements in one file.
+- Use `search_and_replace` for bulk replacements across globs.
+- Use `mv` to rename/move paths and `rm` to delete paths.
+  NOTE: Confirm destructive operations (`write`, `mv`, `rm`, bulk replace) with the user before execution.
 
-### WORKFLOW D: DIFF, PATCH & BULK REPLACE
+### WORKFLOW D: DIFF/PATCH LOOP
 
-- Call `diff_files` to compare two files (unified diff).
-- Call `apply_patch` to apply a unified patch to a file. Use `dryRun: true` first.
-- Call `search_and_replace` for bulk text replacement across files matching a glob. Use `dryRun: true` first.
-  NOTE: Always dry-run before applying patches or bulk replacements.
+- Call `diff_files` to generate a unified diff.
+- Call `apply_patch` with `dryRun: true` first.
+- If dry run succeeds, call `apply_patch` again with `dryRun: false`.
+- Call `diff_files` again to verify `isIdentical: true` when expected.
+  NOTE: If patch apply fails, regenerate patch against current file content and retry.
 
 ---
 
@@ -76,113 +77,124 @@ These instructions are available as a resource (internal://instructions) or prom
 
 `roots`
 
-- Purpose: List allowed workspace roots. Call this first in every session.
-- Output: Includes `rootsCount` and `hasMultipleRoots`.
+- Purpose: Enumerate allowed workspace roots.
+- Gotcha: Other tools are constrained to these roots.
 
 `ls`
 
-- Purpose: List directory contents (non-recursive).
-- Input: `path` (optional, default root), `includeIgnored`, `includeHidden`, optional `pattern`, `maxDepth`, `maxEntries`, `sortBy`, `includeSymlinkTargets`.
-- Limits: Use `tree` for recursion (depth limited).
+- Purpose: List directory contents (non-recursive by default).
+- Nuance: `pattern` enables filtered recursive traversal up to `maxDepth`.
 
 `find`
 
-- Purpose: Search file paths by glob.
-- Input: `pattern` (required), `path` (optional root), optional `includeHidden`, `includeIgnored`, `sortBy`, `maxDepth`, `maxFilesScanned`.
-- Output: Includes `root` and `pattern` for traceability.
+- Purpose: Find files by glob.
+- Output: Returns relative paths plus metadata; may truncate based on limits.
 - Nuance: Respects `.gitignore` unless `includeIgnored=true`.
 
 `tree`
 
-- Purpose: Render a bounded directory tree (ASCII + JSON).
-- Input: `path`, `maxDepth` (0–50, default 5), `maxEntries` (default 1000).
-- Gotcha: `maxDepth=0` returns only the root node with empty children array.
+- Purpose: Return both ASCII and JSON tree views.
+- Gotcha: `maxDepth=0` returns only the root node.
 
 `read`
 
-- Purpose: Read file text.
-- Input: `path`, `head` (first N lines), `startLine`/`endLine` (range).
-- Gotcha: `head` is mutually exclusive with `startLine`/`endLine`. Large files return `resourceUri`; read it or use pagination.
+- Purpose: Read a single text file with optional head/range.
+- Gotcha: Large content is externalized to `filesystem-mcp://result/{id}` and preview is returned inline.
 
 `read_many`
 
-- Purpose: Read multiple files in one call.
-- Input: `paths` (max 100), `head`, `startLine`/`endLine`.
-- Output: per-file `truncationReason` when truncated.
-- Limits: Total budget capped by `MAX_READ_MANY_TOTAL_SIZE` (default 512 KB).
+- Purpose: Batch read multiple files.
+- Gotcha: Per-file `truncationReason` can be `head`, `range`, or `externalized`.
+- Limits: Total read budget is capped by `MAX_READ_MANY_TOTAL_SIZE`.
 
 `stat` / `stat_many`
 
-- Purpose: Get file/directory metadata (size, modified, permissions, MIME type).
-- Output: Includes `tokenEstimate` (≈ size/4) for LLM context budgeting.
+- Purpose: Return metadata including token estimate, MIME type, and timestamps.
+- Nuance: Use before read/search when file size/type uncertainty exists.
 
 `grep`
 
-- Purpose: Search file content (grep-like).
-- Input: `pattern` (literal by default), `isRegex` (opt-in), `caseSensitive`, `wholeWord`, `contextLines`, `filePattern`, `maxResults`, `maxFilesScanned`.
-- Output: Includes `patternType` and `caseSensitive`.
-- Limits: Skips binaries and files larger than `MAX_SEARCH_SIZE` (default 1 MB). Returns max results per `maxResults` (default 500).
-- Gotcha: Regex uses RE2 engine — no backreferences or lookahead/lookbehind.
-
-`calculate_hash`
-
-- Purpose: Compute a SHA-256 hash for a file or directory.
-- Input: `path` (file or directory).
-- Behavior: Auto-detects file vs directory using `fs.stat`.
-  - **Files**: Returns `{ hash, isDirectory: false }`.
-  - **Directories**: Returns `{ hash, isDirectory: true, fileCount }`. Uses deterministic hash-of-hashes pattern (lexicographically sorted paths, respects `.gitignore`).
-
-`diff_files`
-
-- Purpose: Create a unified diff between two files.
-- Input: `original`, `modified`, optional `context`, `ignoreWhitespace`, `stripTrailingCr`.
-- Output: Includes `isIdentical` (diff may be empty when true).
-- Gotcha: Large diffs may be returned via `resourceUri`.
-
-`edit`
-
-- Purpose: Sequential string replacement in a file.
-- Input: `path`, `edits` (array of `{oldText, newText}`), `dryRun`.
-- Output: `unmatchedEdits` lists any `oldText` values not found.
-- Gotcha: `oldText` must match exactly. First occurrence only per edit.
-
-`apply_patch`
-
-- Purpose: Apply a unified diff patch to a file.
-- Input: `path`, `patch`, optional `fuzzy`/`fuzzFactor`, `autoConvertLineEndings`, `dryRun`.
-
-`search_and_replace`
-
-- Purpose: Replace text across files matching a glob.
-- Input: `filePattern`, `searchPattern`, `replacement`, optional `isRegex`, `dryRun`.
-- Output: Includes `changedFiles` with per-file match counts (may be truncated).
-- Gotcha: Review `processedFiles`, `failedFiles`, and `failures` for partial errors.
+- Purpose: Search file contents by literal or RE2 regex.
+- Gotcha: Inline match rows are capped (first 50); full structured results are externalized via `resourceUri`.
+- Limits: Skips binary and oversized files; reports skips in structured output.
 
 `write`
 
-- Purpose: Create or overwrite a file.
-- Side effects: Destructive — overwrites existing content without confirmation.
+- Purpose: Create or overwrite a file atomically.
+- Side effects: Creates parent directories automatically; overwrites existing content.
+
+`edit`
+
+- Purpose: Apply sequential literal replacements (first occurrence per edit).
+- Gotcha: `oldText` must match exactly; unmatched items are reported in `unmatchedEdits`.
+
+`mv`
+
+- Purpose: Move or rename file/directory paths.
+- Nuance: Cross-device moves fall back to copy+delete.
 
 `rm`
 
-- Purpose: Delete a file or directory.
-- Input: `path`, `recursive` (for non-empty dirs), `ignoreIfNotExists`.
-- Side effects: Destructive and irreversible.
+- Purpose: Delete file/directory paths.
+- Gotcha: Non-empty directory delete requires `recursive=true`; else returns actionable input error.
+
+`calculate_hash`
+
+- Purpose: SHA-256 for files or deterministic composite hash for directories.
+- Nuance: Directory hashing respects root `.gitignore` and sorts paths for stable output.
+
+`diff_files`
+
+- Purpose: Generate unified diff between two files.
+- Gotcha: `isIdentical=true` means no hunks (`@@`) and empty diff.
+
+`apply_patch`
+
+- Purpose: Apply unified diff text to a file.
+- Gotcha: Patch must include valid hunk headers; use `dryRun=true` first.
+
+`search_and_replace`
+
+- Purpose: Replace all matches across files selected by `filePattern`.
+- Gotcha: Literal mode is default; `isRegex=true` enables RE2 + capture replacements (`$1`, `$2`).
+- Limits: Changed-file sample and failure sample are capped/truncated in output.
+
+---
+
+## CROSS-FEATURE RELATIONSHIPS
+
+- Use `roots` output to scope all other tool calls.
+- Use `find` → `grep` → `read` as the default search triad.
+- Use `diff_files` output as input to `apply_patch`.
+- Use `resourceUri` from `read`, `read_many`, `grep`, and `diff_files` with `resources/read` for full payload retrieval.
+- Use `stat`/`stat_many` before `read`/`read_many` when size/type may violate limits.
+
+---
+
+## CONSTRAINTS & LIMITATIONS
+
+- Access is restricted to allowed roots negotiated from CLI and MCP Roots.
+- If multiple roots are configured and no path is provided, tools requiring base path fail with disambiguation error.
+- Default timeouts and size caps are enforced (`DEFAULT_SEARCH_TIMEOUT`, `MAX_FILE_SIZE`, `MAX_SEARCH_SIZE`, `MAX_READ_MANY_TOTAL_SIZE`).
+- Sensitive files are denylisted by default unless explicitly allowed via environment settings.
+- Binary files are skipped for content search/read workflows where text is required.
+- Externalized resource cache is in-memory, bounded (entry size/count/total bytes), and ephemeral.
+- Regex engine is RE2-based; advanced PCRE features are unsupported.
 
 ---
 
 ## ERROR HANDLING STRATEGY
 
-- `E_NOT_FOUND`: Check path with `ls` or `find`.
-- `E_ACCESS_DENIED`: Path outside allowed `roots`.
-- `E_NOT_FILE`: Path is a directory. Use `ls` to explore its contents.
-- `E_NOT_DIRECTORY`: Path is a file. Use `read` to read file contents.
-- `E_TOO_LARGE`: File exceeds size limit. Use `head` to preview, or narrow scope.
-- `E_TIMEOUT`: Reduce scope (narrower path), fewer results (`maxResults`), or search fewer files.
-- `E_INVALID_PATTERN`: Fix glob/regex syntax.
-- `E_INVALID_INPUT`: Check tool documentation for correct parameter usage.
-- `E_PERMISSION_DENIED`: OS-level permission denied. Check file permissions.
-- `E_SYMLINK_NOT_ALLOWED`: Symlinks escaping allowed directories are blocked for security.
-- `E_UNKNOWN`: Unexpected error. Check the error message for details.
+- `E_ACCESS_DENIED`: Path is outside allowed roots or roots are not configured. → Call `roots`, then retry with an allowed path.
+- `E_NOT_FOUND`: Path or resource does not exist. → Call `ls`/`find` to verify existence and exact spelling.
+- `E_NOT_FILE`: Path points to a directory/non-file for file-only operation. → Call `ls` or switch to directory tool.
+- `E_NOT_DIRECTORY`: Path points to a file for directory operation. → Call `read` for file content or choose a directory path.
+- `E_TOO_LARGE`: File/content exceeds limits. → Narrow scope, use range/head reads, or reduce candidate files.
+- `E_TIMEOUT`: Operation exceeded timeout. → Reduce path scope, lower result limits, or simplify pattern.
+- `E_INVALID_PATTERN`: Glob/regex invalid. → Fix syntax (RE2 for regex) and retry.
+- `E_INVALID_INPUT`: Arguments are invalid for current context (e.g., ambiguous roots, bad patch, missing flags). → Correct parameters and retry.
+- `E_PERMISSION_DENIED`: OS-level permission denied. → Adjust file permissions or choose accessible paths.
+- `E_SYMLINK_NOT_ALLOWED`: Symlink traversal escapes allowed roots. → Use paths within allowed directories.
+- `E_UNKNOWN`: Unclassified failure. → Inspect message details and retry with narrower, validated inputs.
 
 ---
