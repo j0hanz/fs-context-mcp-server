@@ -163,8 +163,6 @@ function createForwardedSignal(baseSignal: AbortSignal): {
   return { signal: baseSignal, cleanup: () => {} };
 }
 
-// Manual abort forwarding removed in favor of AbortSignal.any/timeout.
-
 interface ParallelResult<R> {
   results: R[];
   errors: { index: number; error: Error }[];
@@ -351,6 +349,13 @@ interface ReadContentOptions {
   signal?: AbortSignal;
 }
 
+interface PartialReadResult {
+  content: string;
+  truncated: boolean;
+  linesRead: number;
+  hasMoreLines: boolean;
+}
+
 interface ReadFileResult {
   path: string;
   content: string;
@@ -399,17 +404,6 @@ function validateReadOptions(options: ReadFileOptions): void {
 
   if (hasEnd && !hasStart) {
     throw new McpError(ErrorCode.E_INVALID_INPUT, 'endLine requires startLine');
-  }
-
-  if (options.startLine !== undefined && options.startLine < 1) {
-    throw new McpError(
-      ErrorCode.E_INVALID_INPUT,
-      'startLine must be at least 1'
-    );
-  }
-
-  if (options.endLine !== undefined && options.endLine < 1) {
-    throw new McpError(ErrorCode.E_INVALID_INPUT, 'endLine must be at least 1');
   }
 
   if (
@@ -587,13 +581,8 @@ function countLines(content: string): number {
 async function readHeadContent(
   handle: FileHandle,
   head: number,
-  options: { encoding: BufferEncoding; maxSize: number; signal?: AbortSignal }
-): Promise<{
-  content: string;
-  truncated: boolean;
-  linesRead: number;
-  hasMoreLines: boolean;
-}> {
+  options: ReadContentOptions
+): Promise<PartialReadResult> {
   const content = await headFile(
     handle,
     head,
@@ -615,13 +604,8 @@ async function readRangeContent(
   handle: FileHandle,
   startLine: number,
   endLine: number | undefined,
-  options: { encoding: BufferEncoding; maxSize: number; signal?: AbortSignal }
-): Promise<{
-  content: string;
-  truncated: boolean;
-  linesRead: number;
-  hasMoreLines: boolean;
-}> {
+  options: ReadContentOptions
+): Promise<PartialReadResult> {
   assertNotAborted(options.signal);
 
   const lines: string[] = [];
