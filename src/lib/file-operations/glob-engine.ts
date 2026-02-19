@@ -165,10 +165,12 @@ function addGlobstarCandidates(
   maxDepth: number
 ): void {
   const afterGlobstar = remainder.slice(3);
+  const addDotFile =
+    afterGlobstar.length > 0 && afterGlobstar.charCodeAt(0) !== DOT_CHAR_CODE;
   for (let depth = 0; depth <= maxDepth; depth++) {
-    const depthPrefix = depth > 0 ? '*/'.repeat(depth) : '';
+    const depthPrefix = '*/'.repeat(depth);
     patterns.add(`${prefix}${depthPrefix}.*/**/${afterGlobstar}`);
-    if (afterGlobstar && afterGlobstar.charCodeAt(0) !== DOT_CHAR_CODE) {
+    if (addDotFile) {
       patterns.add(`${prefix}${depthPrefix}.${afterGlobstar}`);
     }
   }
@@ -290,12 +292,11 @@ function getRelativeDepth(relativePath: string): number {
 
 function isGlobDirentLike(value: unknown): value is GlobDirentLike {
   if (!isRecord(value)) return false;
-  if (typeof value.name !== 'string') return false;
-  const candidate = value as Partial<DirentLike>;
   return (
-    typeof candidate.isDirectory === 'function' &&
-    typeof candidate.isFile === 'function' &&
-    typeof candidate.isSymbolicLink === 'function'
+    typeof value.name === 'string' &&
+    typeof value.isDirectory === 'function' &&
+    typeof value.isFile === 'function' &&
+    typeof value.isSymbolicLink === 'function'
   );
 }
 
@@ -398,31 +399,22 @@ async function* processIterable(
   const flush = async function* (): AsyncGenerator<GlobEntry> {
     if (buffer.length === 0) return;
     const batch = buffer.splice(0, buffer.length);
-    const pendingResolutions = new Array<Promise<GlobEntry | null>>(
-      batch.length
+    const results = await Promise.all(
+      batch.map((match) =>
+        resolveStringMatch(
+          match,
+          cwd,
+          maxDepth,
+          seen,
+          onlyFiles,
+          followSymlinks,
+          returnStats,
+          suppressErrors
+        )
+      )
     );
-    for (let index = 0; index < batch.length; index += 1) {
-      const match = batch[index];
-      if (match === undefined) {
-        pendingResolutions[index] = Promise.resolve(null);
-        continue;
-      }
-      pendingResolutions[index] = resolveStringMatch(
-        match,
-        cwd,
-        maxDepth,
-        seen,
-        onlyFiles,
-        followSymlinks,
-        returnStats,
-        suppressErrors
-      );
-    }
-
-    const results = await Promise.all(pendingResolutions);
-
-    for (const res of results) {
-      if (res) yield res;
+    for (const entry of results) {
+      if (entry !== null) yield entry;
     }
   };
 
