@@ -134,9 +134,11 @@ export function registerSearchFilesTool(
       context: { path: args.path ?? '.' },
       run: async (signal) => {
         const scope = args.path ?? '.';
+        const { pattern } = args;
+        let progressCursor = 0;
         notifyProgress(extra, {
           current: 0,
-          message: `🔎︎ find: ${args.pattern} in ${scope}`,
+          message: `🔎︎ find: ${pattern} in ${scope}`,
         });
 
         const baseReporter = createProgressReporter(extra);
@@ -147,44 +149,58 @@ export function registerSearchFilesTool(
           total?: number;
           current: number;
         }): void => {
+          if (current > progressCursor) progressCursor = current;
           const fileWord = current === 1 ? 'file' : 'files';
           baseReporter({
             current,
             ...(total !== undefined ? { total } : {}),
-            message: `🔎︎ find: ${args.pattern} — ${current} ${fileWord} scanned`,
+            message: `🔎︎ find: ${pattern} — ${current} ${fileWord} scanned`,
           });
         };
 
-        const result = await handleSearchFiles(
-          args,
-          signal,
-          progressWithMessage
-        );
-        const sc = result.structuredContent;
-        const count = sc.ok ? (sc.totalMatches ?? 0) : 0;
-        const stoppedReason = sc.ok ? sc.stoppedReason : undefined;
+        try {
+          const result = await handleSearchFiles(
+            args,
+            signal,
+            progressWithMessage
+          );
+          const sc = result.structuredContent;
+          const count = sc.ok ? (sc.totalMatches ?? 0) : 0;
+          const stoppedReason = sc.ok ? sc.stoppedReason : undefined;
 
-        let suffix: string;
-        if (count === 0) {
-          suffix = `No matches in ${scope}`;
-        } else {
-          suffix = `${count} ${count === 1 ? 'match' : 'matches'}`;
-          if (stoppedReason === 'timeout') {
-            suffix += ' [stopped — timeout]';
-          } else if (stoppedReason === 'maxResults') {
-            suffix += ' [truncated — max results]';
-          } else if (stoppedReason === 'maxFiles') {
-            suffix += ' [truncated — max files]';
+          let suffix: string;
+          if (count === 0) {
+            suffix = `No matches in ${scope}`;
+          } else {
+            suffix = `${count} ${count === 1 ? 'match' : 'matches'}`;
+            if (stoppedReason === 'timeout') {
+              suffix += ' [stopped — timeout]';
+            } else if (stoppedReason === 'maxResults') {
+              suffix += ' [truncated — max results]';
+            } else if (stoppedReason === 'maxFiles') {
+              suffix += ' [truncated — max files]';
+            }
           }
-        }
 
-        const finalCurrent = (sc.filesScanned ?? 0) + 1;
-        notifyProgress(extra, {
-          current: finalCurrent,
-          total: finalCurrent,
-          message: `🔎︎ find: ${args.pattern} • ${suffix}`,
-        });
-        return result;
+          const finalCurrent = Math.max(
+            (sc.filesScanned ?? 0) + 1,
+            progressCursor + 1
+          );
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🔎︎ find: ${pattern} • ${suffix}`,
+          });
+          return result;
+        } catch (error) {
+          const finalCurrent = Math.max(progressCursor + 1, 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🔎︎ find: ${pattern} in ${scope} • failed`,
+          });
+          throw error;
+        }
       },
       onError: (error) =>
         buildToolErrorResponse(error, ErrorCode.E_INVALID_PATTERN, args.path),

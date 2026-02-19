@@ -246,6 +246,7 @@ export function registerCalculateHashTool(
       context: { path: args.path },
       run: async (signal) => {
         const baseName = path.basename(args.path);
+        let progressCursor = 0;
         notifyProgress(extra, {
           current: 0,
           message: `🕮 calculate_hash: ${baseName}`,
@@ -259,6 +260,7 @@ export function registerCalculateHashTool(
           total?: number;
           current: number;
         }): void => {
+          if (current > progressCursor) progressCursor = current;
           const fileWord = current === 1 ? 'file' : 'files';
           baseReporter({
             current,
@@ -267,28 +269,38 @@ export function registerCalculateHashTool(
           });
         };
 
-        const result = await handleCalculateHash(
-          args,
-          signal,
-          progressWithMessage
-        );
-        const sc = result.structuredContent;
-        const totalFiles = sc.ok ? (sc.fileCount ?? 1) : 1;
-        const finalCurrent = totalFiles + 1;
-        let suffix: string;
-        if (!sc.ok) {
-          suffix = 'failed';
-        } else if (sc.fileCount !== undefined && sc.fileCount > 1) {
-          suffix = `${sc.fileCount} files • ${(sc.hash ?? '').slice(0, 8)}...`;
-        } else {
-          suffix = `${(sc.hash ?? '').slice(0, 8)}...`;
+        try {
+          const result = await handleCalculateHash(
+            args,
+            signal,
+            progressWithMessage
+          );
+          const sc = result.structuredContent;
+          const totalFiles = sc.ok ? (sc.fileCount ?? 1) : 1;
+          const finalCurrent = Math.max(totalFiles + 1, progressCursor + 1);
+          let suffix: string;
+          if (!sc.ok) {
+            suffix = 'failed';
+          } else if (sc.fileCount !== undefined && sc.fileCount > 1) {
+            suffix = `${sc.fileCount} files • ${(sc.hash ?? '').slice(0, 8)}...`;
+          } else {
+            suffix = `${(sc.hash ?? '').slice(0, 8)}...`;
+          }
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🕮 calculate_hash: ${baseName} • ${suffix}`,
+          });
+          return result;
+        } catch (error) {
+          const finalCurrent = Math.max(progressCursor + 1, 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🕮 calculate_hash: ${baseName} • failed`,
+          });
+          throw error;
         }
-        notifyProgress(extra, {
-          current: finalCurrent,
-          total: finalCurrent,
-          message: `🕮 calculate_hash: ${baseName} • ${suffix}`,
-        });
-        return result;
       },
       onError: (error) =>
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
