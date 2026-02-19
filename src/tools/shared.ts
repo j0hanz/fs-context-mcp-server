@@ -24,6 +24,7 @@ import type { ToolErrorResponseSchema } from '../schemas.js';
 
 const MAX_INLINE_CONTENT_CHARS = 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
+const PROGRESS_RATE_LIMIT_MS = 50;
 
 type ResourceEntry = ReturnType<ResourceStore['putText']>;
 
@@ -375,17 +376,28 @@ async function sendProgressNotification(
 
 export function createProgressReporter(
   extra: ToolExtra
-): (progress: { total?: number; current: number }) => void {
+): (progress: { total?: number; current: number; message?: string }) => void {
   if (!canSendProgress(extra)) {
     return () => {};
   }
   const token = extra._meta.progressToken;
+  // State for monotonic enforcement and rate-limiting.
+  let lastProgress = -1;
+  let lastSentMs = 0;
   return (progress) => {
-    const { current, total } = progress;
+    const { current, total, message } = progress;
+    // Enforce monotonic progress to prevent client confusion. Client behavior on
+    if (current <= lastProgress) return;
+    // Enforce rate-limiting to prevent client flooding. Progress updates that are
+    const now = Date.now();
+    if (now - lastSentMs < PROGRESS_RATE_LIMIT_MS) return;
+    lastProgress = current;
+    lastSentMs = now;
     void sendProgressNotification(extra, {
       progressToken: token,
-      total,
       progress: current,
+      ...(total !== undefined ? { total } : {}),
+      ...(message !== undefined ? { message } : {}),
     });
   };
 }
@@ -434,11 +446,10 @@ async function withProgress<T>(
     });
     return result;
   } catch (error) {
-    await sendProgressNotification(extra, {
+    void sendProgressNotification(extra, {
       progressToken: token,
       progress: total,
       total,
-      message,
     });
     throw error;
   }

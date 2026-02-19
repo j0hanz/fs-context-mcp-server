@@ -116,7 +116,6 @@ function logToMcp(
   void server.sendLoggingMessage(params).catch((error: unknown) => {
     console.error(
       `Failed to send MCP log: ${level} │ ${data}`,
-      data,
       formatUnknownErrorMessage(error)
     );
   });
