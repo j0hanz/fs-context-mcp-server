@@ -11,6 +11,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import {
   InitializedNotificationSchema,
   RootsListChangedNotificationSchema,
+  SetLevelRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type {
   LoggingLevel,
@@ -71,6 +72,17 @@ const ROOTS_TIMEOUT_MS = 5000;
 const ROOTS_DEBOUNCE_MS = 100;
 const MCP_LOGGER_NAME = 'filesystem-mcp';
 
+const LOG_LEVEL_ORDER: Record<LoggingLevel, number> = {
+  debug: 0,
+  info: 1,
+  notice: 2,
+  warning: 3,
+  error: 4,
+  critical: 5,
+  alert: 6,
+  emergency: 7,
+};
+
 function canSendMcpLogs(server: McpServer): boolean {
   const capabilities = server.server.getClientCapabilities();
   if (!capabilities || typeof capabilities !== 'object') return false;
@@ -81,8 +93,12 @@ function canSendMcpLogs(server: McpServer): boolean {
 function logToMcp(
   server: McpServer | undefined,
   level: LoggingLevel,
-  data: string
+  data: string,
+  minLevel: LoggingLevel = 'debug'
 ): void {
+  if (LOG_LEVEL_ORDER[level] < LOG_LEVEL_ORDER[minLevel]) {
+    return;
+  }
   if (!server || !canSendMcpLogs(server)) {
     console.error(data);
     return;
@@ -108,9 +124,14 @@ class RootsManager {
   private rootDirectories: string[] = [];
   private clientInitialized = false;
   private readonly options: ServerOptions;
+  readonly loggingState: { minimumLevel: LoggingLevel };
 
-  constructor(options: ServerOptions) {
+  constructor(
+    options: ServerOptions,
+    loggingState?: { minimumLevel: LoggingLevel }
+  ) {
     this.options = options;
+    this.loggingState = loggingState ?? { minimumLevel: 'debug' };
   }
 
   isInitialized(): boolean {
@@ -187,7 +208,8 @@ class RootsManager {
       logToMcp(
         server,
         'notice',
-        'No allowed directories specified. Using the current working directory as an allowed directory.'
+        'No allowed directories specified. Using the current working directory as an allowed directory.',
+        this.loggingState.minimumLevel
       );
       return;
     }
@@ -195,7 +217,8 @@ class RootsManager {
     logToMcp(
       server,
       'warning',
-      'No allowed directories specified. Please provide directories as command-line arguments or enable --allow-cwd to use the current working directory.'
+      'No allowed directories specified. Please provide directories as command-line arguments or enable --allow-cwd to use the current working directory.',
+      this.loggingState.minimumLevel
     );
   }
 
@@ -216,7 +239,8 @@ class RootsManager {
       logToMcp(
         server,
         'debug',
-        `[DEBUG] MCP Roots protocol unavailable or failed: ${formatUnknownErrorMessage(error)}`
+        `[DEBUG] MCP Roots protocol unavailable or failed: ${formatUnknownErrorMessage(error)}`,
+        this.loggingState.minimumLevel
       );
     } finally {
       await this.recomputeAllowedDirectories();
@@ -391,8 +415,16 @@ export async function createServer(
     serverConfig
   );
 
-  const rootsManager = new RootsManager(options);
+  const loggingState: { minimumLevel: LoggingLevel } = {
+    minimumLevel: 'debug',
+  };
+  const rootsManager = new RootsManager(options, loggingState);
   rootsManagers.set(server, rootsManager);
+
+  server.server.setRequestHandler(SetLevelRequestSchema, (req) => {
+    loggingState.minimumLevel = req.params.level;
+    return {};
+  });
 
   registerInstructionResource(server, serverInstructions, localIcon);
   registerGetHelpPrompt(server, serverInstructions, localIcon);

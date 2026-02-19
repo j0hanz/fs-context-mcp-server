@@ -8,6 +8,8 @@ export interface TextResourceEntry {
   mimeType: string;
   text: string;
   hash: string;
+  size: number;
+  storedAt: string;
 }
 
 export interface ResourceStore {
@@ -52,6 +54,8 @@ function createTextEntry(params: {
     mimeType: params.mimeType,
     text: params.text,
     hash: computeSha256(params.text),
+    size: estimateBytes(params.text),
+    storedAt: new Date().toISOString(),
   };
 }
 
