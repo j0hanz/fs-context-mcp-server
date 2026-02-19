@@ -12,7 +12,7 @@ import {
   startPerfMeasure,
 } from '../observability.js';
 
-export interface DirentLike {
+interface DirentLike {
   isDirectory(): boolean;
   isFile(): boolean;
   isSymbolicLink(): boolean;

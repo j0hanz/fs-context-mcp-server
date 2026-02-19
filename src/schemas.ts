@@ -36,17 +36,14 @@ const RequiredPathSchema = PathSchemaBase.min(1, 'Path required');
 
 const FileTypeSchema = z.enum(['file', 'directory', 'symlink', 'other']);
 
-const TreeEntryTypeSchema = FileTypeSchema;
 const ListDirectorySortSchema = z.enum(['name', 'size', 'modified', 'type']);
 const SearchFilesSortSchema = z.enum(['name', 'size', 'modified', 'path']);
 const SearchStopReasonSchema = z.enum(['maxResults', 'maxFiles', 'timeout']);
-const SearchFilesStopReasonSchema = SearchStopReasonSchema;
 const ListDirectoryStopReasonSchema = z.enum(['maxEntries', 'aborted']);
-const SearchContentStopReasonSchema = SearchStopReasonSchema;
 
 interface TreeEntry {
   name: string;
-  type: z.infer<typeof TreeEntryTypeSchema>;
+  type: z.infer<typeof FileTypeSchema>;
   relativePath: string;
   children?: TreeEntry[] | undefined;
 }
@@ -54,7 +51,7 @@ interface TreeEntry {
 const TreeEntrySchema: z.ZodType<TreeEntry> = z.lazy(() =>
   z.strictObject({
     name: z.string().describe('Name'),
-    type: TreeEntryTypeSchema.describe('Type'),
+    type: FileTypeSchema.describe('Type'),
     relativePath: z.string().describe('Relative path'),
     children: z.array(TreeEntrySchema).optional().describe('Children'),
   })
@@ -447,7 +444,7 @@ export const SearchFilesOutputSchema = SearchSummarySchema.extend({
   filesScanned: z.number().optional().describe('Files scanned'),
   skippedInaccessible: z.number().optional().describe('Inaccessible files'),
   stoppedReason:
-    SearchFilesStopReasonSchema.optional().describe('Why search stopped'),
+    SearchStopReasonSchema.optional().describe('Why search stopped'),
 });
 
 export const SearchContentOutputSchema = SearchSummarySchema.extend({
@@ -482,7 +479,7 @@ export const SearchContentOutputSchema = SearchSummarySchema.extend({
     .optional()
     .describe('Lines skipped due to regex timeout'),
   stoppedReason:
-    SearchContentStopReasonSchema.optional().describe('Why search stopped'),
+    SearchStopReasonSchema.optional().describe('Why search stopped'),
 });
 
 export const TreeOutputSchema = z.object({

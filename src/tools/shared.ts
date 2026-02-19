@@ -221,7 +221,7 @@ export interface ToolRegistrationOptions {
   iconInfo?: IconInfo;
 }
 
-export interface FileInfoPayload {
+interface FileInfoPayload {
   name: string;
   path: string;
   type: FileInfo['type'];
@@ -284,7 +284,7 @@ const NOT_INITIALIZED_ERROR = new McpError(
   'Client not initialized; wait for notifications/initialized'
 );
 
-export async function withToolErrorHandling<T>(
+async function withToolErrorHandling<T>(
   run: () => Promise<ToolResponse<T>>,
   onError: (error: unknown) => ToolResult<T>
 ): Promise<ToolResult<T>> {
