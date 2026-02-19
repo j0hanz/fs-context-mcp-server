@@ -7,7 +7,7 @@ import type { z } from 'zod';
 import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { formatTreeAscii, treeDirectory } from '../lib/file-operations/tree.js';
-import { TreeInputSchema, TreeOutputSchema } from '../schemas.js';
+import { TreeInputSchema, type TreeOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -29,7 +29,6 @@ const TREE_TOOL = {
     'Returns an ASCII tree for quick scanning and a structured JSON tree for programmatic use. ' +
     'Note: maxDepth=0 returns only the root node with empty children array.',
   inputSchema: TreeInputSchema,
-  outputSchema: TreeOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

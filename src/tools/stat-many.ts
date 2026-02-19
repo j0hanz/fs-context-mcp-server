@@ -9,7 +9,7 @@ import { ErrorCode } from '../lib/errors.js';
 import { getMultipleFileInfo } from '../lib/file-operations/file-info.js';
 import {
   GetMultipleFileInfoInputSchema,
-  GetMultipleFileInfoOutputSchema,
+  type GetMultipleFileInfoOutputSchema,
 } from '../schemas.js';
 import {
   buildFileInfoPayload,
@@ -29,7 +29,6 @@ const GET_MULTIPLE_FILE_INFO_TOOL = {
   title: 'Get Multiple File Info',
   description: 'Get metadata for multiple files or directories in one request.',
   inputSchema: GetMultipleFileInfoInputSchema,
-  outputSchema: GetMultipleFileInfoOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

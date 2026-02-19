@@ -10,7 +10,7 @@ import { withAbort } from '../lib/fs-helpers.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
 import {
   CreateDirectoryInputSchema,
-  CreateDirectoryOutputSchema,
+  type CreateDirectoryOutputSchema,
 } from '../schemas.js';
 import {
   buildToolErrorResponse,
@@ -29,7 +29,6 @@ const CREATE_DIRECTORY_TOOL = {
   title: 'Create Directory',
   description: 'Create a new directory at the specified path (recursive)',
   inputSchema: CreateDirectoryInputSchema,
-  outputSchema: CreateDirectoryOutputSchema,
   annotations: {
     readOnlyHint: false,
     idempotentHint: true,

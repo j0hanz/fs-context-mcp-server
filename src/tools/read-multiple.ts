@@ -12,7 +12,7 @@ import { ErrorCode } from '../lib/errors.js';
 import { readMultipleFiles } from '../lib/file-operations/read-multiple-files.js';
 import {
   ReadMultipleFilesInputSchema,
-  ReadMultipleFilesOutputSchema,
+  type ReadMultipleFilesOutputSchema,
 } from '../schemas.js';
 import {
   buildResourceLink,
@@ -36,7 +36,6 @@ const READ_MULTIPLE_FILES_TOOL = {
     'Returns contents and metadata for each file. ' +
     'For single file, use read for simpler output.',
   inputSchema: ReadMultipleFilesInputSchema,
-  outputSchema: ReadMultipleFilesOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

@@ -8,7 +8,7 @@ import type { z } from 'zod';
 import { ErrorCode } from '../lib/errors.js';
 import { atomicWriteFile } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
-import { EditFileInputSchema, EditFileOutputSchema } from '../schemas.js';
+import { EditFileInputSchema, type EditFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -29,7 +29,6 @@ const EDIT_FILE_TOOL = {
     '`oldText` must match exactly — include 3–5 lines of surrounding context to uniquely target the location. ' +
     'Use `dryRun: true` to validate edits before writing.',
   inputSchema: EditFileInputSchema,
-  outputSchema: EditFileOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,

@@ -10,7 +10,7 @@ import {
 } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { readFile } from '../lib/fs-helpers.js';
-import { ReadFileInputSchema, ReadFileOutputSchema } from '../schemas.js';
+import { ReadFileInputSchema, type ReadFileOutputSchema } from '../schemas.js';
 import {
   buildResourceLink,
   buildToolErrorResponse,
@@ -33,7 +33,6 @@ const READ_FILE_TOOL = {
     'Use head parameter to preview the first N lines of large files. ' +
     'For multiple files, use read_many for efficiency.',
   inputSchema: ReadFileInputSchema,
-  outputSchema: ReadFileOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

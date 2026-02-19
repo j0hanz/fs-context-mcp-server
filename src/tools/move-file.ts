@@ -11,7 +11,7 @@ import {
   validateExistingPath,
   validatePathForWrite,
 } from '../lib/path-validation.js';
-import { MoveFileInputSchema, MoveFileOutputSchema } from '../schemas.js';
+import { MoveFileInputSchema, type MoveFileOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -29,7 +29,6 @@ const MOVE_FILE_TOOL = {
   title: 'Move File',
   description: 'Move or rename a file or directory.',
   inputSchema: MoveFileInputSchema,
-  outputSchema: MoveFileOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,

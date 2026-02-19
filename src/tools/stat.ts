@@ -9,7 +9,10 @@ import type { FileInfo } from '../config.js';
 import { DEFAULT_SEARCH_TIMEOUT_MS } from '../lib/constants.js';
 import { ErrorCode } from '../lib/errors.js';
 import { getFileInfo } from '../lib/file-operations/file-info.js';
-import { GetFileInfoInputSchema, GetFileInfoOutputSchema } from '../schemas.js';
+import {
+  GetFileInfoInputSchema,
+  type GetFileInfoOutputSchema,
+} from '../schemas.js';
 import {
   buildFileInfoPayload,
   buildToolErrorResponse,
@@ -28,7 +31,6 @@ const GET_FILE_INFO_TOOL = {
   description:
     'Get metadata (size, modified time, permissions, mime type) for a file or directory.',
   inputSchema: GetFileInfoInputSchema,
-  outputSchema: GetFileInfoOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

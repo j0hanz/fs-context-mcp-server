@@ -439,6 +439,27 @@ export async function createServer(
   registerGetHelpPrompt(server, serverInstructions, localIcon);
   registerResultResources(server, resourceStore, localIcon);
   registerCompletions(server);
+  {
+    type RegisterToolFn = (...args: unknown[]) => unknown;
+    const typedServer = server as unknown as { registerTool: RegisterToolFn };
+    const origReg = typedServer.registerTool.bind(server);
+    typedServer.registerTool = (...regArgs: unknown[]) => {
+      const handlerIdx = regArgs.length - 1;
+      const origHandler = regArgs[handlerIdx];
+      if (typeof origHandler !== 'function') return origReg(...regArgs);
+      regArgs[handlerIdx] = async (...hArgs: unknown[]): Promise<unknown> => {
+        const r: unknown = await (
+          origHandler as (...a: unknown[]) => Promise<unknown>
+        )(...hArgs);
+        if (!r || typeof r !== 'object') return r;
+        const record = r as Record<string, unknown>;
+        return Object.fromEntries(
+          Object.entries(record).filter(([key]) => key !== 'structuredContent')
+        );
+      };
+      return origReg(...regArgs);
+    };
+  }
   registerAllTools(server, {
     resourceStore,
     isInitialized: () => rootsManager.isInitialized(),

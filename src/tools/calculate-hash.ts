@@ -19,7 +19,7 @@ import { assertNotAborted, withAbort } from '../lib/fs-helpers.js';
 import { validateExistingPath } from '../lib/path-validation.js';
 import {
   CalculateHashInputSchema,
-  CalculateHashOutputSchema,
+  type CalculateHashOutputSchema,
 } from '../schemas.js';
 import {
   buildToolErrorResponse,
@@ -42,7 +42,6 @@ const CALCULATE_HASH_TOOL = {
   title: 'Calculate Hash',
   description: 'Calculate SHA-256 hash of a file or directory.',
   inputSchema: CalculateHashInputSchema,
-  outputSchema: CalculateHashOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

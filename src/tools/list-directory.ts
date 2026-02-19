@@ -10,7 +10,7 @@ import { ErrorCode } from '../lib/errors.js';
 import { listDirectory } from '../lib/file-operations/list-directory.js';
 import {
   ListDirectoryInputSchema,
-  ListDirectoryOutputSchema,
+  type ListDirectoryOutputSchema,
 } from '../schemas.js';
 import {
   buildToolErrorResponse,
@@ -34,7 +34,6 @@ const LIST_DIRECTORY_TOOL = {
     'Use includeIgnored=true to include ignored directories like node_modules. ' +
     'For recursive searches, use find instead.',
   inputSchema: ListDirectoryInputSchema,
-  outputSchema: ListDirectoryOutputSchema,
   annotations: {
     readOnlyHint: true,
     idempotentHint: true,

@@ -8,7 +8,10 @@ import type { z } from 'zod';
 import { ErrorCode, isNodeError } from '../lib/errors.js';
 import { withAbort } from '../lib/fs-helpers.js';
 import { validatePathForWrite } from '../lib/path-validation.js';
-import { DeleteFileInputSchema, DeleteFileOutputSchema } from '../schemas.js';
+import {
+  DeleteFileInputSchema,
+  type DeleteFileOutputSchema,
+} from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
@@ -26,7 +29,6 @@ const DELETE_FILE_TOOL = {
   title: 'Delete File',
   description: 'Delete a file or directory.',
   inputSchema: DeleteFileInputSchema,
-  outputSchema: DeleteFileOutputSchema,
   annotations: {
     readOnlyHint: false,
     destructiveHint: true,

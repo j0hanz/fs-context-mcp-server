@@ -57,42 +57,60 @@ async function closeSession(session: ClientSession | undefined): Promise<void> {
   await session.transport.close();
 }
 
-function getStructured(result: unknown): Record<string, unknown> {
-  assert.ok(result && typeof result === 'object');
-  const structured = (result as { structuredContent?: unknown })
-    .structuredContent;
-  assert.ok(structured && typeof structured === 'object');
-  return structured as Record<string, unknown>;
+function getToolText(result: unknown): string {
+  assert.ok(
+    result && typeof result === 'object',
+    'Expected tool result object'
+  );
+  const content = (result as { content?: unknown[] }).content;
+  assert.ok(
+    Array.isArray(content) && content.length > 0,
+    'Expected non-empty content array'
+  );
+  const textBlock = (content as Array<{ type?: string; text?: string }>).find(
+    (block) => block.type === 'text'
+  );
+  assert.ok(textBlock?.text !== undefined, 'Expected text content block');
+  return textBlock.text as string;
 }
 
-function assertToolOk(
-  result: unknown,
-  toolName: string
-): Record<string, unknown> {
-  const structured = getStructured(result);
-  assert.strictEqual(
-    structured.ok,
-    true,
-    `${toolName} should return ok=true, got: ${JSON.stringify(structured)}`
+function getResourceUri(result: unknown): string | undefined {
+  assert.ok(result && typeof result === 'object');
+  const content = (result as { content?: unknown[] }).content;
+  if (!Array.isArray(content)) return undefined;
+  const link = (content as Array<{ type?: string; uri?: string }>).find(
+    (block) => block.type === 'resource_link'
   );
-  return structured;
+  return link?.uri;
+}
+
+function assertToolOk(result: unknown, toolName: string): string {
+  assert.ok(
+    result && typeof result === 'object',
+    `${toolName}: expected result object`
+  );
+  const isError = (result as { isError?: unknown }).isError;
+  assert.ok(!isError, `${toolName} should succeed but returned isError=true`);
+  return getToolText(result);
 }
 
 function assertToolErrorCode(
   result: unknown,
   toolName: string,
   expectedCode: string
-): Record<string, unknown> {
-  const structured = getStructured(result);
-  assert.strictEqual(
-    structured.ok,
-    false,
-    `${toolName} should return ok=false`
+): void {
+  assert.ok(
+    result && typeof result === 'object',
+    `${toolName}: expected result object`
   );
-  const error = structured.error as Record<string, unknown> | undefined;
-  assert.ok(error && typeof error === 'object');
-  assert.strictEqual(error.code, expectedCode);
-  return structured;
+  const isError = (result as { isError?: unknown }).isError;
+  assert.ok(isError, `${toolName} should be an error`);
+  const text = getToolText(result);
+  assert.match(
+    text,
+    new RegExp(`\\[${expectedCode}\\]`),
+    `${toolName}: expected error code ${expectedCode}`
+  );
 }
 
 function resourceText(resourceResult: unknown): string {
@@ -203,43 +221,36 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     });
     assert.match(resourceText(instructions), /filesystem-mcp/iu);
 
-    const roots = assertToolOk(
+    const rootsText = assertToolOk(
       await client.callTool({ name: 'roots', arguments: {} }),
       'roots'
     );
-    assert.equal(roots.rootsCount, 1);
+    assert.match(rootsText, /\b1 workspace roots/u);
 
-    const lsDefault = assertToolOk(
+    const lsText = assertToolOk(
       await client.callTool({ name: 'ls', arguments: { path: tmpRoot } }),
       'ls'
     );
-    const lsDefaultEntries =
-      (lsDefault.entries as Array<{ name?: string }>) ?? [];
-    assert.ok(!lsDefaultEntries.some((entry) => entry.name === '.secret.env'));
-    assert.ok(!lsDefaultEntries.some((entry) => entry.name === 'node_modules'));
+    assert.ok(!lsText.includes('.secret.env'));
+    assert.ok(!lsText.includes('node_modules'));
 
-    const lsIncludeIgnored = assertToolOk(
+    const lsIgnoredText = assertToolOk(
       await client.callTool({
         name: 'ls',
         arguments: { path: tmpRoot, includeIgnored: true },
       }),
       'ls(includeIgnored)'
     );
-    const lsIncludeIgnoredEntries =
-      (lsIncludeIgnored.entries as Array<{ name?: string }>) ?? [];
-    assert.ok(
-      lsIncludeIgnoredEntries.some((entry) => entry.name === 'node_modules')
-    );
+    assert.ok(lsIgnoredText.includes('node_modules'));
 
-    const find = assertToolOk(
+    const findText = assertToolOk(
       await client.callTool({
         name: 'find',
         arguments: { path: tmpRoot, pattern: '**/*.txt' },
       }),
       'find'
     );
-    const findPaths = (find.results as Array<{ path?: string }>) ?? [];
-    assert.ok(findPaths.some((entry) => entry.path === 'hello.txt'));
+    assert.match(findText, /hello\.txt/u);
 
     assertToolOk(
       await client.callTool({
@@ -249,14 +260,14 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       'tree'
     );
 
-    const read = assertToolOk(
+    const readText = assertToolOk(
       await client.callTool({
         name: 'read',
         arguments: { path: path.join(tmpRoot, 'hello.txt') },
       }),
       'read'
     );
-    assert.match(String(read.content ?? ''), /Hello world/u);
+    assert.match(readText, /Hello world/u);
 
     assertToolOk(
       await client.callTool({
@@ -272,7 +283,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       'read_many'
     );
 
-    const grep = assertToolOk(
+    const grepText = assertToolOk(
       await client.callTool({
         name: 'grep',
         arguments: {
@@ -284,19 +295,18 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       }),
       'grep(regex)'
     );
-    assert.ok((grep.totalMatches as number) >= 1);
+    assert.match(grepText, /Found \d+/u);
 
-    const stat = assertToolOk(
+    const statText = assertToolOk(
       await client.callTool({
         name: 'stat',
         arguments: { path: path.join(tmpRoot, 'hello.txt') },
       }),
       'stat'
     );
-    const statInfo = stat.info as Record<string, unknown> | undefined;
-    assert.equal(statInfo?.type, 'file');
+    assert.match(statText, /\(file\)/u);
 
-    const statMany = assertToolOk(
+    const statManyText = assertToolOk(
       await client.callTool({
         name: 'stat_many',
         arguments: {
@@ -308,26 +318,25 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       }),
       'stat_many'
     );
-    const statSummary = statMany.summary as Record<string, unknown> | undefined;
-    assert.equal(statSummary?.failed, 1);
+    assert.match(statManyText, /missing\.txt/u);
 
-    const fileHash = assertToolOk(
+    const fileHashText = assertToolOk(
       await client.callTool({
         name: 'calculate_hash',
         arguments: { path: path.join(tmpRoot, 'hello.txt') },
       }),
       'calculate_hash(file)'
     );
-    assert.equal(fileHash.isDirectory, false);
+    assert.match(fileHashText, /^[0-9a-f]{64}$/u);
 
-    const dirHash = assertToolOk(
+    const dirHashText = assertToolOk(
       await client.callTool({
         name: 'calculate_hash',
         arguments: { path: path.join(tmpRoot, 'dirA') },
       }),
       'calculate_hash(dir)'
     );
-    assert.equal(dirHash.isDirectory, true);
+    assert.match(dirHashText, /files/u);
 
     assertToolOk(
       await client.callTool({
@@ -414,7 +423,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       'rm(ignoreIfNotExists)'
     );
 
-    const diff = assertToolOk(
+    const diffText = assertToolOk(
       await client.callTool({
         name: 'diff_files',
         arguments: {
@@ -425,7 +434,6 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       }),
       'diff_files'
     );
-    const diffText = String(diff.diff ?? '');
     assert.match(diffText, /@@/u);
 
     assertToolOk(
@@ -452,14 +460,14 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       'apply_patch(apply)'
     );
 
-    const patchedRead = assertToolOk(
+    const patchedReadText = assertToolOk(
       await client.callTool({
         name: 'read',
         arguments: { path: path.join(tmpRoot, 'patch-target.txt') },
       }),
       'read(patchedTarget)'
     );
-    assert.match(String(patchedRead.content ?? ''), /BETA/u);
+    assert.match(patchedReadText, /BETA/u);
 
     assertToolOk(
       await client.callTool({
@@ -475,7 +483,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       'search_and_replace(dryRun)'
     );
 
-    const searchReplace = assertToolOk(
+    const searchReplaceText = assertToolOk(
       await client.callTool({
         name: 'search_and_replace',
         arguments: {
@@ -487,7 +495,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       }),
       'search_and_replace(apply)'
     );
-    assert.equal(searchReplace.filesChanged, 1);
+    assert.match(searchReplaceText, / 1 /u);
 
     assertToolErrorCode(
       await client.callTool({
@@ -507,14 +515,12 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       'E_ACCESS_DENIED'
     );
 
-    const largeRead = assertToolOk(
-      await client.callTool({
-        name: 'read',
-        arguments: { path: path.join(tmpRoot, 'large.txt') },
-      }),
-      'read(large)'
-    );
-    const largeResourceUri = largeRead.resourceUri;
+    const largeReadResult = await client.callTool({
+      name: 'read',
+      arguments: { path: path.join(tmpRoot, 'large.txt') },
+    });
+    assertToolOk(largeReadResult, 'read(large)');
+    const largeResourceUri = getResourceUri(largeReadResult);
     assert.equal(typeof largeResourceUri, 'string');
     const largeResource = await client.readResource({
       uri: largeResourceUri as string,
@@ -533,32 +539,24 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     allowCwdSession = await startSession(['--allow-cwd']);
-    const allowRoots = assertToolOk(
+    const allowRootsText = assertToolOk(
       await allowCwdSession.client.callTool({ name: 'roots', arguments: {} }),
       'roots(--allow-cwd)'
     );
-    const allowDirectories = (allowRoots.directories as string[]) ?? [];
     assert.ok(
-      allowDirectories.some(
-        (directory) =>
-          comparablePath(directory) === comparablePath(process.cwd())
-      )
+      comparablePath(allowRootsText).includes(comparablePath(process.cwd()))
     );
 
     allowCwdAliasSession = await startSession(['--allow_cwd']);
-    const aliasRoots = assertToolOk(
+    const aliasRootsText = assertToolOk(
       await allowCwdAliasSession.client.callTool({
         name: 'roots',
         arguments: {},
       }),
       'roots(--allow_cwd)'
     );
-    const aliasDirectories = (aliasRoots.directories as string[]) ?? [];
     assert.ok(
-      aliasDirectories.some(
-        (directory) =>
-          comparablePath(directory) === comparablePath(process.cwd())
-      )
+      comparablePath(aliasRootsText).includes(comparablePath(process.cwd()))
     );
   } finally {
     await closeSession(allowCwdAliasSession);
