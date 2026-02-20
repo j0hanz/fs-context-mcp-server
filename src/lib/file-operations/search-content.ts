@@ -258,22 +258,23 @@ class ContextBuffer {
 
   snapshotBefore(): string[] {
     if (this.size === 0) return [];
-    const result: string[] = [];
+    const result = new Array<string>(this.size);
 
     if (this.size < this.capacity) {
       for (let i = 0; i < this.size; i++) {
-        const item = this.buffer[i];
-        if (item !== undefined) result.push(item);
+        result[i] = this.buffer[i] ?? '';
       }
       return result;
     }
+
+    let outIndex = 0;
     for (let i = this.head; i < this.capacity; i++) {
-      const item = this.buffer[i];
-      if (item !== undefined) result.push(item);
+      result[outIndex] = this.buffer[i] ?? '';
+      outIndex++;
     }
     for (let i = 0; i < this.head; i++) {
-      const item = this.buffer[i];
-      if (item !== undefined) result.push(item);
+      result[outIndex] = this.buffer[i] ?? '';
+      outIndex++;
     }
     return result;
   }
@@ -324,18 +325,15 @@ async function readMatches(
       if (isCancelled()) break;
 
       const matchCount = matcher(rawLine);
-      let content: string | undefined;
-      const getContent = (): string => {
-        content ??= trimContent(rawLine);
-        return content;
-      };
+      const trimmedLine =
+        hasContext || matchCount > 0 ? trimContent(rawLine) : '';
 
       if (matchCount > 0) {
         if (ctx) {
           matches.push({
             file: requestedPath,
             line: lineNumber,
-            content: getContent(),
+            content: trimmedLine,
             matchCount,
             contextBefore: ctx.snapshotBefore(),
             contextAfter: ctx.scheduleAfter(),
@@ -344,14 +342,14 @@ async function readMatches(
           matches.push({
             file: requestedPath,
             line: lineNumber,
-            content: getContent(),
+            content: trimmedLine,
             matchCount,
           });
         }
       }
 
       if (ctx) {
-        ctx.add(getContent());
+        ctx.add(trimmedLine);
       }
       lineNumber++;
     }

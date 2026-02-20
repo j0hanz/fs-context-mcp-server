@@ -648,23 +648,15 @@ export async function getValidRootDirectories(
   if (fileRoots.length === 0) return [];
 
   // Phase 1: Resolve all roots in parallel (order-preserving via index).
-  const resolvedResults = await Promise.allSettled(
+  const resolvedResults = await Promise.all(
     fileRoots.map((root) => resolveRootDirectory(root, signal))
   );
-
-  // Propagate any abort errors before processing results.
-  for (const result of resolvedResults) {
-    if (result.status === 'rejected') rethrowIfAborted(result.reason);
-  }
-
-  const validPaths = resolvedResults
-    .map((r) => (r.status === 'fulfilled' ? r.value : null))
-    .filter((p): p is string => p !== null);
+  const validPaths = resolvedResults.filter((p): p is string => p !== null);
 
   if (validPaths.length === 0) return [];
 
   // Phase 2: Expand real paths for each valid directory in parallel.
-  const realExpansions = await Promise.allSettled(
+  const realExpansions = await Promise.all(
     validPaths.map(async (normalizedPath) => {
       const extra: string[] = [];
       await maybeAddRealPath(normalizedPath, extra, signal);
@@ -672,18 +664,13 @@ export async function getValidRootDirectories(
     })
   );
 
-  // Propagate any abort errors from real-path resolution.
-  for (const result of realExpansions) {
-    if (result.status === 'rejected') rethrowIfAborted(result.reason);
-  }
-
   // Build output preserving insertion order: [normalizedPath, realPath?] per root.
   const validDirs: string[] = [];
   validPaths.forEach((p, i) => {
     validDirs.push(p);
-    const exp = realExpansions[i];
-    if (exp?.status === 'fulfilled' && exp.value !== null) {
-      validDirs.push(exp.value);
+    const expanded = realExpansions[i];
+    if (expanded !== null && expanded !== undefined) {
+      validDirs.push(expanded);
     }
   });
 

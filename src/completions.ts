@@ -278,7 +278,17 @@ async function resolveContextBaseDirectory(
   contextArguments: Record<string, string> | undefined,
   allowed: string[]
 ): Promise<string | undefined> {
-  if (!contextArguments || Object.keys(contextArguments).length === 0) {
+  if (!contextArguments) {
+    return undefined;
+  }
+
+  let hasContextArgument = false;
+  for (const key in contextArguments) {
+    if (!Object.prototype.hasOwnProperty.call(contextArguments, key)) continue;
+    hasContextArgument = true;
+    break;
+  }
+  if (!hasContextArgument) {
     return undefined;
   }
 
@@ -392,11 +402,12 @@ function findMatchingRoots(
 ): string[] {
   const matches: string[] = [];
   const lowerPrefix = prefix.toLowerCase();
+  const normalizedSearchDir = normalizePath(searchDir);
 
   for (const root of allowed) {
     const rootDir = path.dirname(root);
     // Check if root is a direct child of searchDir
-    if (normalizePath(rootDir) === searchDir) {
+    if (normalizePath(rootDir) === normalizedSearchDir) {
       const rootName = path.basename(root);
       if (rootName.toLowerCase().startsWith(lowerPrefix)) {
         matches.push(`${root}${path.sep}`);
@@ -440,10 +451,8 @@ export async function getPathCompletions(
     }
 
     const { searchDir, prefix } = context;
-    const [dirMatches, rootMatches] = await Promise.all([
-      findMatchesInDirectory(searchDir, prefix, allowed),
-      Promise.resolve(findMatchingRoots(searchDir, prefix, allowed)),
-    ]);
+    const dirMatches = await findMatchesInDirectory(searchDir, prefix, allowed);
+    const rootMatches = findMatchingRoots(searchDir, prefix, allowed);
 
     // Deduplicate and sort
     const unique = new Set<string>();

@@ -241,39 +241,30 @@ async function validateBatch(
   return infos;
 }
 
-async function applyBudgetForRange(options: {
+function applyBudgetForRange(options: {
   batchStart: number;
   batchEnd: number;
-  filePaths: readonly string[];
   totalFiles: number;
   maxTotalSize: number;
   maxSize: number;
   validated: Map<number, ValidatedFileInfo>;
   skippedBudget: Set<number>;
   totalSize: number;
-  signal?: AbortSignal;
-}): Promise<{ totalSize: number; exceeded: boolean }> {
+}): { totalSize: number; exceeded: boolean } {
   const {
     batchStart,
     batchEnd,
-    filePaths,
     totalFiles,
     maxTotalSize,
     maxSize,
     validated,
     skippedBudget,
-    signal,
     totalSize: startingTotalSize,
   } = options;
   let totalSize = startingTotalSize;
 
   for (let index = batchStart; index < batchEnd; index += 1) {
-    const filePath = filePaths[index];
-    if (!filePath) continue;
-    const cached = validated.get(index);
-    const info =
-      cached ??
-      (await resolveValidatedInfo(filePath, index, validated, signal));
+    const info = validated.get(index);
     if (!info) continue;
 
     const { exceeded, totalSize: nextTotalSize } = applyBudget(
@@ -327,17 +318,15 @@ async function collectFileBudget(
       validated.set(index, info);
     }
 
-    const budgetResult = await applyBudgetForRange({
+    const budgetResult = applyBudgetForRange({
       batchStart,
       batchEnd,
-      filePaths,
       totalFiles,
       maxTotalSize,
       maxSize,
       validated,
       skippedBudget,
       totalSize,
-      ...(signal ? { signal } : {}),
     });
 
     const { exceeded, totalSize: nextTotalSize } = budgetResult;
@@ -348,26 +337,6 @@ async function collectFileBudget(
   }
 
   return { skippedBudget, validated };
-}
-
-async function resolveValidatedInfo(
-  filePath: string,
-  index: number,
-  validated: Map<number, ValidatedFileInfo>,
-  signal?: AbortSignal
-): Promise<ValidatedFileInfo | undefined> {
-  const existing = validated.get(index);
-  if (existing) {
-    return existing;
-  }
-
-  const info = await tryValidateFile(filePath, index, signal);
-  if (info) {
-    validated.set(index, info);
-    return info;
-  }
-
-  return undefined;
 }
 
 function buildOutput(filePaths: readonly string[]): ReadMultipleResult[] {

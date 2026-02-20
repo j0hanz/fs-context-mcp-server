@@ -124,10 +124,9 @@ function buildStructuredSearchResult(
   options: { patternType: 'literal' | 'regex'; caseSensitive: boolean }
 ): z.infer<typeof SearchContentOutputSchema> {
   const { summary } = result;
-  const matches: SearchMatchPayload[] = [];
-  for (const match of normalizedMatches) {
-    matches.push(buildSearchMatchPayload(match));
-  }
+  const matches = normalizedMatches.map((match) =>
+    buildSearchMatchPayload(match)
+  );
 
   return {
     ok: true,
@@ -244,10 +243,9 @@ async function handleSearchContent(
   }
 
   const previewMatches = normalizedMatches.slice(0, MAX_INLINE_MATCHES);
-  const previewPayload: SearchMatchPayload[] = [];
-  for (const match of previewMatches) {
-    previewPayload.push(buildSearchMatchPayload(match));
-  }
+  const previewPayload = previewMatches.map((match) =>
+    buildSearchMatchPayload(match)
+  );
   const previewStructured: z.infer<typeof SearchContentOutputSchema> = {
     ...structuredFull,
     matches: previewPayload,
