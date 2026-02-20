@@ -16,6 +16,7 @@ import {
   buildToolResponse,
   executeToolWithDiagnostics,
   READ_ONLY_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -25,13 +26,15 @@ import {
   wrapToolHandler,
 } from './shared.js';
 
-const GET_FILE_INFO_TOOL = {
+export const GET_FILE_INFO_TOOL: ToolContract = {
+  name: 'stat',
   title: 'Get File Info',
   description:
     'Get metadata (size, modified time, permissions, mime type) for a file or directory.',
   inputSchema: GetFileInfoInputSchema,
   outputSchema: GetFileInfoOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: ['Use before read/search when file size/type uncertainty exists.'],
 } as const;
 
 function formatFileInfoDetails(info: FileInfo): string {
@@ -83,20 +86,26 @@ export function registerGetFileInfoTool(
         buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, args.path),
     });
 
-  const validatedHandler = withValidatedArgs(GetFileInfoInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => `🕮 stat: ${path.basename(args.path)}`,
+    completionMessage: (args, result) => {
+      const name = path.basename(args.path);
+      if (result.isError) return `🕮 stat: ${name} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok || !sc.info) return `🕮 stat: ${name} • failed`;
+      return `🕮 stat: ${sc.info.name} • ${sc.info.type}, ${formatBytes(sc.info.size)}`;
+    },
+  });
+
+  const validatedHandler = withValidatedArgs(
+    GetFileInfoInputSchema,
+    wrappedHandler
+  );
+
   server.registerTool(
     'stat',
     withDefaultIcons({ ...GET_FILE_INFO_TOOL }, options.iconInfo),
-    wrapToolHandler(validatedHandler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => `🕮 stat: ${path.basename(args.path)}`,
-      completionMessage: (args, result) => {
-        const name = path.basename(args.path);
-        if (result.isError) return `🕮 stat: ${name} • failed`;
-        const sc = result.structuredContent;
-        if (!sc.ok || !sc.info) return `🕮 stat: ${name} • failed`;
-        return `🕮 stat: ${sc.info.name} • ${sc.info.type}, ${formatBytes(sc.info.size)}`;
-      },
-    })
+    validatedHandler
   );
 }

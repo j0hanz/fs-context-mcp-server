@@ -19,6 +19,7 @@ import {
   buildToolResponse,
   executeToolWithDiagnostics,
   READ_ONLY_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -29,12 +30,14 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const GET_MULTIPLE_FILE_INFO_TOOL = {
+export const GET_MULTIPLE_FILE_INFO_TOOL: ToolContract = {
+  name: 'stat_many',
   title: 'Get Multiple File Info',
   description: 'Get metadata for multiple files or directories in one request.',
   inputSchema: GetMultipleFileInfoInputSchema,
   outputSchema: GetMultipleFileInfoOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: ['Use before read/search when file size/type uncertainty exists.'],
 } as const;
 
 function formatFileInfoDetail(info: FileInfo): string {
@@ -112,11 +115,7 @@ export function registerGetMultipleFileInfoTool(
     });
   };
 
-  const validatedHandler = withValidatedArgs(
-    GetMultipleFileInfoInputSchema,
-    handler
-  );
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const first = path.basename(args.paths[0] ?? '');
@@ -138,12 +137,17 @@ export function registerGetMultipleFileInfoTool(
     },
   });
 
+  const validatedHandler = withValidatedArgs(
+    GetMultipleFileInfoInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'stat_many',
       GET_MULTIPLE_FILE_INFO_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -152,6 +156,6 @@ export function registerGetMultipleFileInfoTool(
   server.registerTool(
     'stat_many',
     withDefaultIcons({ ...GET_MULTIPLE_FILE_INFO_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

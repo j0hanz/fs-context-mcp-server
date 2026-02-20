@@ -19,6 +19,7 @@ import {
   executeToolWithDiagnostics,
   maybeExternalizeTextContent,
   READ_ONLY_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -28,7 +29,8 @@ import {
   wrapToolHandler,
 } from './shared.js';
 
-const DIFF_FILES_TOOL = {
+export const DIFF_FILES_TOOL: ToolContract = {
+  name: 'diff_files',
   title: 'Diff Files',
   description:
     'Generate a unified diff between two files. ' +
@@ -37,6 +39,7 @@ const DIFF_FILES_TOOL = {
   inputSchema: DiffFilesInputSchema,
   outputSchema: DiffFilesOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  gotchas: ['`isIdentical=true` means no hunks (`@@`) and empty diff.'],
 } as const;
 
 function assertDiffFileSizeWithinLimit(
@@ -146,27 +149,33 @@ export function registerDiffFilesTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.original),
     });
 
-  const validatedHandler = withValidatedArgs(DiffFilesInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => {
+      const name1 = path.basename(args.original);
+      const name2 = path.basename(args.modified);
+      return `🕮 diff_files: ${name1} ⟷ ${name2}`;
+    },
+    completionMessage: (args, result) => {
+      const n1 = path.basename(args.original);
+      const n2 = path.basename(args.modified);
+      if (result.isError) return `🕮 diff_files: ${n1} ⟷ ${n2} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `🕮 diff_files: ${n1} ⟷ ${n2} • failed`;
+      if (sc.isIdentical) return `🕮 diff_files: ${n1} ⟷ ${n2} • identical`;
+      const hunks = (sc.diff?.match(/@@/g) ?? []).length;
+      return `🕮 diff_files: ${n1} ⟷ ${n2} • ${hunks} hunk${hunks !== 1 ? 's' : ''}`;
+    },
+  });
+
+  const validatedHandler = withValidatedArgs(
+    DiffFilesInputSchema,
+    wrappedHandler
+  );
+
   server.registerTool(
     'diff_files',
     withDefaultIcons({ ...DIFF_FILES_TOOL }, options.iconInfo),
-    wrapToolHandler(validatedHandler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        const name1 = path.basename(args.original);
-        const name2 = path.basename(args.modified);
-        return `🕮 diff_files: ${name1} ⟷ ${name2}`;
-      },
-      completionMessage: (args, result) => {
-        const n1 = path.basename(args.original);
-        const n2 = path.basename(args.modified);
-        if (result.isError) return `🕮 diff_files: ${n1} ⟷ ${n2} • failed`;
-        const sc = result.structuredContent;
-        if (!sc.ok) return `🕮 diff_files: ${n1} ⟷ ${n2} • failed`;
-        if (sc.isIdentical) return `🕮 diff_files: ${n1} ⟷ ${n2} • identical`;
-        const hunks = (sc.diff?.match(/@@/g) ?? []).length;
-        return `🕮 diff_files: ${n1} ⟷ ${n2} • ${hunks} hunk${hunks !== 1 ? 's' : ''}`;
-      },
-    })
+    validatedHandler
   );
 }

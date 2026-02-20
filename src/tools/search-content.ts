@@ -28,6 +28,7 @@ import {
   notifyProgress,
   READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -41,7 +42,8 @@ import { registerToolTaskIfAvailable } from './task-support.js';
 const MAX_INLINE_MATCHES =
   parseInt(process.env['FS_CONTEXT_MAX_INLINE_MATCHES'] ?? '', 10) || 50;
 
-const SEARCH_CONTENT_TOOL = {
+export const SEARCH_CONTENT_TOOL: ToolContract = {
+  name: 'grep',
   title: 'Search Content',
   description:
     'Search for text within file contents (grep-like). ' +
@@ -52,6 +54,13 @@ const SEARCH_CONTENT_TOOL = {
   inputSchema: SearchContentInputSchema,
   outputSchema: SearchContentOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: [
+    'Inline match rows are capped (first 50); full structured results are externalized via `resourceUri`.',
+    'Skips binary and oversized files.',
+  ],
+  gotchas: [
+    'Inline match rows are capped (first 50); full structured results are externalized via `resourceUri`.',
+  ],
 } as const;
 
 function assertValidRegexPattern(pattern: string): void {
@@ -377,17 +386,21 @@ export function registerSearchContentTool(
     });
 
   const { isInitialized } = options;
-  const validatedHandler = withValidatedArgs(SearchContentInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: isInitialized,
   });
+
+  const validatedHandler = withValidatedArgs(
+    SearchContentInputSchema,
+    wrappedHandler
+  );
 
   if (
     registerToolTaskIfAvailable(
       server,
       'grep',
       SEARCH_CONTENT_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       isInitialized
     )
@@ -396,6 +409,6 @@ export function registerSearchContentTool(
   server.registerTool(
     'grep',
     withDefaultIcons({ ...SEARCH_CONTENT_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

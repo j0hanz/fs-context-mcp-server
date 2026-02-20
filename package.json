@@ -22,7 +22,6 @@
   ],
   "scripts": {
     "clean": "node scripts/tasks.mjs clean",
-    "validate:instructions": "node scripts/tasks.mjs validate:instructions",
     "build": "node scripts/tasks.mjs build",
     "copy:assets": "node scripts/tasks.mjs copy:assets",
     "prepare": "npm run build",

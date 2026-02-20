@@ -20,6 +20,7 @@ import {
   notifyProgress,
   READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -53,7 +54,8 @@ function decodeCursor(cursor: string): number {
   return 0;
 }
 
-const SEARCH_FILES_TOOL = {
+export const SEARCH_FILES_TOOL: ToolContract = {
+  name: 'find',
   title: 'Find Files',
   description:
     'Find files by glob pattern (e.g., **/*.ts). ' +
@@ -63,6 +65,10 @@ const SEARCH_FILES_TOOL = {
   inputSchema: SearchFilesInputSchema,
   outputSchema: SearchFilesOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: [
+    'Respects `.gitignore` unless `includeIgnored=true`.',
+    'Returns relative paths plus metadata; may truncate.',
+  ],
 } as const;
 
 async function handleSearchFiles(
@@ -247,16 +253,21 @@ export function registerSearchFilesTool(
 
   const { isInitialized } = options;
 
-  const validatedHandler = withValidatedArgs(SearchFilesInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: isInitialized,
   });
+
+  const validatedHandler = withValidatedArgs(
+    SearchFilesInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'find',
       SEARCH_FILES_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       isInitialized
     )
@@ -265,6 +276,6 @@ export function registerSearchFilesTool(
   server.registerTool(
     'find',
     withDefaultIcons({ ...SEARCH_FILES_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

@@ -18,6 +18,7 @@ import {
   executeToolWithDiagnostics,
   maybeExternalizeTextContent,
   READ_ONLY_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -28,7 +29,8 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const READ_FILE_TOOL = {
+export const READ_FILE_TOOL: ToolContract = {
+  name: 'read',
   title: 'Read File',
   description:
     'Read the text contents of a file. ' +
@@ -37,6 +39,9 @@ const READ_FILE_TOOL = {
   inputSchema: ReadFileInputSchema,
   outputSchema: ReadFileOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: [
+    'Large content is externalized to `filesystem-mcp://result/{id}` and preview is returned inline.',
+  ],
 } as const;
 
 async function handleReadFile(
@@ -128,8 +133,7 @@ export function registerReadFileTool(
         buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, args.path),
     });
 
-  const validatedHandler = withValidatedArgs(ReadFileInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const name = path.basename(args.path);
@@ -151,12 +155,18 @@ export function registerReadFileTool(
       return `🕮 read: ${name} • ${sc.totalLines ?? '?'} lines`;
     },
   });
+
+  const validatedHandler = withValidatedArgs(
+    ReadFileInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'read',
       READ_FILE_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -165,6 +175,6 @@ export function registerReadFileTool(
   server.registerTool(
     'read',
     withDefaultIcons({ ...READ_FILE_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

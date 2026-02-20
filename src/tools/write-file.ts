@@ -14,6 +14,7 @@ import {
   buildToolResponse,
   DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -24,13 +25,20 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const WRITE_FILE_TOOL = {
+export const WRITE_FILE_TOOL: ToolContract = {
+  name: 'write',
   title: 'Write File',
   description:
     'Write content to a file. Creates the file if it does not exist.',
   inputSchema: WriteFileInputSchema,
   outputSchema: WriteFileOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+  nuances: [
+    'Creates parent directories automatically; overwrites existing content.',
+  ],
+  gotchas: [
+    'Creates parent directories automatically; overwrites existing content.',
+  ],
 } as const;
 
 async function handleWriteFile(
@@ -74,8 +82,7 @@ export function registerWriteFileTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
-  const validatedHandler = withValidatedArgs(WriteFileInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) =>
       `🛠 write: ${path.basename(args.path)} [${args.content.length} chars]`,
@@ -87,12 +94,18 @@ export function registerWriteFileTool(
       return `🛠 write: ${name} • ${sc.bytesWritten ?? 0} bytes`;
     },
   });
+
+  const validatedHandler = withValidatedArgs(
+    WriteFileInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'write',
       WRITE_FILE_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -101,6 +114,6 @@ export function registerWriteFileTool(
   server.registerTool(
     'write',
     withDefaultIcons({ ...WRITE_FILE_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

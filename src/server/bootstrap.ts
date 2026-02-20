@@ -1,8 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
-import * as path from 'node:path';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 
 import {
   InMemoryTaskMessageQueue,
@@ -27,6 +25,7 @@ import {
   registerMetricsResource,
   registerResultResources,
 } from '../resources.js';
+import { buildServerInstructions } from '../resources/generated-instructions.js';
 import { registerAllTools } from '../tools.js';
 import type { IconInfo } from '../tools/shared.js';
 import { withDefaultIcons } from '../tools/shared.js';
@@ -54,24 +53,8 @@ function getRootsManager(server: McpServer): RootsManager {
   return manager;
 }
 
-async function loadServerInstructions(): Promise<string> {
-  const defaultInstructions = `
-Filesystem MCP Instructions
-(Detailed instructions failed to load - check logs)
-`;
-  try {
-    const currentDir = path.dirname(fileURLToPath(import.meta.url));
-    return await fs.readFile(
-      path.join(currentDir, '../instructions.md'),
-      'utf-8'
-    );
-  } catch (error) {
-    console.error(
-      '[WARNING] Failed to load instructions.md:',
-      formatUnknownErrorMessage(error)
-    );
-    return defaultInstructions;
-  }
+function loadServerInstructions(): string {
+  return buildServerInstructions();
 }
 
 async function getLocalIconInfo(): Promise<IconInfo | undefined> {
@@ -99,7 +82,7 @@ export async function createServer(
   options: ServerOptions = {}
 ): Promise<McpServer> {
   const resourceStore = createInMemoryResourceStore();
-  const serverInstructions = await loadServerInstructions();
+  const serverInstructions = loadServerInstructions();
   const localIcon = await getLocalIconInfo();
   const taskToolSupport = supportsTaskToolRequests();
 

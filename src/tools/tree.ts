@@ -14,6 +14,7 @@ import {
   executeToolWithDiagnostics,
   READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -24,7 +25,8 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const TREE_TOOL = {
+export const TREE_TOOL: ToolContract = {
+  name: 'tree',
   title: 'Tree',
   description:
     'Render a directory tree (bounded recursion). ' +
@@ -33,6 +35,7 @@ const TREE_TOOL = {
   inputSchema: TreeInputSchema,
   outputSchema: TreeOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  gotchas: ['`maxDepth=0` returns only the root node.'],
 } as const;
 
 async function handleTree(
@@ -83,8 +86,7 @@ export function registerTreeTool(
     });
   };
 
-  const validatedHandler = withValidatedArgs(TreeInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       if (args.path) {
@@ -103,12 +105,14 @@ export function registerTreeTool(
     },
   });
 
+  const validatedHandler = withValidatedArgs(TreeInputSchema, wrappedHandler);
+
   if (
     registerToolTaskIfAvailable(
       server,
       'tree',
       TREE_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -117,6 +121,6 @@ export function registerTreeTool(
   server.registerTool(
     'tree',
     withDefaultIcons({ ...TREE_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

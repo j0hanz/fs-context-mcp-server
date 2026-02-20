@@ -17,6 +17,7 @@ import {
   buildToolResponse,
   DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -27,7 +28,8 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const APPLY_PATCH_TOOL = {
+export const APPLY_PATCH_TOOL: ToolContract = {
+  name: 'apply_patch',
   title: 'Apply Patch',
   description:
     'Apply a unified diff patch to a file. ' +
@@ -36,6 +38,7 @@ const APPLY_PATCH_TOOL = {
   inputSchema: ApplyPatchInputSchema,
   outputSchema: ApplyPatchOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+  gotchas: ['Patch must include valid hunk headers; use `dryRun=true` first.'],
 } as const;
 
 function assertPatchTargetSizeWithinLimit(
@@ -126,8 +129,7 @@ export function registerApplyPatchTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
-  const validatedHandler = withValidatedArgs(ApplyPatchInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const name = path.basename(args.path);
@@ -144,12 +146,18 @@ export function registerApplyPatchTool(
       return `🛠 apply_patch: ${name} • applied`;
     },
   });
+
+  const validatedHandler = withValidatedArgs(
+    ApplyPatchInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'apply_patch',
       APPLY_PATCH_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -158,6 +166,6 @@ export function registerApplyPatchTool(
   server.registerTool(
     'apply_patch',
     withDefaultIcons({ ...APPLY_PATCH_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

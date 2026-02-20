@@ -18,6 +18,7 @@ import {
   executeToolWithDiagnostics,
   READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -27,7 +28,8 @@ import {
   wrapToolHandler,
 } from './shared.js';
 
-const LIST_DIRECTORY_TOOL = {
+export const LIST_DIRECTORY_TOOL: ToolContract = {
+  name: 'ls',
   title: 'List Directory',
   description:
     'List the immediate contents of a directory (non-recursive). ' +
@@ -38,6 +40,7 @@ const LIST_DIRECTORY_TOOL = {
   inputSchema: ListDirectoryInputSchema,
   outputSchema: ListDirectoryOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: ['`pattern` enables filtered recursive traversal up to `maxDepth`.'],
 } as const;
 
 function buildListTextResult(
@@ -189,26 +192,32 @@ export function registerListDirectoryTool(
         ),
     });
 
-  const validatedHandler = withValidatedArgs(ListDirectoryInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => {
+      if (args.path) {
+        return `≣ ls: ${path.basename(args.path)}`;
+      }
+      return '≣ ls';
+    },
+    completionMessage: (args, result) => {
+      const base = args.path ? path.basename(args.path) : '.';
+      if (result.isError) return `≣ ls: ${base} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `≣ ls: ${base} • failed`;
+      const count = sc.totalEntries ?? 0;
+      return `≣ ls: ${base} • ${count} ${count === 1 ? 'entry' : 'entries'}`;
+    },
+  });
+
+  const validatedHandler = withValidatedArgs(
+    ListDirectoryInputSchema,
+    wrappedHandler
+  );
+
   server.registerTool(
     'ls',
     withDefaultIcons({ ...LIST_DIRECTORY_TOOL }, options.iconInfo),
-    wrapToolHandler(validatedHandler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        if (args.path) {
-          return `≣ ls: ${path.basename(args.path)}`;
-        }
-        return '≣ ls';
-      },
-      completionMessage: (args, result) => {
-        const base = args.path ? path.basename(args.path) : '.';
-        if (result.isError) return `≣ ls: ${base} • failed`;
-        const sc = result.structuredContent;
-        if (!sc.ok) return `≣ ls: ${base} • failed`;
-        const count = sc.totalEntries ?? 0;
-        return `≣ ls: ${base} • ${count} ${count === 1 ? 'entry' : 'entries'}`;
-      },
-    })
+    validatedHandler
   );
 }

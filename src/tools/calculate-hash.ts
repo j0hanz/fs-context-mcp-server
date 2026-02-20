@@ -28,6 +28,7 @@ import {
   executeToolWithDiagnostics,
   notifyProgress,
   READ_ONLY_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -40,12 +41,16 @@ import { registerToolTaskIfAvailable } from './task-support.js';
 
 const WINDOWS_PATH_SEPARATOR = /\\/gu;
 
-const CALCULATE_HASH_TOOL = {
+export const CALCULATE_HASH_TOOL: ToolContract = {
+  name: 'calculate_hash',
   title: 'Calculate Hash',
   description: 'Calculate SHA-256 hash of a file or directory.',
   inputSchema: CalculateHashInputSchema,
   outputSchema: CalculateHashOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: [
+    'Directory hashing respects root `.gitignore` and sorts paths for stable output.',
+  ],
 } as const;
 
 async function hashFile(
@@ -307,16 +312,21 @@ export function registerCalculateHashTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
-  const validatedHandler = withValidatedArgs(CalculateHashInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
   });
+
+  const validatedHandler = withValidatedArgs(
+    CalculateHashInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'calculate_hash',
       CALCULATE_HASH_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -325,6 +335,6 @@ export function registerCalculateHashTool(
   server.registerTool(
     'calculate_hash',
     withDefaultIcons({ ...CALCULATE_HASH_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

@@ -21,6 +21,7 @@ import {
   executeToolWithDiagnostics,
   maybeExternalizeTextContent,
   READ_ONLY_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -31,7 +32,8 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const READ_MULTIPLE_FILES_TOOL = {
+export const READ_MULTIPLE_FILES_TOOL: ToolContract = {
+  name: 'read_many',
   title: 'Read Multiple Files',
   description:
     'Read multiple text files in a single request. ' +
@@ -40,6 +42,10 @@ const READ_MULTIPLE_FILES_TOOL = {
   inputSchema: ReadMultipleFilesInputSchema,
   outputSchema: ReadMultipleFilesOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: ['Total read budget is capped by `MAX_READ_MANY_TOTAL_SIZE`.'],
+  gotchas: [
+    'Per-file `truncationReason` can be `head`, `range`, or `externalized`.',
+  ],
 } as const;
 
 async function handleReadMultipleFiles(
@@ -183,11 +189,7 @@ export function registerReadMultipleFilesTool(
     });
   };
 
-  const validatedHandler = withValidatedArgs(
-    ReadMultipleFilesInputSchema,
-    handler
-  );
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const first = path.basename(args.paths[0] ?? '');
@@ -209,12 +211,17 @@ export function registerReadMultipleFilesTool(
     },
   });
 
+  const validatedHandler = withValidatedArgs(
+    ReadMultipleFilesInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'read_many',
       READ_MULTIPLE_FILES_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -223,6 +230,6 @@ export function registerReadMultipleFilesTool(
   server.registerTool(
     'read_many',
     withDefaultIcons({ ...READ_MULTIPLE_FILES_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

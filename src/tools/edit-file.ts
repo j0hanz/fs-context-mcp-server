@@ -14,6 +14,7 @@ import {
   buildToolResponse,
   DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -23,7 +24,8 @@ import {
   wrapToolHandler,
 } from './shared.js';
 
-const EDIT_FILE_TOOL = {
+export const EDIT_FILE_TOOL: ToolContract = {
+  name: 'edit',
   title: 'Edit File',
   description:
     'Edit a file by replacing text. Sequentially applies a list of string replacements. ' +
@@ -33,6 +35,12 @@ const EDIT_FILE_TOOL = {
   inputSchema: EditFileInputSchema,
   outputSchema: EditFileOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+  nuances: [
+    'Apply sequential literal replacements (first occurrence per edit).',
+  ],
+  gotchas: [
+    '`oldText` must match exactly; unmatched items are reported in `unmatchedEdits`.',
+  ],
 } as const;
 
 interface EditResult {
@@ -143,27 +151,33 @@ export function registerEditFileTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
-  const validatedHandler = withValidatedArgs(EditFileInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: (args) => {
+      const name = path.basename(args.path);
+      return `🛠 edit: ${name} [${args.edits.length} edits]`;
+    },
+    completionMessage: (args, result) => {
+      const name = path.basename(args.path);
+      if (result.isError) return `🛠 edit: ${name} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `🛠 edit: ${name} • failed`;
+
+      if (sc.lineRange) {
+        return `🛠 edit: ${name} • [${sc.lineRange[0]}-${sc.lineRange[1]}]`;
+      }
+      return `🛠 edit: ${name} • [${sc.appliedEdits ?? 0} edits]`;
+    },
+  });
+
+  const validatedHandler = withValidatedArgs(
+    EditFileInputSchema,
+    wrappedHandler
+  );
+
   server.registerTool(
     'edit',
     withDefaultIcons({ ...EDIT_FILE_TOOL }, options.iconInfo),
-    wrapToolHandler(validatedHandler, {
-      guard: options.isInitialized,
-      progressMessage: (args) => {
-        const name = path.basename(args.path);
-        return `🛠 edit: ${name} [${args.edits.length} edits]`;
-      },
-      completionMessage: (args, result) => {
-        const name = path.basename(args.path);
-        if (result.isError) return `🛠 edit: ${name} • failed`;
-        const sc = result.structuredContent;
-        if (!sc.ok) return `🛠 edit: ${name} • failed`;
-
-        if (sc.lineRange) {
-          return `🛠 edit: ${name} • [${sc.lineRange[0]}-${sc.lineRange[1]}]`;
-        }
-        return `🛠 edit: ${name} • [${sc.appliedEdits ?? 0} edits]`;
-      },
-    })
+    validatedHandler
   );
 }

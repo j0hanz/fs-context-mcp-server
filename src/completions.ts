@@ -493,7 +493,10 @@ export async function getPathCompletions(
   }
 }
 
-export function registerCompletions(server: McpServer, instructions = ''): void {
+export function registerCompletions(
+  server: McpServer,
+  instructions = ''
+): void {
   const topicValues = extractTopicCompletions(instructions);
 
   server.server.setRequestHandler(CompleteRequestSchema, async (request) => {

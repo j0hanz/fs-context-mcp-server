@@ -17,6 +17,7 @@ import {
   buildToolResponse,
   executeToolWithDiagnostics,
   IDEMPOTENT_WRITE_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -27,7 +28,8 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const CREATE_DIRECTORY_TOOL = {
+export const CREATE_DIRECTORY_TOOL: ToolContract = {
+  name: 'mkdir',
   title: 'Create Directory',
   description: 'Create a new directory at the specified path (recursive)',
   inputSchema: CreateDirectoryInputSchema,
@@ -67,11 +69,7 @@ export function registerCreateDirectoryTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
-  const validatedHandler = withValidatedArgs(
-    CreateDirectoryInputSchema,
-    handler
-  );
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const name = path.basename(args.path) || args.path;
@@ -83,12 +81,18 @@ export function registerCreateDirectoryTool(
       return `🛠 mkdir: ${name} • created`;
     },
   });
+
+  const validatedHandler = withValidatedArgs(
+    CreateDirectoryInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'mkdir',
       CREATE_DIRECTORY_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -97,6 +101,6 @@ export function registerCreateDirectoryTool(
   server.registerTool(
     'mkdir',
     withDefaultIcons({ ...CREATE_DIRECTORY_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

@@ -22,6 +22,8 @@ import { getAllowedDirectories } from '../lib/path-validation.js';
 import type { ResourceStore } from '../lib/resource-store.js';
 import type { ToolErrorResponseSchema } from '../schemas.js';
 
+export { type ToolContract } from './contract.js';
+
 const MAX_INLINE_CONTENT_CHARS =
   parseInt(process.env['FS_CONTEXT_MAX_INLINE_CHARS'] ?? '', 10) || 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
@@ -212,7 +214,7 @@ export function parseToolArgs<Schema extends z.ZodType>(
 export function withValidatedArgs<Args, Result>(
   schema: z.ZodType<Args>,
   handler: (args: Args, extra: ToolExtra) => Promise<ToolResult<Result>>
-): (args: Args, extra: ToolExtra) => Promise<ToolResult<Result>> {
+): (args: unknown, extra: ToolExtra) => Promise<ToolResult<Result>> {
   return async (args, extra) => {
     const normalizedArgs = parseToolArgs(schema, args);
     return handler(normalizedArgs, extra);

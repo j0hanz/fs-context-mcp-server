@@ -14,6 +14,7 @@ import {
   buildToolResponse,
   DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -24,12 +25,16 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const DELETE_FILE_TOOL = {
+export const DELETE_FILE_TOOL: ToolContract = {
+  name: 'rm',
   title: 'Delete File',
   description: 'Delete a file or directory.',
   inputSchema: DeleteFileInputSchema,
   outputSchema: DeleteFileOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+  gotchas: [
+    'Non-empty directory delete requires `recursive=true`; else returns actionable input error.',
+  ],
 } as const;
 
 async function handleDeleteFile(
@@ -137,8 +142,7 @@ export function registerDeleteFileTool(
       },
     });
 
-  const validatedHandler = withValidatedArgs(DeleteFileInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => `🛠 rm: ${path.basename(args.path)}`,
     completionMessage: (args, result) => {
@@ -147,12 +151,18 @@ export function registerDeleteFileTool(
       return `🛠 rm: ${name} • deleted`;
     },
   });
+
+  const validatedHandler = withValidatedArgs(
+    DeleteFileInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'rm',
       DELETE_FILE_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -161,6 +171,6 @@ export function registerDeleteFileTool(
   server.registerTool(
     'rm',
     withDefaultIcons({ ...DELETE_FILE_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

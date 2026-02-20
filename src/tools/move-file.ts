@@ -17,6 +17,7 @@ import {
   buildToolResponse,
   DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
   executeToolWithDiagnostics,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -27,12 +28,14 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const MOVE_FILE_TOOL = {
+export const MOVE_FILE_TOOL: ToolContract = {
+  name: 'mv',
   title: 'Move File',
   description: 'Move or rename a file or directory.',
   inputSchema: MoveFileInputSchema,
   outputSchema: MoveFileOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+  nuances: ['Cross-device moves fall back to copy+delete.'],
 } as const;
 
 async function handleMoveFile(
@@ -94,8 +97,7 @@ export function registerMoveFileTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.source),
     });
 
-  const validatedHandler = withValidatedArgs(MoveFileInputSchema, handler);
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) =>
       `🛠 mv: ${path.basename(args.source)} → ${path.basename(args.destination)}`,
@@ -106,12 +108,18 @@ export function registerMoveFileTool(
       return `🛠 mv: ${src} → ${dst} • moved`;
     },
   });
+
+  const validatedHandler = withValidatedArgs(
+    MoveFileInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'mv',
       MOVE_FILE_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       options.isInitialized
     )
@@ -120,6 +128,6 @@ export function registerMoveFileTool(
   server.registerTool(
     'mv',
     withDefaultIcons({ ...MOVE_FILE_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

@@ -36,6 +36,7 @@ import {
   executeToolWithDiagnostics,
   notifyProgress,
   resolvePathOrRoot,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -46,7 +47,8 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const SEARCH_AND_REPLACE_TOOL = {
+export const SEARCH_AND_REPLACE_TOOL: ToolContract = {
+  name: 'search_and_replace',
   title: 'Search and Replace',
   description:
     'Search and replace text across multiple files matching a glob pattern. ' +
@@ -57,6 +59,12 @@ const SEARCH_AND_REPLACE_TOOL = {
   inputSchema: SearchAndReplaceInputSchema,
   outputSchema: SearchAndReplaceOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+  gotchas: [
+    'Literal mode is default; `isRegex=true` enables RE2 + capture replacements (`$1`, `$2`).',
+  ],
+  nuances: [
+    'Changed-file sample and failure sample are capped/truncated in output.',
+  ],
 } as const;
 
 const MAX_FAILURES = 20;
@@ -425,19 +433,21 @@ export function registerSearchAndReplaceTool(
 
   const { isInitialized } = options;
 
-  const validatedHandler = withValidatedArgs(
-    SearchAndReplaceInputSchema,
-    handler
-  );
-  const wrappedHandler = wrapToolHandler(validatedHandler, {
+  const wrappedHandler = wrapToolHandler(handler, {
     guard: isInitialized,
   });
+
+  const validatedHandler = withValidatedArgs(
+    SearchAndReplaceInputSchema,
+    wrappedHandler
+  );
+
   if (
     registerToolTaskIfAvailable(
       server,
       'search_and_replace',
       SEARCH_AND_REPLACE_TOOL,
-      wrappedHandler,
+      validatedHandler,
       options.iconInfo,
       isInitialized
     )
@@ -446,6 +456,6 @@ export function registerSearchAndReplaceTool(
   server.registerTool(
     'search_and_replace',
     withDefaultIcons({ ...SEARCH_AND_REPLACE_TOOL }, options.iconInfo),
-    wrappedHandler
+    validatedHandler
   );
 }

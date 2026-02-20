@@ -14,6 +14,7 @@ import {
   buildToolResponse,
   executeToolWithDiagnostics,
   READ_ONLY_TOOL_ANNOTATIONS,
+  type ToolContract,
   type ToolExtra,
   type ToolRegistrationOptions,
   type ToolResponse,
@@ -23,7 +24,8 @@ import {
   wrapToolHandler,
 } from './shared.js';
 
-const LIST_ALLOWED_DIRECTORIES_TOOL = {
+export const LIST_ALLOWED_DIRECTORIES_TOOL: ToolContract = {
+  name: 'roots',
   title: 'Workspace Roots',
   description:
     'List the workspace roots this server can access. ' +
@@ -32,6 +34,7 @@ const LIST_ALLOWED_DIRECTORIES_TOOL = {
   inputSchema: ListAllowedDirectoriesInputSchema,
   outputSchema: ListAllowedDirectoriesOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  nuances: ['Other tools are constrained to these roots.'],
 } as const;
 
 function buildTextRoots(dirs: string[]): string {
@@ -72,23 +75,26 @@ export function registerListAllowedDirectoriesTool(
       onError: (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN),
     });
 
+  const wrappedHandler = wrapToolHandler(handler, {
+    guard: options.isInitialized,
+    progressMessage: () => '≣ roots',
+    completionMessage: (_args, result) => {
+      if (result.isError) return `≣ roots • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `≣ roots • failed`;
+      const count = sc.rootsCount ?? 0;
+      return `≣ roots • ${count} ${count === 1 ? 'root' : 'roots'}`;
+    },
+  });
+
   const validatedHandler = withValidatedArgs(
     ListAllowedDirectoriesInputSchema,
-    handler
+    wrappedHandler
   );
+
   server.registerTool(
     'roots',
     withDefaultIcons({ ...LIST_ALLOWED_DIRECTORIES_TOOL }, options.iconInfo),
-    wrapToolHandler(validatedHandler, {
-      guard: options.isInitialized,
-      progressMessage: () => '≣ roots',
-      completionMessage: (_args, result) => {
-        if (result.isError) return `≣ roots • failed`;
-        const sc = result.structuredContent;
-        if (!sc.ok) return `≣ roots • failed`;
-        const count = sc.rootsCount ?? 0;
-        return `≣ roots • ${count} ${count === 1 ? 'root' : 'roots'}`;
-      },
-    })
+    validatedHandler
   );
 }
