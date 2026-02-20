@@ -291,6 +291,9 @@ const TERMINAL_TASK_STATUSES = new Set<GetTaskResult['status']>([
   'cancelled',
 ]);
 
+// BRITTLE: Detects terminal task store errors via string heuristics ('terminal status',
+// 'task not found'). These strings are SDK-internal and may change without notice.
+// Review and update this function when upgrading @modelcontextprotocol/sdk.
 function isTerminalTaskStoreError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   const normalized = message.toLowerCase();

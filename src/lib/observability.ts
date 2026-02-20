@@ -178,7 +178,9 @@ function extractResultError(
     : undefined;
 }
 
-function normalizePath(path: string | undefined): string | undefined {
+function sanitizePathForDiagnostics(
+  path: string | undefined
+): string | undefined {
   const { detail } = readConfig();
   if (!path || detail === 0) return undefined;
   if (detail === 2) return path;
@@ -196,7 +198,7 @@ function enrichWithToolContext(
     merged.tool = current.tool;
   }
 
-  const normalizedPath = normalizePath(current.path);
+  const normalizedPath = sanitizePathForDiagnostics(current.path);
   if (normalizedPath && !Object.hasOwn(merged, 'path')) {
     merged.path = normalizedPath;
   }
@@ -300,7 +302,7 @@ export function getToolContextSnapshot():
 
 function normalizeContext(ctx: OpsTraceContext): OpsTraceContext {
   if (!ctx.path) return ctx;
-  const normalized = normalizePath(ctx.path);
+  const normalized = sanitizePathForDiagnostics(ctx.path);
   if (!normalized) {
     const copy = { ...ctx };
     delete copy.path;
@@ -443,7 +445,7 @@ export async function withToolDiagnostics<T>(
   options?: { path?: string }
 ): Promise<T> {
   const config = readConfig();
-  const normalizedPath = normalizePath(options?.path);
+  const normalizedPath = sanitizePathForDiagnostics(options?.path);
 
   const context: ToolAsyncContext = {
     tool,

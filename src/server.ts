@@ -21,7 +21,6 @@ import type {
 
 import { z } from 'zod';
 
-import packageJsonRaw from '../package.json' with { type: 'json' };
 import { registerCompletions } from './completions.js';
 import { formatUnknownErrorMessage } from './lib/errors.js';
 import {
@@ -38,6 +37,7 @@ import {
 } from './lib/path-validation.js';
 import { createInMemoryResourceStore } from './lib/resource-store.js';
 import { isRecord } from './lib/type-guards.js';
+import { pkgInfo } from './pkg-info.js';
 import { registerGetHelpPrompt } from './prompts.js';
 import {
   registerInstructionResource,
@@ -46,16 +46,11 @@ import {
 import { registerAllTools } from './tools.js';
 import { type IconInfo, withDefaultIcons } from './tools/shared.js';
 
-const PackageJsonSchema = z.object({
-  version: z.string(),
-  description: z.string().optional(),
-  homepage: z.string().optional(),
-});
 const {
   version: SERVER_VERSION,
   description: SERVER_DESCRIPTION,
   homepage: SERVER_HOMEPAGE,
-} = PackageJsonSchema.parse(packageJsonRaw);
+} = pkgInfo;
 
 function normalizeCLIDirectories(dirs: readonly string[]): string[] {
   const normalized: string[] = [];
@@ -91,7 +86,7 @@ function canSendMcpLogs(server: McpServer): boolean {
   const capabilities = server.server.getClientCapabilities();
   if (!isRecord(capabilities)) return false;
   if (!('logging' in capabilities)) return false;
-  return Boolean((capabilities as { logging?: unknown }).logging);
+  return (capabilities as { logging?: unknown }).logging !== null;
 }
 
 function logToMcp(
@@ -139,6 +134,13 @@ class RootsManager {
 
   isInitialized(): boolean {
     return this.clientInitialized;
+  }
+
+  destroy(): void {
+    if (this.rootsUpdateTimeout) {
+      clearTimeout(this.rootsUpdateTimeout);
+      this.rootsUpdateTimeout = undefined;
+    }
   }
 
   logMissingDirectoriesIfNeeded(server: McpServer): void {
@@ -311,19 +313,21 @@ async function filterRootsWithinBaseline(
   signal?: AbortSignal
 ): Promise<string[]> {
   const normalizedBaseline = normalizeCLIDirectories(baseline);
-  const filtered: string[] = [];
+  const normalizedRoots = roots.map(normalizePath);
+  if (normalizedRoots.length === 0) return [];
 
-  for (const root of roots) {
-    const normalizedRoot = normalizePath(root);
-    const isValid = await isRootWithinBaseline(
-      normalizedRoot,
-      normalizedBaseline,
-      signal
-    );
-    if (isValid) filtered.push(normalizedRoot);
-  }
+  // Check all roots against the baseline in parallel (order-preserving via index).
+  // isRootWithinBaseline swallows errors including aborts, so no propagation needed.
+  const results = await Promise.allSettled(
+    normalizedRoots.map((normalizedRoot) =>
+      isRootWithinBaseline(normalizedRoot, normalizedBaseline, signal)
+    )
+  );
 
-  return filtered;
+  return normalizedRoots.filter((_, i) => {
+    const result = results[i];
+    return result?.status === 'fulfilled' && result.value;
+  });
 }
 
 async function isRootWithinBaseline(
@@ -453,6 +457,15 @@ export async function startServer(server: McpServer): Promise<void> {
   await rootsManager.recomputeAllowedDirectories();
 
   await server.connect(transport);
+
+  // Chain into the transport's onclose (set by the SDK during connect) so the
+  // debounce timer is cleared before the server processes any further events.
+  const transportAny = transport as { onclose?: (() => void) | undefined };
+  const sdkOnClose = transportAny.onclose;
+  transportAny.onclose = () => {
+    rootsManager.destroy();
+    sdkOnClose?.();
+  };
 
   rootsManager.logMissingDirectoriesIfNeeded(server);
 }

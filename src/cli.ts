@@ -2,11 +2,8 @@ import * as fs from 'node:fs/promises';
 import type { Stats } from 'node:fs';
 import { getSystemErrorMessage, getSystemErrorName } from 'node:util';
 
-import { z } from 'zod';
-
 import { Command, CommanderError, InvalidArgumentError } from 'commander';
 
-import packageJsonRaw from '../package.json' with { type: 'json' };
 import { processInParallel } from './lib/fs-helpers.js';
 import {
   getReservedDeviceNameForPath,
@@ -14,9 +11,9 @@ import {
   normalizePath,
 } from './lib/path-validation.js';
 import { isRecord } from './lib/type-guards.js';
+import { pkgInfo } from './pkg-info.js';
 
-const PackageJsonSchema = z.object({ version: z.string() });
-const { version: SERVER_VERSION } = PackageJsonSchema.parse(packageJsonRaw);
+const { version: SERVER_VERSION } = pkgInfo;
 const IS_WINDOWS = process.platform === 'win32';
 const CLI_VALIDATE_CONCURRENCY = 8;
 

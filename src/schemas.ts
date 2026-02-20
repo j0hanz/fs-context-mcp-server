@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ErrorCode } from './config.js';
+import { ErrorCode } from './lib/errors.js';
 
 function isSafeGlobPattern(value: string): boolean {
   if (value.length === 0) return false;
@@ -143,7 +143,7 @@ const FileInfoSchema = z.strictObject({
   symlinkTarget: z.string().optional().describe('Target (symlink)'),
 });
 
-const OperationSummarySchema = z.object({
+const OperationSummarySchema = z.strictObject({
   total: z.number().describe('Total'),
   succeeded: z.number().describe('Succeeded'),
   failed: z.number().describe('Failed'),
@@ -370,7 +370,7 @@ export const GetMultipleFileInfoInputSchema = z.strictObject({
     .describe('File/directory paths. e.g. ["src", "lib"]'),
 });
 
-export const ListAllowedDirectoriesOutputSchema = z.object({
+export const ListAllowedDirectoriesOutputSchema = z.strictObject({
   ok: z.boolean(),
   directories: z.array(z.string()).optional().describe('Allowed directories'),
   rootsCount: z.number().optional().describe('Number of roots'),
@@ -381,12 +381,12 @@ export const ListAllowedDirectoriesOutputSchema = z.object({
   error: ErrorSchema.optional(),
 });
 
-export const ListDirectoryOutputSchema = z.object({
+export const ListDirectoryOutputSchema = z.strictObject({
   ok: z.boolean(),
   path: z.string().optional(),
   entries: z
     .array(
-      z.object({
+      z.strictObject({
         name: z.string().describe('Entry name'),
         relativePath: z.string().optional(),
         type: FileTypeSchema,
@@ -408,7 +408,7 @@ export const ListDirectoryOutputSchema = z.object({
   error: ErrorSchema.optional(),
 });
 
-const SearchSummarySchema = z.object({
+const SearchSummarySchema = z.strictObject({
   totalMatches: z.number().optional().describe('Total matches found'),
   truncated: z.boolean().optional().describe('Results truncated?'),
   resourceUri: z.string().optional().describe('Full results URI'),
@@ -421,7 +421,7 @@ export const SearchFilesOutputSchema = SearchSummarySchema.extend({
   pattern: z.string().optional().describe('Glob pattern used'),
   results: z
     .array(
-      z.object({
+      z.strictObject({
         path: z.string().describe('Relative path'),
         size: z.number().optional(),
         modified: z.string().optional(),
@@ -443,7 +443,7 @@ export const SearchContentOutputSchema = SearchSummarySchema.extend({
   caseSensitive: z.boolean().optional().describe('Case-sensitive matching'),
   matches: z
     .array(
-      z.object({
+      z.strictObject({
         file: z.string().describe('Relative path'),
         line: z.number(),
         content: z.string(),
@@ -469,7 +469,7 @@ export const SearchContentOutputSchema = SearchSummarySchema.extend({
     SearchStopReasonSchema.optional().describe('Why search stopped'),
 });
 
-export const TreeOutputSchema = z.object({
+export const TreeOutputSchema = z.strictObject({
   ok: z.boolean(),
   root: z.string().optional(),
   tree: TreeEntrySchema.optional(),
@@ -479,7 +479,7 @@ export const TreeOutputSchema = z.object({
   error: ErrorSchema.optional(),
 });
 
-const ReadResultSchema = z.object({
+const ReadResultSchema = z.strictObject({
   content: z.string().optional().describe('Content'),
   truncated: z.boolean().optional().describe('Truncated?'),
   resourceUri: z.string().optional().describe('Full content URI'),
@@ -508,24 +508,24 @@ const ReadMultipleFileResultSchema = ReadResultSchema.extend({
   error: z.string().optional().describe('Error message'),
 });
 
-export const ReadMultipleFilesOutputSchema = z.object({
+export const ReadMultipleFilesOutputSchema = z.strictObject({
   ok: z.boolean(),
   results: z.array(ReadMultipleFileResultSchema).optional(),
   summary: OperationSummarySchema.optional(),
   error: ErrorSchema.optional(),
 });
 
-export const GetFileInfoOutputSchema = z.object({
+export const GetFileInfoOutputSchema = z.strictObject({
   ok: z.boolean(),
   info: FileInfoSchema.optional(),
   error: ErrorSchema.optional(),
 });
 
-export const GetMultipleFileInfoOutputSchema = z.object({
+export const GetMultipleFileInfoOutputSchema = z.strictObject({
   ok: z.boolean(),
   results: z
     .array(
-      z.object({
+      z.strictObject({
         path: z.string(),
         info: FileInfoSchema.optional(),
         error: z.string().optional(),
@@ -540,7 +540,7 @@ export const CreateDirectoryInputSchema = z.strictObject({
   path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
 });
 
-export const CreateDirectoryOutputSchema = z.object({
+export const CreateDirectoryOutputSchema = z.strictObject({
   ok: z.boolean(),
   path: z.string().optional(),
   error: ErrorSchema.optional(),
@@ -551,7 +551,7 @@ export const WriteFileInputSchema = z.strictObject({
   content: z.string().describe('Content to write'),
 });
 
-export const WriteFileOutputSchema = z.object({
+export const WriteFileOutputSchema = z.strictObject({
   ok: z.boolean(),
   path: z.string().optional(),
   bytesWritten: z.number().optional(),
@@ -562,7 +562,7 @@ export const EditFileInputSchema = z.strictObject({
   path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
   edits: z
     .array(
-      z.object({
+      z.strictObject({
         oldText: z
           .string()
           .describe(
@@ -588,7 +588,7 @@ export const EditFileInputSchema = z.strictObject({
     ),
 });
 
-export const EditFileOutputSchema = z.object({
+export const EditFileOutputSchema = z.strictObject({
   ok: z.boolean(),
   path: z.string().optional(),
   appliedEdits: z.number().optional(),
@@ -608,7 +608,7 @@ export const MoveFileInputSchema = z.strictObject({
   destination: RequiredPathSchema.describe('New path'),
 });
 
-export const MoveFileOutputSchema = z.object({
+export const MoveFileOutputSchema = z.strictObject({
   ok: z.boolean(),
   source: z.string().optional(),
   destination: z.string().optional(),
@@ -629,7 +629,7 @@ export const DeleteFileInputSchema = z.strictObject({
     .describe('No error if missing'),
 });
 
-export const DeleteFileOutputSchema = z.object({
+export const DeleteFileOutputSchema = z.strictObject({
   ok: z.boolean(),
   path: z.string().optional(),
   error: ErrorSchema.optional(),
@@ -639,7 +639,7 @@ export const CalculateHashInputSchema = z.strictObject({
   path: RequiredPathSchema.describe(DESC_PATH_REQUIRED),
 });
 
-export const CalculateHashOutputSchema = z.object({
+export const CalculateHashOutputSchema = z.strictObject({
   ok: z.boolean(),
   path: z.string().optional(),
   hash: z.string().optional().describe('SHA-256 hash'),
@@ -673,7 +673,7 @@ export const DiffFilesInputSchema = z.strictObject({
     .describe('Strip trailing carriage returns before diffing'),
 });
 
-export const DiffFilesOutputSchema = z.object({
+export const DiffFilesOutputSchema = z.strictObject({
   ok: z.boolean(),
   diff: z.string().optional().describe('Unified diff content'),
   isIdentical: z.boolean().optional().describe('True if files are identical'),
@@ -710,7 +710,7 @@ export const ApplyPatchInputSchema = z.strictObject({
     ),
 });
 
-export const ApplyPatchOutputSchema = z.object({
+export const ApplyPatchOutputSchema = z.strictObject({
   ok: z.boolean(),
   path: z.string().optional(),
   applied: z.boolean().optional(),
@@ -750,7 +750,7 @@ export const SearchAndReplaceInputSchema = z.strictObject({
     ),
 });
 
-export const SearchAndReplaceOutputSchema = z.object({
+export const SearchAndReplaceOutputSchema = z.strictObject({
   ok: z.boolean(),
   matches: z.number().optional().describe('Total matches found'),
   filesChanged: z.number().optional().describe('Files modified'),
@@ -758,7 +758,7 @@ export const SearchAndReplaceOutputSchema = z.object({
   failedFiles: z.number().optional().describe('Files skipped due to errors'),
   failures: z
     .array(
-      z.object({
+      z.strictObject({
         path: z.string().describe('File path'),
         error: z.string().describe('Error message'),
       })
@@ -767,7 +767,7 @@ export const SearchAndReplaceOutputSchema = z.object({
     .describe('Sample of per-file errors'),
   changedFiles: z
     .array(
-      z.object({
+      z.strictObject({
         path: z.string().describe('File path'),
         matches: z.number().describe('Matches in file'),
       })

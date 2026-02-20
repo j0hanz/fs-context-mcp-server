@@ -391,8 +391,10 @@ export function createProgressReporter(
   return (progress) => {
     const { current, total, message } = progress;
     // Enforce monotonic progress to prevent client confusion. Client behavior on
+    // out-of-order progress is undefined in the MCP spec.
     if (current <= lastProgress) return;
-    // Enforce rate-limiting to prevent client flooding. Progress updates that are
+    // Enforce rate-limiting to prevent client flooding. Progress updates faster
+    // than PROGRESS_RATE_LIMIT_MS are silently dropped.
     const now = Date.now();
     if (now - lastSentMs < PROGRESS_RATE_LIMIT_MS) return;
     lastProgress = current;
