@@ -77,6 +77,13 @@ export function registerListAllowedDirectoriesTool(
     wrapToolHandler(handler, {
       guard: options.isInitialized,
       progressMessage: () => '≣ roots',
+      completionMessage: (_args, result) => {
+        if (result.isError) return `≣ roots • failed`;
+        const sc = result.structuredContent;
+        if (!sc.ok) return `≣ roots • failed`;
+        const count = sc.rootsCount ?? 0;
+        return `≣ roots • ${count} ${count === 1 ? 'root' : 'roots'}`;
+      },
     })
   );
 }

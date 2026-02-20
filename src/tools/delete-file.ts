@@ -139,6 +139,11 @@ export function registerDeleteFileTool(
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => `🛠 rm: ${path.basename(args.path)}`,
+    completionMessage: (args, result) => {
+      const name = path.basename(args.path);
+      if (result.isError) return `🛠 rm: ${name} • failed`;
+      return `🛠 rm: ${name} • deleted`;
+    },
   });
   if (
     registerToolTaskIfAvailable(

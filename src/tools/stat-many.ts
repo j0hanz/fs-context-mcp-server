@@ -119,10 +119,11 @@ export function registerGetMultipleFileInfoTool(
         args.paths.length > 1 ? `, ${path.basename(args.paths[1] ?? '')}…` : '';
       return `🕮 stat_many: ${args.paths.length} paths [${first}${extra}]`;
     },
-    completionMessage: (_args, result) => {
-      if (result.isError) return `🕮 stat_many • failed`;
+    completionMessage: (args, result) => {
+      if (result.isError)
+        return `🕮 stat_many: ${args.paths.length} paths • failed`;
       const sc = result.structuredContent;
-      if (!sc.ok) return `🕮 stat_many • failed`;
+      if (!sc.ok) return `🕮 stat_many: ${args.paths.length} paths • failed`;
       const total = sc.summary?.total ?? 0;
       const succeeded = sc.summary?.succeeded ?? 0;
       const failed = sc.summary?.failed ?? 0;

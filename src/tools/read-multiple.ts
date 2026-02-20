@@ -190,10 +190,11 @@ export function registerReadMultipleFilesTool(
         args.paths.length > 1 ? `, ${path.basename(args.paths[1] ?? '')}…` : '';
       return `🕮 read_many: ${args.paths.length} files [${first}${extra}]`;
     },
-    completionMessage: (_args, result) => {
-      if (result.isError) return `🕮 read_many • failed`;
+    completionMessage: (args, result) => {
+      if (result.isError)
+        return `🕮 read_many: ${args.paths.length} files • failed`;
       const sc = result.structuredContent;
-      if (!sc.ok) return `🕮 read_many • failed`;
+      if (!sc.ok) return `🕮 read_many: ${args.paths.length} files • failed`;
       const total = sc.summary?.total ?? 0;
       const succeeded = sc.summary?.succeeded ?? 0;
       const failed = sc.summary?.failed ?? 0;

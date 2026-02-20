@@ -96,7 +96,13 @@ export function registerMoveFileTool(
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) =>
-      `🛠 mv: ${path.basename(args.source)} • ${path.basename(args.destination)}`,
+      `🛠 mv: ${path.basename(args.source)} → ${path.basename(args.destination)}`,
+    completionMessage: (args, result) => {
+      const src = path.basename(args.source);
+      const dst = path.basename(args.destination);
+      if (result.isError) return `🛠 mv: ${src} → ${dst} • failed`;
+      return `🛠 mv: ${src} → ${dst} • moved`;
+    },
   });
   if (
     registerToolTaskIfAvailable(

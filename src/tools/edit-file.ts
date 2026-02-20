@@ -153,9 +153,9 @@ export function registerEditFileTool(
       },
       completionMessage: (args, result) => {
         const name = path.basename(args.path);
-        if (result.isError) return `🛠 edit: ${name} • Failed`;
+        if (result.isError) return `🛠 edit: ${name} • failed`;
         const sc = result.structuredContent;
-        if (!sc.ok) return `🛠 edit: ${name} • Failed`;
+        if (!sc.ok) return `🛠 edit: ${name} • failed`;
 
         if (sc.lineRange) {
           return `🛠 edit: ${name} • [${sc.lineRange[0]}-${sc.lineRange[1]}]`;

@@ -93,7 +93,7 @@ export function registerGetFileInfoTool(
         if (result.isError) return `🕮 stat: ${name} • failed`;
         const sc = result.structuredContent;
         if (!sc.ok || !sc.info) return `🕮 stat: ${name} • failed`;
-        return `🕮 stat: ${sc.info.name} [${sc.info.type}, ${formatBytes(sc.info.size)}]`;
+        return `🕮 stat: ${sc.info.name} • ${sc.info.type}, ${formatBytes(sc.info.size)}`;
       },
     })
   );

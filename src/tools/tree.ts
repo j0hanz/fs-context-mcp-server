@@ -90,6 +90,15 @@ export function registerTreeTool(
       }
       return '≣ tree';
     },
+    completionMessage: (args, result) => {
+      const base = args.path ? path.basename(args.path) : '.';
+      if (result.isError) return `≣ tree: ${base} • failed`;
+      const sc = result.structuredContent;
+      if (!sc.ok) return `≣ tree: ${base} • failed`;
+      const count = sc.totalEntries ?? 0;
+      if (sc.truncated) return `≣ tree: ${base} • ${count} entries [truncated]`;
+      return `≣ tree: ${base} • ${count} ${count === 1 ? 'entry' : 'entries'}`;
+    },
   });
 
   if (

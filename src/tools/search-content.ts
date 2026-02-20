@@ -315,7 +315,7 @@ export function registerSearchContentTool(
           baseReporter({
             current,
             ...(total !== undefined ? { total } : {}),
-            message: `🔎︎ grep: ${pattern} • ${current} ${fileWord} scanned`,
+            message: `🔎︎ grep: ${pattern} — ${current} ${fileWord} scanned`,
           });
         };
 
