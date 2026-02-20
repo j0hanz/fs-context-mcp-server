@@ -30,6 +30,29 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
+function encodeCursor(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset })).toString('base64url');
+}
+
+function decodeCursor(cursor: string): number {
+  try {
+    const parsed: unknown = JSON.parse(
+      Buffer.from(cursor, 'base64url').toString('utf-8')
+    );
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as { offset?: unknown }).offset === 'number'
+    ) {
+      const { offset } = parsed as { offset: number };
+      return Number.isInteger(offset) && offset >= 0 ? offset : 0;
+    }
+  } catch {
+    // ignore malformed cursor
+  }
+  return 0;
+}
+
 const SEARCH_FILES_TOOL = {
   title: 'Find Files',
   description:
@@ -49,8 +72,12 @@ async function handleSearchFiles(
 ): Promise<ToolResponse<z.infer<typeof SearchFilesOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
   const excludePatterns = args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS;
+  const cursorOffset =
+    args.cursor !== undefined ? decodeCursor(args.cursor) : 0;
+  const pageSize = args.maxResults;
+  const fetchMax = cursorOffset + pageSize;
   const searchOptions: Parameters<typeof searchFiles>[3] = {
-    maxResults: args.maxResults,
+    maxResults: fetchMax,
     includeHidden: args.includeHidden,
     sortBy: args.sortBy,
     respectGitignore: !args.includeIgnored,
@@ -64,9 +91,16 @@ async function handleSearchFiles(
     excludePatterns,
     searchOptions
   );
+  const allResults = result.results;
+  const displayResults =
+    cursorOffset > 0 ? allResults.slice(cursorOffset) : allResults;
+  const nextCursor =
+    result.summary.truncated && displayResults.length > 0
+      ? encodeCursor(cursorOffset + displayResults.length)
+      : undefined;
   const relativeResults: z.infer<typeof SearchFilesOutputSchema>['results'] =
     [];
-  for (const entry of result.results) {
+  for (const entry of displayResults) {
     relativeResults.push({
       path: path.relative(result.basePath, entry.path),
       size: entry.size,
@@ -89,6 +123,7 @@ async function handleSearchFiles(
     ...(result.summary.stoppedReason
       ? { stoppedReason: result.summary.stoppedReason }
       : {}),
+    ...(nextCursor !== undefined ? { nextCursor } : {}),
   };
 
   let truncatedReason: string | undefined;

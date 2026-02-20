@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as http from 'node:http';
 import * as path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -24,6 +24,7 @@ import { pkgInfo } from '../pkg-info.js';
 import { registerGetHelpPrompt } from '../prompts.js';
 import {
   registerInstructionResource,
+  registerMetricsResource,
   registerResultResources,
 } from '../resources.js';
 import { registerAllTools } from '../tools.js';
@@ -116,7 +117,10 @@ export async function createServer(
   }
 
   if (serverInstructions) {
-    serverConfig.instructions = serverInstructions;
+    serverConfig.instructions =
+      'filesystem-mcp: Secure local filesystem MCP server. ' +
+      'Essential sequence: roots → ls/tree/find → read/grep. ' +
+      'Full reference: read the internal://instructions resource or invoke the get-help prompt.';
   }
 
   const server = new McpServer(
@@ -145,6 +149,7 @@ export async function createServer(
   registerInstructionResource(server, serverInstructions, localIcon);
   registerGetHelpPrompt(server, serverInstructions, localIcon);
   registerResultResources(server, resourceStore, localIcon);
+  registerMetricsResource(server, localIcon);
   registerCompletions(server);
   registerAllTools(server, {
     resourceStore,
@@ -252,6 +257,36 @@ export async function startHttpServer(
   ): Promise<void> {
     const { method } = req;
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    const apiKey = process.env['FILESYSTEM_MCP_API_KEY'];
+    if (apiKey) {
+      const authHeader = req.headers['authorization'];
+      const bearerPrefix = 'Bearer ';
+      let authorized = false;
+      if (
+        typeof authHeader === 'string' &&
+        authHeader.startsWith(bearerPrefix)
+      ) {
+        const userKey = authHeader.slice(bearerPrefix.length);
+        const expectedHash = createHash('sha256').update(apiKey).digest();
+        const actualHash = createHash('sha256').update(userKey).digest();
+        authorized = timingSafeEqual(expectedHash, actualHash);
+      }
+      if (!authorized) {
+        res.writeHead(401, {
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': 'Bearer',
+        });
+        res.end(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            error: { code: -32000, message: 'Unauthorized' },
+            id: null,
+          })
+        );
+        return;
+      }
+    }
 
     try {
       if (method === 'POST') {

@@ -22,7 +22,8 @@ import { getAllowedDirectories } from '../lib/path-validation.js';
 import type { ResourceStore } from '../lib/resource-store.js';
 import type { ToolErrorResponseSchema } from '../schemas.js';
 
-const MAX_INLINE_CONTENT_CHARS = 20_000;
+const MAX_INLINE_CONTENT_CHARS =
+  parseInt(process.env['FS_CONTEXT_MAX_INLINE_CHARS'] ?? '', 10) || 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
 const PROGRESS_RATE_LIMIT_MS = 50;
 const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes']);

@@ -3,6 +3,7 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { ErrorCode, McpError } from './lib/errors.js';
+import { globalMetrics } from './lib/observability.js';
 import type { ResourceStore } from './lib/resource-store.js';
 import { type IconInfo, withDefaultIcons } from './tools/shared.js';
 
@@ -16,6 +17,11 @@ const INSTRUCTIONS_RESOURCE_DESCRIPTION =
 const RESULT_RESOURCE_NAME = 'filesystem-mcp-result';
 const RESULT_RESOURCE_DESCRIPTION =
   'Ephemeral cached tool output exposed as an MCP resource. Not guaranteed to be listed via resources/list.';
+
+const METRICS_RESOURCE_NAME = 'filesystem-mcp-metrics';
+const METRICS_RESOURCE_URI = 'filesystem-mcp://metrics';
+const METRICS_RESOURCE_DESCRIPTION =
+  'Live per-tool call/error/avgDurationMs metrics snapshot.';
 
 export function registerInstructionResource(
   server: McpServer,
@@ -72,7 +78,10 @@ export function registerResultResources(
     (uri, variables): ReadResourceResult => {
       const { id } = variables;
       if (typeof id !== 'string' || id.length === 0) {
-        throw new McpError(ErrorCode.E_INVALID_INPUT, 'Missing resource id');
+        throw new McpError(
+          ErrorCode.E_NOT_FOUND,
+          'Cached result has expired — re-run the tool to regenerate.'
+        );
       }
 
       const entry = store.getText(uri.toString());
@@ -83,6 +92,53 @@ export function registerResultResources(
             uri: entry.uri,
             mimeType: entry.mimeType,
             text: entry.text,
+          },
+        ],
+      };
+    }
+  );
+}
+
+export function registerMetricsResource(
+  server: McpServer,
+  iconInfo?: IconInfo
+): void {
+  server.registerResource(
+    METRICS_RESOURCE_NAME,
+    METRICS_RESOURCE_URI,
+    withDefaultIcons(
+      {
+        title: 'Tool Metrics',
+        description: METRICS_RESOURCE_DESCRIPTION,
+        mimeType: 'application/json',
+        annotations: {
+          audience: ['assistant'],
+          priority: 0.5,
+        },
+      },
+      iconInfo
+    ),
+    (uri): ReadResourceResult => {
+      const snapshot: Record<
+        string,
+        { calls: number; errors: number; avgDurationMs: number }
+      > = {};
+      for (const [tool, m] of globalMetrics) {
+        snapshot[tool] = {
+          calls: m.calls,
+          errors: m.errors,
+          avgDurationMs:
+            m.calls > 0
+              ? parseFloat((m.totalDurationMs / m.calls).toFixed(2))
+              : 0,
+        };
+      }
+      return {
+        contents: [
+          {
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify({ ok: true, metrics: snapshot }, null, 2),
           },
         ],
       };

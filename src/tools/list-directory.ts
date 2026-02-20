@@ -87,7 +87,8 @@ function buildStructuredListEntry(
 }
 
 function buildStructuredListResult(
-  result: Awaited<ReturnType<typeof listDirectory>>
+  result: Awaited<ReturnType<typeof listDirectory>>,
+  nextCursor?: string
 ): z.infer<typeof ListDirectoryOutputSchema> {
   const { entries, summary, path: resultPath } = result;
   const structuredEntries: NonNullable<
@@ -108,7 +109,31 @@ function buildStructuredListResult(
     ...(summary.skippedInaccessible
       ? { skippedInaccessible: summary.skippedInaccessible }
       : {}),
+    ...(nextCursor !== undefined ? { nextCursor } : {}),
   };
+}
+
+function encodeCursor(offset: number): string {
+  return Buffer.from(JSON.stringify({ offset })).toString('base64url');
+}
+
+function decodeCursor(cursor: string): number {
+  try {
+    const parsed: unknown = JSON.parse(
+      Buffer.from(cursor, 'base64url').toString('utf-8')
+    );
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      typeof (parsed as { offset?: unknown }).offset === 'number'
+    ) {
+      const { offset } = parsed as { offset: number };
+      return Number.isInteger(offset) && offset >= 0 ? offset : 0;
+    }
+  } catch {
+    // ignore malformed cursor
+  }
+  return 0;
 }
 
 async function handleListDirectory(
@@ -116,20 +141,30 @@ async function handleListDirectory(
   signal?: AbortSignal
 ): Promise<ToolResponse<z.infer<typeof ListDirectoryOutputSchema>>> {
   const dirPath = resolvePathOrRoot(args.path);
+  const cursorOffset =
+    args.cursor !== undefined ? decodeCursor(args.cursor) : 0;
+  const pageSize = args.maxEntries ?? 20_000;
   const options: Parameters<typeof listDirectory>[1] = {
     includeHidden: args.includeHidden,
     excludePatterns: args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS,
     sortBy: args.sortBy,
     includeSymlinkTargets: args.includeSymlinkTargets,
     ...(args.maxDepth !== undefined ? { maxDepth: args.maxDepth } : {}),
-    ...(args.maxEntries !== undefined ? { maxEntries: args.maxEntries } : {}),
+    maxEntries: cursorOffset + pageSize,
     ...(args.pattern !== undefined ? { pattern: args.pattern } : {}),
     ...(signal ? { signal } : {}),
   };
   const result = await listDirectory(dirPath, options);
+  const displayEntries =
+    cursorOffset > 0 ? result.entries.slice(cursorOffset) : result.entries;
+  const nextCursor =
+    result.summary.truncated && displayEntries.length > 0
+      ? encodeCursor(cursorOffset + displayEntries.length)
+      : undefined;
+  const displayResult = { ...result, entries: displayEntries };
   return buildToolResponse(
-    buildListTextResult(result),
-    buildStructuredListResult(result)
+    buildListTextResult(displayResult),
+    buildStructuredListResult(displayResult, nextCursor)
   );
 }
 

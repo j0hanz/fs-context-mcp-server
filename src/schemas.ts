@@ -189,6 +189,10 @@ export const ListDirectoryInputSchema = z.strictObject({
     .optional()
     .default(false)
     .describe('Resolve and include symlink targets in results'),
+  cursor: z
+    .string()
+    .optional()
+    .describe('Pagination cursor from a previous response'),
 });
 
 export const ListAllowedDirectoriesInputSchema = z
@@ -233,6 +237,10 @@ export const SearchFilesInputSchema = z.strictObject({
     .max(100, 'Max: 100')
     .optional()
     .describe('Maximum directory depth to scan'),
+  cursor: z
+    .string()
+    .optional()
+    .describe('Pagination cursor from a previous response'),
 });
 
 export const TreeInputSchema = z.strictObject({
@@ -405,6 +413,10 @@ export const ListDirectoryOutputSchema = z.strictObject({
   stoppedReason: ListDirectoryStopReasonSchema.optional(),
   skippedInaccessible: z.number().optional(),
   symlinksNotFollowed: z.number().optional(),
+  nextCursor: z
+    .string()
+    .optional()
+    .describe('Cursor for the next page; absent on the final page'),
   error: ErrorSchema.optional(),
 });
 
@@ -432,6 +444,10 @@ export const SearchFilesOutputSchema = SearchSummarySchema.extend({
   skippedInaccessible: z.number().optional().describe('Inaccessible files'),
   stoppedReason:
     SearchStopReasonSchema.optional().describe('Why search stopped'),
+  nextCursor: z
+    .string()
+    .optional()
+    .describe('Cursor for the next page; absent on the final page'),
 });
 
 export const SearchContentOutputSchema = SearchSummarySchema.extend({

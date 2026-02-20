@@ -13,6 +13,8 @@ import {
 import { isRecord } from './lib/type-guards.js';
 
 const MAX_COMPLETION_ITEMS = 100;
+const COMPLETION_RATE_LIMIT_MS = 100;
+const completionLastCallMs = new Map<string, number>();
 
 interface CompletionResult {
   values: string[];
@@ -493,6 +495,13 @@ export function registerCompletions(server: McpServer): void {
     if (!isPathArg) {
       return { completion: { values: [], total: 0, hasMore: false } };
     }
+
+    const now = Date.now();
+    const lastCallMs = completionLastCallMs.get(argName) ?? 0;
+    if (now - lastCallMs < COMPLETION_RATE_LIMIT_MS) {
+      return { completion: { values: [], total: 0, hasMore: false } };
+    }
+    completionLastCallMs.set(argName, now);
 
     const contextArguments = extractContextArguments(params.context);
     const { value } = argument;
