@@ -135,12 +135,14 @@ export function registerSearchFilesTool(
       timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
       context: { path: args.path ?? '.' },
       run: async (signal) => {
-        const scope = args.path ?? '.';
+        const rawScopeLabel = args.path ? path.basename(args.path) : '.';
+        const scopeLabel = rawScopeLabel || '.';
         const { pattern } = args;
+        const context = `${pattern} in ${scopeLabel}`;
         let progressCursor = 0;
         notifyProgress(extra, {
           current: 0,
-          message: `🔎︎ find: ${pattern} in ${scope}`,
+          message: `🔎︎ find: ${context}`,
         });
 
         const baseReporter = createProgressReporter(extra);
@@ -156,7 +158,7 @@ export function registerSearchFilesTool(
           baseReporter({
             current,
             ...(total !== undefined ? { total } : {}),
-            message: `🔎︎ find: ${pattern} — ${current} ${fileWord} scanned`,
+            message: `🔎︎ find: ${pattern} [${current} ${fileWord} scanned]`,
           });
         };
 
@@ -172,7 +174,7 @@ export function registerSearchFilesTool(
 
           let suffix: string;
           if (count === 0) {
-            suffix = `No matches in ${scope}`;
+            suffix = `No matches in ${scopeLabel}`;
           } else {
             suffix = `${count} ${count === 1 ? 'match' : 'matches'}`;
             if (stoppedReason === 'timeout') {
@@ -191,7 +193,7 @@ export function registerSearchFilesTool(
           notifyProgress(extra, {
             current: finalCurrent,
             total: finalCurrent,
-            message: `🔎︎ find: ${pattern} • ${suffix}`,
+            message: `🔎︎ find: ${context} • ${suffix}`,
           });
           return result;
         } catch (error) {
@@ -199,7 +201,7 @@ export function registerSearchFilesTool(
           notifyProgress(extra, {
             current: finalCurrent,
             total: finalCurrent,
-            message: `🔎︎ find: ${pattern} in ${scope} • failed`,
+            message: `🔎︎ find: ${context} • failed`,
           });
           throw error;
         }

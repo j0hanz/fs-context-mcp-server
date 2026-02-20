@@ -484,6 +484,7 @@ async function withProgress<T>(
       progressToken: token,
       progress: total,
       total,
+      message: `${message} • failed`,
     });
     throw error;
   }

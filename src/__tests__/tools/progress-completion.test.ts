@@ -32,6 +32,21 @@ function assertTerminalProgressOnFailure(
   assert.match(terminal.params.message ?? '', /• failed/u);
 }
 
+function assertMessagesDoNotContainPath(
+  notifications: ProgressNotification[],
+  fullPath: string
+): void {
+  for (const notification of notifications) {
+    const message = notification.params.message;
+    if (!message) continue;
+    assert.strictEqual(
+      message.includes(fullPath),
+      false,
+      `Progress message leaked full path: ${message}`
+    );
+  }
+}
+
 void describe('progress notifications', () => {
   withAllToolsFixture((getHandler, getTestDir) => {
     const missingPath = (): string => path.join(getTestDir(), 'missing-target');
@@ -62,6 +77,7 @@ void describe('progress notifications', () => {
 
       assert.strictEqual(result.isError, true);
       assertTerminalProgressOnFailure(notifications);
+      assertMessagesDoNotContainPath(notifications, missingPath());
     });
 
     void it('grep emits terminal progress on failure', async () => {
