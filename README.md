@@ -493,6 +493,13 @@ The server declares full task capabilities (`tasks/list`, `tasks/cancel`). The f
 
 Include `_meta.progressToken` in a `tools/call` request to receive `notifications/progress` updates. Use `tools/call` with a `task` field to invoke as a background task, then poll `tasks/get` and retrieve output via `tasks/result`.
 
+Task status notifications (`notifications/tasks/status`) are best-effort and emitted only when the transport/runtime provides a notification sender.
+
+Cancellation semantics:
+
+- `tasks/cancel` is the canonical cancellation API.
+- Clients should treat `E_CANCELLED` as cancellation even if a transport/client surfaces a terminal failure shape.
+
 ## Configuration
 
 ### CLI
@@ -534,6 +541,10 @@ Directories are resolved from three sources, merged at runtime:
 
 > [!TIP]
 > If no directories are configured at startup and the connected client does not supply MCP Roots, all tool calls will fail. Pass at least one directory argument or use `--allow-cwd`.
+
+### Compatibility
+
+Set `FS_CONTEXT_STRIP_STRUCTURED=1` to strip `structuredContent` from tool results and `outputSchema` from tool definitions for compatibility with clients that only consume text content.
 
 ## Security
 

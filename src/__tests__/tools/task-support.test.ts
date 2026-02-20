@@ -8,6 +8,7 @@ import type {
 import type { RequestTaskStore } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { Result } from '@modelcontextprotocol/sdk/types.js';
 
+import { ErrorCode } from '../../lib/errors.js';
 import { createToolTaskHandler } from '../../tools/task-support.js';
 
 interface TaskState {
@@ -225,4 +226,66 @@ await it('does not emit unhandled rejections when result storage races terminal 
   } finally {
     process.off('unhandledRejection', onUnhandledRejection);
   }
+});
+
+await it('projects failed E_CANCELLED task results to cancelled status on getTask', async () => {
+  const { taskStore, tasks } = createInMemoryTaskStore();
+
+  const handler = createToolTaskHandler(async () => {
+    return {
+      content: [{ type: 'text', text: 'Operation cancelled' }],
+      structuredContent: {
+        ok: false,
+        error: {
+          code: ErrorCode.E_CANCELLED,
+          message: 'Operation cancelled',
+        },
+      },
+      isError: true,
+    };
+  });
+
+  const createResult = await handler.createTask(createRequestExtra(taskStore));
+  const taskId = createResult.task.taskId;
+
+  await waitFor(() => tasks.get(taskId)?.status === 'failed');
+
+  const task = await handler.getTask(createTaskRequestExtra(taskStore, taskId));
+  assert.strictEqual(task.status, 'cancelled');
+});
+
+await it('emits cancelled tasks/status notifications for E_CANCELLED task results', async () => {
+  const { taskStore } = createInMemoryTaskStore();
+  const notifications: Array<{ method?: unknown; params?: unknown }> = [];
+
+  const handler = createToolTaskHandler(async () => {
+    return {
+      content: [{ type: 'text', text: 'Operation cancelled' }],
+      structuredContent: {
+        ok: false,
+        error: {
+          code: ErrorCode.E_CANCELLED,
+          message: 'Operation cancelled',
+        },
+      },
+      isError: true,
+    };
+  });
+
+  await handler.createTask({
+    ...createRequestExtra(taskStore),
+    sendNotification: async (notification) => {
+      notifications.push(
+        notification as { method?: unknown; params?: unknown }
+      );
+    },
+  });
+
+  await waitFor(() =>
+    notifications.some((notification) => {
+      if (notification.method !== 'notifications/tasks/status') return false;
+      const params = notification.params as { status?: string };
+      return params.status === 'cancelled';
+    })
+  );
 });

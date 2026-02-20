@@ -179,6 +179,36 @@ function normalizeCallToolResult(value: Result): CallToolResult {
   );
 }
 
+function getToolResultErrorCode(result: Result): string | undefined {
+  if (!isRecord(result) || result['isError'] !== true) return undefined;
+  const structured = result['structuredContent'];
+  if (!isRecord(structured)) return undefined;
+  const { error } = structured;
+  if (!isRecord(error)) return undefined;
+  const { code } = error;
+  return typeof code === 'string' ? code : undefined;
+}
+
+function isCancelledToolResult(result: Result): boolean {
+  return getToolResultErrorCode(result) === ErrorCode.E_CANCELLED;
+}
+
+async function projectCancelledTaskStatus(
+  taskStore: RequestTaskStore,
+  task: GetTaskResult
+): Promise<GetTaskResult> {
+  if (task.status !== 'failed') return task;
+  try {
+    const result = await taskStore.getTaskResult(task.taskId);
+    if (isCancelledToolResult(result)) {
+      return { ...task, status: 'cancelled' };
+    }
+  } catch {
+    // Best effort only: task result may not be available yet.
+  }
+  return task;
+}
+
 function withRelatedTaskMeta(result: Result, taskId: string): Result {
   const existingMeta = isRecord(result['_meta']) ? result['_meta'] : {};
   return {
@@ -218,7 +248,10 @@ async function notifyTaskStatusIfPossible(
   const notify = sendNotification as TaskStatusNotificationSender;
   try {
     const task = await taskStore.getTask(taskId);
-    const normalized = normalizeGetTaskResult(task);
+    const normalized = await projectCancelledTaskStatus(
+      taskStore,
+      normalizeGetTaskResult(task)
+    );
     await notify({
       method: TASK_STATUS_NOTIFICATION_METHOD,
       params: buildTaskStatusNotificationParams(normalized),
@@ -446,7 +479,7 @@ export function createToolTaskHandler<
     const taskStore = getTaskStore(extra);
     const taskId = getTaskId(extra);
     const task = await taskStore.getTask(taskId);
-    return normalizeGetTaskResult(task);
+    return projectCancelledTaskStatus(taskStore, normalizeGetTaskResult(task));
   }) as ToolTaskHandler<Args>['getTask'];
 
   const getTaskResult = (async (
