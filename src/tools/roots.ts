@@ -19,6 +19,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 
@@ -71,10 +72,14 @@ export function registerListAllowedDirectoriesTool(
       onError: (error) => buildToolErrorResponse(error, ErrorCode.E_UNKNOWN),
     });
 
+  const validatedHandler = withValidatedArgs(
+    ListAllowedDirectoriesInputSchema,
+    handler
+  );
   server.registerTool(
     'roots',
     withDefaultIcons({ ...LIST_ALLOWED_DIRECTORIES_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
+    wrapToolHandler(validatedHandler, {
       guard: options.isInitialized,
       progressMessage: () => '≣ roots',
       completionMessage: (_args, result) => {

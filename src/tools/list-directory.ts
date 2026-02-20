@@ -23,6 +23,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 
@@ -153,10 +154,11 @@ export function registerListDirectoryTool(
         ),
     });
 
+  const validatedHandler = withValidatedArgs(ListDirectoryInputSchema, handler);
   server.registerTool(
     'ls',
     withDefaultIcons({ ...LIST_DIRECTORY_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
+    wrapToolHandler(validatedHandler, {
       guard: options.isInitialized,
       progressMessage: (args) => {
         if (args.path) {

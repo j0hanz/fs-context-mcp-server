@@ -19,6 +19,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -82,7 +83,8 @@ export function registerTreeTool(
     });
   };
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(TreeInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       if (args.path) {

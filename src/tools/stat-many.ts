@@ -24,6 +24,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -111,7 +112,11 @@ export function registerGetMultipleFileInfoTool(
     });
   };
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(
+    GetMultipleFileInfoInputSchema,
+    handler
+  );
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const first = path.basename(args.paths[0] ?? '');

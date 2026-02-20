@@ -22,6 +22,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -66,7 +67,11 @@ export function registerCreateDirectoryTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(
+    CreateDirectoryInputSchema,
+    handler
+  );
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const name = path.basename(args.path) || args.path;

@@ -33,6 +33,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -306,7 +307,8 @@ export function registerCalculateHashTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(CalculateHashInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: options.isInitialized,
   });
   if (

@@ -33,6 +33,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -134,6 +135,7 @@ function buildStructuredSearchResult(
     caseSensitive: options.caseSensitive,
     matches,
     totalMatches: summary.matches,
+    filesScanned: summary.filesScanned,
     ...(summary.truncated ? { truncated: summary.truncated } : {}),
     ...(summary.filesMatched ? { filesMatched: summary.filesMatched } : {}),
     ...(summary.skippedTooLarge
@@ -292,9 +294,8 @@ export function registerSearchContentTool(
       extra,
       context: { path: args.path ?? '.' },
       run: async (signal) => {
-        const normalizedArgs = SearchContentInputSchema.parse(args);
-        const scope = normalizedArgs.filePattern;
-        const { pattern } = normalizedArgs;
+        const scope = args.filePattern;
+        const { pattern } = args;
         let progressCursor = 0;
 
         notifyProgress(extra, {
@@ -321,7 +322,7 @@ export function registerSearchContentTool(
 
         try {
           const result = await handleSearchContent(
-            normalizedArgs,
+            args,
             signal,
             options.resourceStore,
             progressWithMessage
@@ -377,7 +378,8 @@ export function registerSearchContentTool(
     });
 
   const { isInitialized } = options;
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(SearchContentInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: isInitialized,
   });
 

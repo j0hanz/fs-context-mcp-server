@@ -19,6 +19,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -136,7 +137,8 @@ export function registerDeleteFileTool(
       },
     });
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(DeleteFileInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: options.isInitialized,
     progressMessage: (args) => `🛠 rm: ${path.basename(args.path)}`,
     completionMessage: (args, result) => {

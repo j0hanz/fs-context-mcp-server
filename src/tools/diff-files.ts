@@ -24,6 +24,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 
@@ -145,10 +146,11 @@ export function registerDiffFilesTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.original),
     });
 
+  const validatedHandler = withValidatedArgs(DiffFilesInputSchema, handler);
   server.registerTool(
     'diff_files',
     withDefaultIcons({ ...DIFF_FILES_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
+    wrapToolHandler(validatedHandler, {
       guard: options.isInitialized,
       progressMessage: (args) => {
         const name1 = path.basename(args.original);

@@ -4,7 +4,7 @@ import type {
   ProgressNotificationParams,
 } from '@modelcontextprotocol/sdk/types.js';
 
-import type { z } from 'zod';
+import { z } from 'zod';
 
 import type { FileInfo } from '../config.js';
 import {
@@ -164,6 +164,34 @@ interface ToolErrorResponse extends Record<string, unknown> {
 }
 
 export type ToolResult<T> = ToolResponse<T> | ToolErrorResponse;
+
+export function parseToolArgs<Schema extends z.ZodType>(
+  schema: Schema,
+  args: unknown
+): z.infer<Schema> {
+  const candidate = args === undefined ? {} : args;
+  const parsed = schema.safeParse(candidate);
+  if (parsed.success) {
+    return parsed.data;
+  }
+
+  throw new McpError(
+    ErrorCode.E_INVALID_INPUT,
+    `Invalid tool arguments: ${parsed.error.message}`,
+    undefined,
+    { errors: z.treeifyError(parsed.error) }
+  );
+}
+
+export function withValidatedArgs<Args, Result>(
+  schema: z.ZodType<Args>,
+  handler: (args: Args, extra: ToolExtra) => Promise<ToolResult<Result>>
+): (args: Args, extra: ToolExtra) => Promise<ToolResult<Result>> {
+  return async (args, extra) => {
+    const normalizedArgs = parseToolArgs(schema, args);
+    return handler(normalizedArgs, extra);
+  };
+}
 
 type ProgressToken = string | number;
 

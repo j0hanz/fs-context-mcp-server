@@ -22,6 +22,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -93,7 +94,8 @@ export function registerMoveFileTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.source),
     });
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(MoveFileInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: options.isInitialized,
     progressMessage: (args) =>
       `🛠 mv: ${path.basename(args.source)} → ${path.basename(args.destination)}`,

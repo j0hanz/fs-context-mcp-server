@@ -25,6 +25,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -78,6 +79,7 @@ async function handleSearchFiles(
     pattern: args.pattern,
     results: relativeResults,
     totalMatches: result.summary.matched,
+    filesScanned: result.summary.filesScanned,
     ...(result.summary.truncated
       ? { truncated: result.summary.truncated }
       : {}),
@@ -203,12 +205,13 @@ export function registerSearchFilesTool(
         }
       },
       onError: (error) =>
-        buildToolErrorResponse(error, ErrorCode.E_INVALID_PATTERN, args.path),
+        buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
   const { isInitialized } = options;
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(SearchFilesInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: isInitialized,
   });
   if (

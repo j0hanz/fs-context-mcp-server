@@ -50,6 +50,29 @@ function getExperimentalTaskRegistration(
   return tasks;
 }
 
+function hasTaskToolCapability(server: McpServer): boolean {
+  const maybeServer = server as unknown as {
+    server?: { getCapabilities?: () => unknown };
+  };
+  const serverRuntime = maybeServer.server;
+  const capabilityGetter = serverRuntime?.getCapabilities;
+  if (typeof capabilityGetter !== 'function') {
+    // Fallback for tests or custom wrappers that provide only registerTool/experimental.
+    return true;
+  }
+
+  const capabilities = capabilityGetter.call(serverRuntime);
+  if (!isRecord(capabilities)) return false;
+  const { tasks } = capabilities;
+  if (!isRecord(tasks)) return false;
+  const { requests } = tasks;
+  if (!isRecord(requests)) return false;
+  const { tools } = requests;
+  if (!isRecord(tools)) return false;
+  const { call } = tools;
+  return isRecord(call);
+}
+
 type TaskToolExtra = ToolExtra & {
   taskId?: string;
   taskStore?: RequestTaskStore;
@@ -291,18 +314,6 @@ const TERMINAL_TASK_STATUSES = new Set<GetTaskResult['status']>([
   'cancelled',
 ]);
 
-// BRITTLE: Detects terminal task store errors via string heuristics ('terminal status',
-// 'task not found'). These strings are SDK-internal and may change without notice.
-// Review and update this function when upgrading @modelcontextprotocol/sdk.
-function isTerminalTaskStoreError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('terminal status') ||
-    normalized.includes('task not found')
-  );
-}
-
 async function isTaskAlreadyTerminal(
   taskStore: RequestTaskStore,
   taskId: string
@@ -327,11 +338,7 @@ async function tryStoreTaskResult(
   try {
     await taskStore.storeTaskResult(taskId, status, resultWithTaskMeta);
   } catch (error) {
-    if (
-      isTerminalTaskStoreError(error) ||
-      (await isTaskAlreadyTerminal(taskStore, taskId))
-    )
-      return;
+    if (await isTaskAlreadyTerminal(taskStore, taskId)) return;
     throw error;
   }
 }
@@ -385,6 +392,7 @@ export function tryRegisterToolTask<
   taskHandler: ToolTaskHandler<Args>,
   iconInfo: IconInfo | undefined
 ): boolean {
+  if (!hasTaskToolCapability(server)) return false;
   const tasks = getExperimentalTaskRegistration(server);
   if (!tasks?.registerToolTask) return false;
   tasks.registerToolTask(

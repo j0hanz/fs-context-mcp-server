@@ -19,6 +19,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 
@@ -142,10 +143,11 @@ export function registerEditFileTool(
         buildToolErrorResponse(error, ErrorCode.E_UNKNOWN, args.path),
     });
 
+  const validatedHandler = withValidatedArgs(EditFileInputSchema, handler);
   server.registerTool(
     'edit',
     withDefaultIcons({ ...EDIT_FILE_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
+    wrapToolHandler(validatedHandler, {
       guard: options.isInitialized,
       progressMessage: (args) => {
         const name = path.basename(args.path);

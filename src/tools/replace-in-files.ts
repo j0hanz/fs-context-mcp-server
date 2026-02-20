@@ -41,6 +41,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -424,7 +425,11 @@ export function registerSearchAndReplaceTool(
 
   const { isInitialized } = options;
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(
+    SearchAndReplaceInputSchema,
+    handler
+  );
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: isInitialized,
   });
   if (

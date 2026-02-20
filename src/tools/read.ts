@@ -23,6 +23,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
@@ -127,7 +128,8 @@ export function registerReadFileTool(
         buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, args.path),
     });
 
-  const wrappedHandler = wrapToolHandler(handler, {
+  const validatedHandler = withValidatedArgs(ReadFileInputSchema, handler);
+  const wrappedHandler = wrapToolHandler(validatedHandler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
       const name = path.basename(args.path);

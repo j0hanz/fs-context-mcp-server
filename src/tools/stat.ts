@@ -21,6 +21,7 @@ import {
   type ToolResponse,
   type ToolResult,
   withDefaultIcons,
+  withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
 
@@ -82,10 +83,11 @@ export function registerGetFileInfoTool(
         buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, args.path),
     });
 
+  const validatedHandler = withValidatedArgs(GetFileInfoInputSchema, handler);
   server.registerTool(
     'stat',
     withDefaultIcons({ ...GET_FILE_INFO_TOOL }, options.iconInfo),
-    wrapToolHandler(handler, {
+    wrapToolHandler(validatedHandler, {
       guard: options.isInitialized,
       progressMessage: (args) => `🕮 stat: ${path.basename(args.path)}`,
       completionMessage: (args, result) => {
