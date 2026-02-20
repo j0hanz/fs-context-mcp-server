@@ -150,7 +150,7 @@ export async function createServer(
   registerGetHelpPrompt(server, serverInstructions, localIcon);
   registerResultResources(server, resourceStore, localIcon);
   registerMetricsResource(server, localIcon);
-  registerCompletions(server);
+  registerCompletions(server, serverInstructions);
   registerAllTools(server, {
     resourceStore,
     isInitialized: () => rootsManager.isInitialized(),

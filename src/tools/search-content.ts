@@ -38,7 +38,8 @@ import {
 } from './shared.js';
 import { registerToolTaskIfAvailable } from './task-support.js';
 
-const MAX_INLINE_MATCHES = 50;
+const MAX_INLINE_MATCHES =
+  parseInt(process.env['FS_CONTEXT_MAX_INLINE_MATCHES'] ?? '', 10) || 50;
 
 const SEARCH_CONTENT_TOOL = {
   title: 'Search Content',

@@ -215,7 +215,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       )
     );
 
-    const prompt = await client.getPrompt({ name: 'get-help' });
+    const prompt = await client.getPrompt({ name: 'get-help', arguments: {} });
     assert.ok(prompt.messages.length > 0);
 
     const instructions = await client.readResource({

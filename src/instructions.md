@@ -14,7 +14,7 @@ These instructions are available as a resource (internal://instructions) or prom
 
 ## PROMPTS
 
-- `get-help`: Returns these instructions for quick recall.
+- `get-help`: Returns these instructions for quick recall. Accepts an optional `topic` argument (section heading prefix, e.g. `"error handling strategy"`) to return a focused subset.
 
 ---
 
@@ -22,6 +22,7 @@ These instructions are available as a resource (internal://instructions) or prom
 
 - `internal://instructions`: This document.
 - `filesystem-mcp://result/{id}`: Ephemeral cached tool output (in-memory); used when payloads are externalized.
+- `filesystem-mcp://metrics`: Live per-tool call count, error count, and avg-duration snapshot. Read via `resources/read`.
 - If a tool response includes a `resourceUri` or `resource_link`, call `resources/read` with that URI to fetch full content.
 
 ---

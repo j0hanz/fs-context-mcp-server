@@ -1,6 +1,8 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { GetPromptResult } from '@modelcontextprotocol/sdk/types.js';
 
+import { z } from 'zod';
+
 import { type IconInfo, withDefaultIcons } from './tools/shared.js';
 
 const HELP_PROMPT_NAME = 'get-help';
@@ -25,17 +27,25 @@ export function registerGetHelpPrompt(
   instructions: string,
   iconInfo?: IconInfo
 ): void {
+  const baseConfig = withDefaultIcons(
+    { title: HELP_PROMPT_TITLE, description: HELP_PROMPT_DESCRIPTION },
+    iconInfo
+  );
+
   server.registerPrompt(
     HELP_PROMPT_NAME,
-    withDefaultIcons(
-      {
-        title: HELP_PROMPT_TITLE,
-        description: HELP_PROMPT_DESCRIPTION,
+    {
+      ...baseConfig,
+      argsSchema: {
+        topic: z
+          .string()
+          .optional()
+          .describe(
+            'Section heading prefix to filter (e.g. "error handling strategy"). Omit for full instructions.'
+          ),
       },
-      iconInfo
-    ),
-    (args): GetPromptResult => {
-      const { topic } = args as { topic?: string };
+    },
+    ({ topic }): GetPromptResult => {
       const text = topic
         ? filterInstructionsByTopic(instructions, topic)
         : instructions;

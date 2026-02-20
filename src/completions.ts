@@ -16,6 +16,17 @@ const MAX_COMPLETION_ITEMS = 100;
 const COMPLETION_RATE_LIMIT_MS = 100;
 const completionLastCallMs = new Map<string, number>();
 
+function extractTopicCompletions(instructions: string): string[] {
+  const headers: string[] = [];
+  for (const line of instructions.split('\n')) {
+    if (line.startsWith('## ')) {
+      const header = line.slice(3).trim().toLowerCase();
+      if (header) headers.push(header);
+    }
+  }
+  return headers;
+}
+
 interface CompletionResult {
   values: string[];
   total?: number;
@@ -482,12 +493,31 @@ export async function getPathCompletions(
   }
 }
 
-export function registerCompletions(server: McpServer): void {
+export function registerCompletions(server: McpServer, instructions = ''): void {
+  const topicValues = extractTopicCompletions(instructions);
+
   server.server.setRequestHandler(CompleteRequestSchema, async (request) => {
     const { params } = request;
     const { argument, ref } = params;
 
     const argName = argument.name.toLowerCase();
+
+    // Handle prompt topic completions
+    if (isRecord(ref) && ref['type'] === 'ref/prompt' && argName === 'topic') {
+      const currentValue = argument.value.toLowerCase();
+      const filtered = currentValue
+        ? topicValues.filter((v) => v.startsWith(currentValue))
+        : topicValues;
+      const sliced = filtered.slice(0, MAX_COMPLETION_ITEMS);
+      return {
+        completion: {
+          values: sliced,
+          total: filtered.length,
+          hasMore: filtered.length > MAX_COMPLETION_ITEMS,
+        },
+      };
+    }
+
     const isPathArg =
       isPathLikeArgumentName(argName) ||
       isPathArgumentFromReference(argName, ref);
