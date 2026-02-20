@@ -479,6 +479,8 @@ Replace text in all files matching a glob. Replaces **all** occurrences per file
 | `internal://instructions`      | Usage guidance for models          | `text/markdown` |
 | `filesystem-mcp://result/{id}` | Ephemeral cached large tool output | varies          |
 
+When a tool response includes a `resource_link`/`resourceUri`, treat it as authoritative for full payload retrieval and call `resources/read` with that URI.
+
 ### Prompts
 
 | Prompt     | Description                               |
@@ -492,6 +494,12 @@ The server declares full task capabilities (`tasks/list`, `tasks/cancel`). The f
 `find`, `tree`, `read`, `read_many`, `stat_many`, `grep`, `mkdir`, `write`, `mv`, `rm`, `calculate_hash`, `apply_patch`, `search_and_replace`
 
 Include `_meta.progressToken` in a `tools/call` request to receive `notifications/progress` updates. Use `tools/call` with a `task` field to invoke as a background task, then poll `tasks/get` and retrieve output via `tasks/result`.
+
+Recommended task follow-up loop:
+
+1. Start with `tools/call` + `task` (optional `_meta.progressToken`).
+2. Poll `tasks/get` until terminal status (`completed`, `failed`, `cancelled`).
+3. Fetch final payload with `tasks/result`.
 
 Task status notifications (`notifications/tasks/status`) are best-effort and emitted only when the transport/runtime provides a notification sender.
 

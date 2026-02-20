@@ -1,3 +1,5 @@
+import { channel } from 'node:diagnostics_channel';
+
 import type {
   ContentBlock,
   Icon,
@@ -24,6 +26,21 @@ const MAX_INLINE_CONTENT_CHARS = 20_000;
 const MAX_INLINE_PREVIEW_CHARS = 4_000;
 const PROGRESS_RATE_LIMIT_MS = 50;
 const TRUE_ENV_VALUES = new Set(['1', 'true', 'yes']);
+
+interface ContextDiagnosticsEvent {
+  phase: 'externalize_text';
+  name: string;
+  mimeType?: string;
+  chars: number;
+  uri: string;
+}
+
+const CONTEXT_DIAGNOSTICS_CHANNEL = channel('filesystem-mcp:context');
+
+function publishContextDiagnostics(event: ContextDiagnosticsEvent): void {
+  if (!CONTEXT_DIAGNOSTICS_CHANNEL.hasSubscribers) return;
+  CONTEXT_DIAGNOSTICS_CHANNEL.publish(event);
+}
 
 export const READ_ONLY_TOOL_ANNOTATIONS = {
   readOnlyHint: true,
@@ -88,6 +105,14 @@ export function maybeExternalizeTextContent(
     name: params.name,
     ...(params.mimeType !== undefined ? { mimeType: params.mimeType } : {}),
     text: content,
+  });
+
+  publishContextDiagnostics({
+    phase: 'externalize_text',
+    name: params.name,
+    ...(params.mimeType !== undefined ? { mimeType: params.mimeType } : {}),
+    chars: content.length,
+    uri: entry.uri,
   });
 
   return {

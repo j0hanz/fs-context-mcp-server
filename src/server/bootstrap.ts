@@ -173,9 +173,7 @@ export async function startServer(server: McpServer): Promise<void> {
   rootsManager.logMissingDirectoriesIfNeeded(server);
 }
 
-async function readRequestBody(
-  req: http.IncomingMessage
-): Promise<unknown> {
+async function readRequestBody(req: http.IncomingMessage): Promise<unknown> {
   return new Promise<unknown>((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => {
@@ -315,7 +313,10 @@ export async function startHttpServer(
           res.end(
             JSON.stringify({
               jsonrpc: '2.0',
-              error: { code: -32000, message: 'Bad Request: Session not found' },
+              error: {
+                code: -32000,
+                message: 'Bad Request: Session not found',
+              },
               id: null,
             })
           );
@@ -343,7 +344,10 @@ export async function startHttpServer(
           res.end(
             JSON.stringify({
               jsonrpc: '2.0',
-              error: { code: -32000, message: 'Bad Request: Session not found' },
+              error: {
+                code: -32000,
+                message: 'Bad Request: Session not found',
+              },
               id: null,
             })
           );

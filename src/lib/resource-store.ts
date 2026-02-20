@@ -1,4 +1,5 @@
 import { hash, randomUUID } from 'node:crypto';
+import { channel } from 'node:diagnostics_channel';
 
 import { ErrorCode, McpError } from './errors.js';
 
@@ -33,6 +34,31 @@ const DEFAULT_RESOURCE_STORE_OPTIONS: ResourceStoreOptions = {
   maxTotalBytes: 25 * 1024 * 1024,
   maxEntryBytes: 10 * 1024 * 1024,
 };
+
+interface ResourceStoreDiagnosticsEvent {
+  phase:
+    | 'cache_hit'
+    | 'cache_miss'
+    | 'cache_store'
+    | 'cache_evict'
+    | 'cache_clear'
+    | 'cache_reject';
+  uri?: string;
+  name?: string;
+  bytes?: number;
+  reason?: 'entry_too_large' | 'evicted_immediately' | 'not_found';
+}
+
+const RESOURCE_STORE_DIAGNOSTICS_CHANNEL = channel(
+  'filesystem-mcp:resource-store'
+);
+
+function publishResourceStoreDiagnostics(
+  event: ResourceStoreDiagnosticsEvent
+): void {
+  if (!RESOURCE_STORE_DIAGNOSTICS_CHANNEL.hasSubscribers) return;
+  RESOURCE_STORE_DIAGNOSTICS_CHANNEL.publish(event);
+}
 
 function estimateBytes(text: string): number {
   return Buffer.byteLength(text, 'utf8');
@@ -80,6 +106,12 @@ export function createInMemoryResourceStore(
     totalBytes -= existing.size;
     byUri.delete(uri);
     byHashIndex.delete(existing.hash);
+    publishResourceStoreDiagnostics({
+      phase: 'cache_evict',
+      uri,
+      name: existing.name,
+      bytes: existing.size,
+    });
   }
 
   function enforceLimits(): void {
@@ -98,6 +130,11 @@ export function createInMemoryResourceStore(
     const mimeType = params.mimeType ?? 'text/plain';
     const entryBytes = estimateBytes(params.text);
     if (entryBytes > resolved.maxEntryBytes) {
+      publishResourceStoreDiagnostics({
+        phase: 'cache_reject',
+        bytes: entryBytes,
+        reason: 'entry_too_large',
+      });
       throw new McpError(
         ErrorCode.E_TOO_LARGE,
         `Resource too large to cache (${entryBytes} bytes)`
@@ -109,6 +146,12 @@ export function createInMemoryResourceStore(
     if (existingUri !== undefined) {
       const cached = byUri.get(existingUri);
       if (cached !== undefined) {
+        publishResourceStoreDiagnostics({
+          phase: 'cache_hit',
+          uri: cached.uri,
+          name: cached.name,
+          bytes: cached.size,
+        });
         return cached;
       }
     }
@@ -125,10 +168,23 @@ export function createInMemoryResourceStore(
     byUri.set(uri, entry);
     byHashIndex.set(contentHash, uri);
     totalBytes += entryBytes;
+    publishResourceStoreDiagnostics({
+      phase: 'cache_store',
+      uri: entry.uri,
+      name: entry.name,
+      bytes: entry.size,
+    });
 
     enforceLimits();
 
     if (!byUri.has(uri)) {
+      publishResourceStoreDiagnostics({
+        phase: 'cache_reject',
+        uri,
+        name: entry.name,
+        bytes: entry.size,
+        reason: 'evicted_immediately',
+      });
       throw new McpError(
         ErrorCode.E_TOO_LARGE,
         'Resource cache full: entry evicted immediately'
@@ -141,18 +197,34 @@ export function createInMemoryResourceStore(
   function getText(uri: string): TextResourceEntry {
     const existing = byUri.get(uri);
     if (!existing) {
+      publishResourceStoreDiagnostics({
+        phase: 'cache_miss',
+        uri,
+        reason: 'not_found',
+      });
       throw new McpError(
         ErrorCode.E_NOT_FOUND,
         `Resource not found: ${uri}. The cached result may have been evicted. Re-run the originating tool to regenerate.`
       );
     }
+    publishResourceStoreDiagnostics({
+      phase: 'cache_hit',
+      uri: existing.uri,
+      name: existing.name,
+      bytes: existing.size,
+    });
     return existing;
   }
 
   function clear(): void {
+    const bytesBeforeClear = totalBytes;
     byUri.clear();
     byHashIndex.clear();
     totalBytes = 0;
+    publishResourceStoreDiagnostics({
+      phase: 'cache_clear',
+      bytes: bytesBeforeClear,
+    });
   }
 
   return { putText, getText, clear };

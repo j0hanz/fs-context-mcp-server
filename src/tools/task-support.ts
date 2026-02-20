@@ -1,3 +1,5 @@
+import { channel } from 'node:diagnostics_channel';
+
 import type {
   CreateTaskRequestHandlerExtra,
   TaskRequestHandlerExtra,
@@ -88,6 +90,24 @@ type ToolArgs<Args extends ZodRawShapeCompat | AnySchema | undefined> =
 
 const RELATED_TASK_META_KEY = 'io.modelcontextprotocol/related-task';
 const TASK_STATUS_NOTIFICATION_METHOD = 'notifications/tasks/status';
+
+interface TaskDiagnosticsEvent {
+  phase:
+    | 'task_created'
+    | 'task_result_stored'
+    | 'task_status_notified'
+    | 'task_status_notify_failed';
+  taskId: string;
+  status?: GetTaskResult['status'] | 'completed' | 'failed';
+  toolName?: string;
+}
+
+const TASK_DIAGNOSTICS_CHANNEL = channel('filesystem-mcp:tasks');
+
+function publishTaskDiagnostics(event: TaskDiagnosticsEvent): void {
+  if (!TASK_DIAGNOSTICS_CHANNEL.hasSubscribers) return;
+  TASK_DIAGNOSTICS_CHANNEL.publish(event);
+}
 
 function isRequestTaskStore(value: unknown): value is RequestTaskStore {
   if (!isRecord(value)) return false;
@@ -264,7 +284,8 @@ function buildTaskStatusNotificationParams(
 async function notifyTaskStatusIfPossible(
   extra: TaskToolExtra,
   taskStore: RequestTaskStore,
-  taskId: string
+  taskId: string,
+  toolName?: string
 ): Promise<void> {
   const { sendNotification } = extra as { sendNotification?: unknown };
   if (typeof sendNotification !== 'function') return;
@@ -279,7 +300,18 @@ async function notifyTaskStatusIfPossible(
       method: TASK_STATUS_NOTIFICATION_METHOD,
       params: buildTaskStatusNotificationParams(normalized),
     });
+    publishTaskDiagnostics({
+      phase: 'task_status_notified',
+      taskId,
+      status: normalized.status,
+      ...(toolName !== undefined ? { toolName } : {}),
+    });
   } catch {
+    publishTaskDiagnostics({
+      phase: 'task_status_notify_failed',
+      taskId,
+      ...(toolName !== undefined ? { toolName } : {}),
+    });
     // Never fail task execution because status notifications are optional.
   }
 }
@@ -353,7 +385,8 @@ async function runTaskInBackground<
   args: ToolArgs<Args>,
   extra: TaskToolExtra,
   taskStore: RequestTaskStore,
-  taskId: string
+  taskId: string,
+  toolName?: string
 ): Promise<void> {
   try {
     const result = maybeStripStructuredContentFromResult(
@@ -361,14 +394,26 @@ async function runTaskInBackground<
     );
     const status = isErrorResult(result) ? 'failed' : 'completed';
     await tryStoreTaskResult(taskStore, taskId, status, result);
-    await notifyTaskStatusIfPossible(extra, taskStore, taskId);
+    publishTaskDiagnostics({
+      phase: 'task_result_stored',
+      taskId,
+      status,
+      ...(toolName !== undefined ? { toolName } : {}),
+    });
+    await notifyTaskStatusIfPossible(extra, taskStore, taskId, toolName);
   } catch (error) {
     const fallback = maybeStripStructuredContentFromResult(
       buildToolErrorResponse(error, ErrorCode.E_UNKNOWN)
     );
     try {
       await tryStoreTaskResult(taskStore, taskId, 'failed', fallback);
-      await notifyTaskStatusIfPossible(extra, taskStore, taskId);
+      publishTaskDiagnostics({
+        phase: 'task_result_stored',
+        taskId,
+        status: 'failed',
+        ...(toolName !== undefined ? { toolName } : {}),
+      });
+      await notifyTaskStatusIfPossible(extra, taskStore, taskId, toolName);
     } catch (innerError) {
       console.error(
         `Failed to store task failure result for task ${taskId}:`,
@@ -420,7 +465,10 @@ export function registerToolTaskIfAvailable<
   iconInfo: IconInfo | undefined,
   guard?: () => boolean
 ): boolean {
-  const taskOptions = guard ? { guard } : undefined;
+  const taskOptions = {
+    ...(guard ? { guard } : {}),
+    toolName,
+  };
   return tryRegisterToolTask(
     server,
     toolName,
@@ -432,7 +480,7 @@ export function registerToolTaskIfAvailable<
 
 export function createToolTaskHandler<Result>(
   run: (args: undefined, extra: TaskToolExtra) => Promise<ToolResult<Result>>,
-  options?: { guard?: () => boolean }
+  options?: { guard?: () => boolean; toolName?: string }
 ): ToolTaskHandler;
 export function createToolTaskHandler<
   Args extends ZodRawShapeCompat | AnySchema,
@@ -442,7 +490,7 @@ export function createToolTaskHandler<
     args: ToolArgs<Args>,
     extra: TaskToolExtra
   ) => Promise<ToolResult<Result>>,
-  options?: { guard?: () => boolean }
+  options?: { guard?: () => boolean; toolName?: string }
 ): ToolTaskHandler<Args>;
 export function createToolTaskHandler<
   Args extends ZodRawShapeCompat | AnySchema | undefined,
@@ -452,7 +500,7 @@ export function createToolTaskHandler<
     args: ToolArgs<Args>,
     extra: TaskToolExtra
   ) => Promise<ToolResult<Result>>,
-  options?: { guard?: () => boolean }
+  options?: { guard?: () => boolean; toolName?: string }
 ): ToolTaskHandler<Args> {
   const createTask = (async (
     argsOrExtra: ToolArgs<Args> | CreateTaskRequestHandlerExtra,
@@ -472,13 +520,33 @@ export function createToolTaskHandler<
     const task = await taskStore.createTask({
       ttl: extra.taskRequestedTtl ?? null,
     });
+    publishTaskDiagnostics({
+      phase: 'task_created',
+      taskId: task.taskId,
+      status: task.status,
+      ...(options?.toolName !== undefined
+        ? { toolName: options.toolName }
+        : {}),
+    });
     const taskExtra: TaskToolExtra = {
       ...extra,
       taskStore,
       taskId: task.taskId,
     };
-    void notifyTaskStatusIfPossible(taskExtra, taskStore, task.taskId);
-    void runTaskInBackground(run, args, taskExtra, taskStore, task.taskId);
+    void notifyTaskStatusIfPossible(
+      taskExtra,
+      taskStore,
+      task.taskId,
+      options?.toolName
+    );
+    void runTaskInBackground(
+      run,
+      args,
+      taskExtra,
+      taskStore,
+      task.taskId,
+      options?.toolName
+    );
     return { task };
   }) as ToolTaskHandler<Args>['createTask'];
 
