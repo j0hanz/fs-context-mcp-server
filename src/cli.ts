@@ -170,6 +170,10 @@ function createCliProgram(output: string[]): Command {
       '--allow_cwd, --allow-cwd',
       'Allow the current working directory as an additional root'
     )
+    .option(
+      '--port <number>',
+      'Enable HTTP transport on the given port (MCP Streamable HTTP with SSE)'
+    )
     .helpOption('-h, --help', 'Display command help')
     .version(SERVER_VERSION, '-v, --version', 'Display server version')
     .addHelpText(
@@ -179,6 +183,7 @@ Examples:
   $ filesystem-mcp /path/to/allowed/dir
   $ filesystem-mcp --allow-cwd
   $ filesystem-mcp /project/src /project/tests --allow-cwd
+  $ filesystem-mcp --port 3000 /path/to/allowed/dir
 `
     );
 
@@ -227,9 +232,22 @@ function deduplicateAllowedDirectories(dirs: readonly string[]): string[] {
   return deduplicated;
 }
 
+function parsePortOption(raw: unknown): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) {
+    throw new CliExitError(
+      `Error: --port must be an integer between 1 and 65535`,
+      1
+    );
+  }
+  return n;
+}
+
 export async function parseArgs(): Promise<{
   allowedDirs: string[];
   allowCwd: boolean;
+  port: number | undefined;
 }> {
   const output: string[] = [];
   const cli = createCliProgram(output);
@@ -245,8 +263,9 @@ export async function parseArgs(): Promise<{
     throw error;
   }
 
-  const options = cli.opts<{ allowCwd?: boolean }>();
+  const options = cli.opts<{ allowCwd?: boolean; port?: string }>();
   const allowCwd = options.allowCwd === true;
+  const port = parsePortOption(options.port);
   const positionals = getParsedAllowedDirs(cli);
 
   let allowedDirs: string[];
@@ -259,5 +278,5 @@ export async function parseArgs(): Promise<{
 
   const deduplicatedDirs = deduplicateAllowedDirectories(allowedDirs);
 
-  return { allowedDirs: deduplicatedDirs, allowCwd };
+  return { allowedDirs: deduplicatedDirs, allowCwd, port };
 }

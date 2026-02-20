@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import type * as http from 'node:http';
 import process from 'node:process';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -8,10 +9,11 @@ import { DEFAULT_SEARCH_TIMEOUT_MS } from './lib/constants.js';
 import { formatUnknownErrorMessage } from './lib/errors.js';
 import { createTimedAbortSignal } from './lib/fs-helpers.js';
 import { setAllowedDirectoriesResolved } from './lib/path-validation.js';
-import { createServer, startServer } from './server.js';
+import { createServer, startHttpServer, startServer } from './server.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 let activeServer: McpServer | undefined;
+let activeHttpServer: http.Server | undefined;
 let shutdownStarted = false;
 
 function isStdinEvent(event: NodeJS.Signals | 'end' | 'close'): boolean {
@@ -42,6 +44,14 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
   timer.unref();
 
   try {
+    if (activeHttpServer) {
+      const server = activeHttpServer;
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          resolve();
+        });
+      });
+    }
     if (activeServer) {
       await activeServer.close();
     }
@@ -61,9 +71,10 @@ async function shutdown(reason: string, exitCode = 0): Promise<void> {
 async function main(): Promise<void> {
   let allowedDirs: string[];
   let allowCwd: boolean;
+  let port: number | undefined;
   try {
     const parsed = await parseArgs();
-    ({ allowedDirs, allowCwd } = parsed);
+    ({ allowedDirs, allowCwd, port } = parsed);
   } catch (error: unknown) {
     if (error instanceof CliExitError) {
       if (error.message.length > 0) {
@@ -95,12 +106,19 @@ async function main(): Promise<void> {
     );
   }
 
-  const server = await createServer({
-    allowCwd,
-    cliAllowedDirs: allowedDirs,
-  });
-  activeServer = server;
-  await startServer(server);
+  if (port !== undefined) {
+    activeHttpServer = await startHttpServer(port, {
+      allowCwd,
+      cliAllowedDirs: allowedDirs,
+    });
+  } else {
+    const server = await createServer({
+      allowCwd,
+      cliAllowedDirs: allowedDirs,
+    });
+    activeServer = server;
+    await startServer(server);
+  }
 }
 
 registerShutdownTrigger('SIGTERM');

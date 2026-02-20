@@ -180,3 +180,37 @@ await it('parseArgs reports the earliest invalid directory when multiple fail', 
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
+
+await it('parseArgs returns port as undefined when --port is not specified', async () => {
+  const result = await withArgv([], () => parseArgs());
+  assert.strictEqual(result.port, undefined);
+});
+
+await it('parseArgs parses --port as a number', async () => {
+  const result = await withArgv(['--port', '3000'], () => parseArgs());
+  assert.strictEqual(result.port, 3000);
+});
+
+await it('parseArgs rejects --port with invalid value', async () => {
+  await assert.rejects(
+    withArgv(['--port', '0'], () => parseArgs()),
+    (error: unknown): boolean => {
+      assert.ok(error instanceof CliExitError);
+      assert.strictEqual(error.exitCode, 1);
+      assert.match(error.message, /port/i);
+      return true;
+    }
+  );
+});
+
+await it('parseArgs rejects --port above 65535', async () => {
+  await assert.rejects(
+    withArgv(['--port', '99999'], () => parseArgs()),
+    (error: unknown): boolean => {
+      assert.ok(error instanceof CliExitError);
+      assert.strictEqual(error.exitCode, 1);
+      assert.match(error.message, /port/i);
+      return true;
+    }
+  );
+});
