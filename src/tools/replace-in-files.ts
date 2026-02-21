@@ -5,6 +5,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import type { z } from 'zod';
 
+import { createTwoFilesPatch } from 'diff';
 import RE2 from 're2';
 import safeRegex from 'safe-regex2';
 
@@ -55,6 +56,7 @@ export const SEARCH_AND_REPLACE_TOOL: ToolContract = {
     'Replaces ALL occurrences in each file (unlike `edit` which replaces only the first). ' +
     'Use `filePattern` to scope which files are touched. ' +
     'Always run with `dryRun: true` first to verify matches before writing. ' +
+    'Returns a unified diff of changes in `dryRun` mode. ' +
     'Literal mode (default) matches exact text; `isRegex: true` enables RE2 regex with capture groups ($1, $2).',
   inputSchema: SearchAndReplaceInputSchema,
   outputSchema: SearchAndReplaceOutputSchema,
@@ -70,6 +72,7 @@ export const SEARCH_AND_REPLACE_TOOL: ToolContract = {
 const MAX_FAILURES = 20;
 const REPLACE_CONCURRENCY = Math.min(PARALLEL_CONCURRENCY, 8);
 const MAX_CHANGED_FILES = 100;
+const MAX_DIFF_SIZE = 20 * 1024; // 20KB limit for diff output
 
 interface Failure {
   path: string;
@@ -183,18 +186,33 @@ async function processEntry(
 
       recordChangedFile(summary, validPath, matchCount);
 
-      if (!args.dryRun) {
-        let newContent: string;
-        if (args.isRegex && regex) {
-          regex.lastIndex = 0;
-          newContent = content.replace(regex, args.replacement);
-        } else {
-          newContent = content.replaceAll(
-            args.searchPattern,
-            () => args.replacement
-          );
-        }
+      let newContent: string;
+      if (args.isRegex && regex) {
+        regex.lastIndex = 0;
+        newContent = content.replace(regex, args.replacement);
+      } else {
+        newContent = content.replaceAll(
+          args.searchPattern,
+          () => args.replacement
+        );
+      }
 
+      if (args.dryRun && summary.diff.length < MAX_DIFF_SIZE) {
+        const patch = createTwoFilesPatch(
+          path.basename(validPath),
+          path.basename(validPath),
+          content,
+          newContent,
+          'Original',
+          'Modified'
+        );
+        // Only append if it won't exceed the limit too much
+        if (summary.diff.length + patch.length <= MAX_DIFF_SIZE + 1024) {
+          summary.diff += patch;
+        }
+      }
+
+      if (!args.dryRun) {
         await atomicWriteFile(validPath, newContent, {
           encoding: 'utf-8',
           signal,
@@ -253,6 +271,7 @@ interface ReplaceSummary {
   failures: Failure[];
   changedFiles: { path: string; matches: number }[];
   changedFilesTruncated: boolean;
+  diff: string;
 }
 
 function createReplaceSummary(root: string): ReplaceSummary {
@@ -265,6 +284,7 @@ function createReplaceSummary(root: string): ReplaceSummary {
     failures: [],
     changedFiles: [],
     changedFilesTruncated: false,
+    diff: '',
   };
 }
 
@@ -352,6 +372,7 @@ async function handleSearchAndReplace(
         ? { changedFiles: summary.changedFiles }
         : {}),
       ...(summary.changedFilesTruncated ? { changedFilesTruncated: true } : {}),
+      ...(args.dryRun && summary.diff ? { diff: summary.diff } : {}),
       dryRun: args.dryRun,
     }
   );

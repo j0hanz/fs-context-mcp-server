@@ -806,6 +806,7 @@ export const SearchAndReplaceOutputSchema = z.strictObject({
     .boolean()
     .optional()
     .describe('Changed file list truncated'),
+  diff: z.string().optional().describe('Unified diff of changes (dryRun only)'),
   dryRun: z.boolean().optional(),
   error: ErrorSchema.optional(),
 });
