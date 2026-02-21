@@ -289,3 +289,63 @@ await it('emits cancelled tasks/status notifications for E_CANCELLED task result
     })
   );
 });
+
+await it('stores non-cancelled tool error results as completed so clients retrieve the actual error', async () => {
+  const { taskStore, tasks } = createInMemoryTaskStore();
+
+  const handler = createToolTaskHandler(async () => {
+    return {
+      content: [{ type: 'text', text: 'Error [E_NOT_FOUND]: file not found' }],
+      structuredContent: {
+        ok: false,
+        error: { code: 'E_NOT_FOUND', message: 'file not found' },
+      },
+      isError: true,
+    };
+  });
+
+  const createResult = await handler.createTask(createRequestExtra(taskStore));
+  const taskId = createResult.task.taskId;
+
+  // Task must be 'completed' (not 'failed') so the client can call getTaskResult
+  // and receive the actual error instead of the generic "Task X failed: unknown error".
+  await waitFor(() => tasks.get(taskId)?.status === 'completed');
+
+  const taskResult = await handler.getTaskResult(
+    createTaskRequestExtra(taskStore, taskId)
+  );
+  assert.strictEqual(taskResult.isError, true);
+  const firstContent = (
+    taskResult.content as Array<{ type?: string; text?: string }>
+  )[0];
+  assert.strictEqual(firstContent?.text, 'Error [E_NOT_FOUND]: file not found');
+});
+
+await it('strips structuredContent from non-cancelled error task results to prevent output-schema validation failures', async () => {
+  const { taskStore, tasks } = createInMemoryTaskStore();
+
+  const handler = createToolTaskHandler(async () => {
+    return {
+      content: [{ type: 'text', text: 'Error [E_NOT_FOUND]: file not found' }],
+      structuredContent: {
+        ok: false,
+        error: { code: 'E_NOT_FOUND', message: 'file not found' },
+      },
+      isError: true,
+    };
+  });
+
+  const createResult = await handler.createTask(createRequestExtra(taskStore));
+  const taskId = createResult.task.taskId;
+
+  await waitFor(() => tasks.get(taskId)?.status === 'completed');
+
+  const taskResult = await handler.getTaskResult(
+    createTaskRequestExtra(taskStore, taskId)
+  );
+  // structuredContent must be absent: clients using callToolStream validate it
+  // against the tool's outputSchema ({ok:true}), which would reject {ok:false}.
+  const resultWithMeta = taskResult as Record<string, unknown>;
+  assert.strictEqual(resultWithMeta['structuredContent'], undefined);
+  assert.strictEqual(taskResult.isError, true);
+});

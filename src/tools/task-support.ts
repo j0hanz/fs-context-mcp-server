@@ -340,6 +340,14 @@ function isErrorResult(result: ToolResult<unknown>): boolean {
   return 'isError' in result && result.isError === true;
 }
 
+// Strips structuredContent from a tool result if present, without modifying the original object.  This is used when storing error results as 'completed' to prevent client-side output schema validation errors, while still allowing the human-readable error message in content[0].text to be returned to clients.
+function withoutStructuredContent<T extends object>(result: T): T {
+  if (!Object.hasOwn(result, 'structuredContent')) return result;
+  const stripped = { ...(result as Record<string, unknown>) };
+  delete stripped['structuredContent'];
+  return stripped as T;
+}
+
 const TERMINAL_TASK_STATUSES = new Set<GetTaskResult['status']>([
   'completed',
   'failed',
@@ -389,10 +397,12 @@ async function runTaskInBackground<
   toolName?: string
 ): Promise<void> {
   try {
-    const result = maybeStripStructuredContentFromResult(
-      await run(args, extra)
-    );
-    const status = isErrorResult(result) ? 'failed' : 'completed';
+    const rawResult = await run(args, extra);
+    const status = isCancelledToolResult(rawResult) ? 'failed' : 'completed';
+    const result =
+      isErrorResult(rawResult) && status === 'completed'
+        ? withoutStructuredContent(rawResult)
+        : maybeStripStructuredContentFromResult(rawResult);
     await tryStoreTaskResult(taskStore, taskId, status, result);
     publishTaskDiagnostics({
       phase: 'task_result_stored',
