@@ -128,5 +128,18 @@ void describe('progress notifications', () => {
       assert.strictEqual(result.isError, true);
       assertTerminalProgressOnFailure(notifications);
     });
+
+    void it('tree emits terminal progress on failure', async () => {
+      const handler = getHandler('tree');
+      const notifications: ProgressNotification[] = [];
+
+      const result = (await handler(
+        { path: missingPath() },
+        createExtra(notifications)
+      )) as { isError?: boolean };
+
+      assert.strictEqual(result.isError, true);
+      assertTerminalProgressOnFailure(notifications);
+    });
   });
 });

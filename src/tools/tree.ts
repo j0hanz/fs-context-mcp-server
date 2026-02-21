@@ -11,7 +11,9 @@ import { TreeInputSchema, TreeOutputSchema } from '../schemas.js';
 import {
   buildToolErrorResponse,
   buildToolResponse,
+  createProgressReporter,
   executeToolWithDiagnostics,
+  notifyProgress,
   READ_ONLY_TOOL_ANNOTATIONS,
   resolvePathOrRoot,
   type ToolContract,
@@ -40,7 +42,8 @@ export const TREE_TOOL: ToolContract = {
 
 async function handleTree(
   args: z.infer<typeof TreeInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (progress: { current: number }) => void
 ): Promise<ToolResponse<z.infer<typeof TreeOutputSchema>>> {
   const basePath = resolvePathOrRoot(args.path);
   const result = await treeDirectory(basePath, {
@@ -49,6 +52,7 @@ async function handleTree(
     includeHidden: args.includeHidden,
     includeIgnored: args.includeIgnored,
     ...(signal ? { signal } : {}),
+    ...(onProgress ? { onProgress } : {}),
   });
 
   const ascii = formatTreeAscii(result.tree);
@@ -80,7 +84,51 @@ export function registerTreeTool(
       extra,
       timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
       context: { path: targetPath },
-      run: (signal) => handleTree(args, signal),
+      run: async (signal) => {
+        const context = args.path ? path.basename(args.path) : '.';
+        let progressCursor = 0;
+
+        notifyProgress(extra, {
+          current: 0,
+          message: `≣ tree: ${context}`,
+        });
+
+        const baseReporter = createProgressReporter(extra);
+        const onProgress = (progress: { current: number }): void => {
+          const { current } = progress;
+          if (current > progressCursor) progressCursor = current;
+          baseReporter({
+            current,
+            message: `≣ tree: ${context} [${current} entries]`,
+          });
+        };
+
+        try {
+          const result = await handleTree(args, signal, onProgress);
+          const sc = result.structuredContent;
+          const count = sc.totalEntries ?? 0;
+          const { truncated } = sc;
+
+          let suffix = `${count} ${count === 1 ? 'entry' : 'entries'}`;
+          if (truncated) suffix += ' [truncated]';
+
+          const finalCurrent = Math.max(count, progressCursor + 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `≣ tree: ${context} • ${suffix}`,
+          });
+          return result;
+        } catch (error) {
+          const finalCurrent = Math.max(progressCursor + 1, 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `≣ tree: ${context} • failed`,
+          });
+          throw error;
+        }
+      },
       onError: (error) =>
         buildToolErrorResponse(error, ErrorCode.E_NOT_DIRECTORY, targetPath),
     });
@@ -88,21 +136,6 @@ export function registerTreeTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => {
-      if (args.path) {
-        return `≣ tree: ${path.basename(args.path)}`;
-      }
-      return '≣ tree';
-    },
-    completionMessage: (args, result) => {
-      const base = args.path ? path.basename(args.path) : '.';
-      if (result.isError) return `≣ tree: ${base} • failed`;
-      const sc = result.structuredContent;
-      if (!sc.ok) return `≣ tree: ${base} • failed`;
-      const count = sc.totalEntries ?? 0;
-      if (sc.truncated) return `≣ tree: ${base} • ${count} entries [truncated]`;
-      return `≣ tree: ${base} • ${count} ${count === 1 ? 'entry' : 'entries'}`;
-    },
   });
 
   const validatedHandler = withValidatedArgs(TreeInputSchema, wrappedHandler);

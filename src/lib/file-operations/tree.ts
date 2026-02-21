@@ -32,6 +32,7 @@ interface TreeOptions {
   includeIgnored?: boolean;
   timeoutMs?: number;
   signal?: AbortSignal;
+  onProgress?: (progress: { total?: number; current: number }) => void;
 }
 
 interface NormalizedOptions {
@@ -395,6 +396,7 @@ export async function treeDirectory(
 
       upsertChildNode(parent, nodeByPath, resolved, childPathIndexByParent);
       totalEntries += 1;
+      options.onProgress?.({ current: totalEntries });
     }
 
     sortTree(rootNode);

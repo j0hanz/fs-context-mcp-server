@@ -66,6 +66,7 @@
   - Timing-safe comparison (`timingSafeEqual`) for HTTP API key auth (observed in `src/server/bootstrap.ts`)
   - `node:test` and `node:assert/strict` (no third-party test framework) — tests use `void it(...)` pattern (observed in `src/.__tests__/tools/tool-defaults.test.ts`)
   - `tsx/esm` loader for running TypeScript tests without pre-compilation (observed in `scripts/tasks.mjs`, `package.json`)
+  - Long-running tools (`tree`, `search`, etc) implement manual progress reporting via `notifyProgress` and `createProgressReporter`, avoiding `wrapToolHandler`'s one-shot messages (observed in `src/tools/tree.ts`, `src/tools/search-files.ts`)
 
 ## 5) Agent Behavioral Rules (Do Nots)
 
