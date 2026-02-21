@@ -451,9 +451,13 @@ export function tryRegisterToolTask<
   const tasks = getExperimentalTaskRegistration(server);
   if (!tasks?.registerToolTask) return false;
 
-  const existingExecution = (toolDef as any).execution || {};
+  const def = toolDef as Record<string, unknown>;
+  const existingExecution =
+    (def.execution as Record<string, unknown> | undefined) ?? {};
   const taskSupport =
-    (toolDef as any).taskSupport || existingExecution.taskSupport || 'optional';
+    (def.taskSupport as string | undefined) ??
+    (existingExecution.taskSupport as string | undefined) ??
+    'optional';
 
   tasks.registerToolTask(
     toolName,

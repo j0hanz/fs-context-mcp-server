@@ -245,7 +245,7 @@ function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
 }
 
 function canReportProgress(extra: ToolExtra): boolean {
-  const taskExtra = extra as any;
+  const taskExtra = extra as Record<string, unknown>;
   const hasTask =
     taskExtra.taskId !== undefined && taskExtra.taskStore !== undefined;
   return canSendProgress(extra) || hasTask;
@@ -429,9 +429,13 @@ async function reportProgress(
   extra: ToolExtra,
   progress: { current: number; total?: number; message?: string }
 ): Promise<void> {
-  const taskExtra = extra as any;
-  if (taskExtra.taskId && taskExtra.taskStore) {
-    const store = taskExtra.taskStore;
+  const taskExtra = extra as Record<string, unknown>;
+  if (
+    typeof taskExtra.taskId === 'string' &&
+    taskExtra.taskStore !== undefined &&
+    taskExtra.taskStore !== null
+  ) {
+    const store = taskExtra.taskStore as Record<string, unknown>;
     if (typeof store.updateTaskStatus === 'function') {
       try {
         let statusMessage = progress.message;
@@ -439,14 +443,16 @@ async function reportProgress(
           statusMessage = statusMessage
             ? `${statusMessage} (${progress.current}/${progress.total})`
             : `${progress.current}/${progress.total}`;
-        } else if (!statusMessage) {
-          statusMessage = `${progress.current}`;
+        } else {
+          statusMessage ??= `${progress.current}`;
         }
-        await store.updateTaskStatus(
-          taskExtra.taskId,
-          'working',
-          statusMessage
-        );
+        await (
+          store.updateTaskStatus as (
+            taskId: string,
+            status: string,
+            message?: string
+          ) => Promise<void>
+        )(taskExtra.taskId, 'working', statusMessage);
       } catch (error) {
         console.error('Failed to update task status message:', error);
       }
