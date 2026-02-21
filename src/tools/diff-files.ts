@@ -28,6 +28,7 @@ import {
   withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 export const DIFF_FILES_TOOL: ToolContract = {
   name: 'diff_files',
@@ -173,6 +174,17 @@ export function registerDiffFilesTool(
     wrappedHandler
   );
 
+  if (
+    registerToolTaskIfAvailable(
+      server,
+      'diff_files',
+      DIFF_FILES_TOOL,
+      validatedHandler,
+      options.iconInfo,
+      options.isInitialized
+    )
+  )
+    return;
   server.registerTool(
     'diff_files',
     withDefaultIcons({ ...DIFF_FILES_TOOL }, options.iconInfo),

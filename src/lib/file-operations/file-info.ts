@@ -33,6 +33,7 @@ const PERM_STRINGS = [
 interface FileInfoOptions {
   includeMimeType?: boolean | undefined;
   signal?: AbortSignal | undefined;
+  onProgress?: () => void;
 }
 
 const UNKNOWN_PATH = '(unknown)';
@@ -166,10 +167,11 @@ async function readFileInfoInParallel(
 ): Promise<{ results: ParallelResult[]; errors: ParallelError[] }> {
   return processInParallel(
     buildIndexedPathTasks(paths),
-    async ({ filePath, index }) => ({
-      index,
-      value: await processFileInfo(filePath, options),
-    }),
+    async ({ filePath, index }) => {
+      const value = await processFileInfo(filePath, options);
+      options.onProgress?.();
+      return { index, value };
+    },
     PARALLEL_CONCURRENCY,
     options.signal
   );

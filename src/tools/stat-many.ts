@@ -17,7 +17,9 @@ import {
   buildFileInfoPayload,
   buildToolErrorResponse,
   buildToolResponse,
+  createProgressReporter,
   executeToolWithDiagnostics,
+  notifyProgress,
   READ_ONLY_TOOL_ANNOTATIONS,
   type ToolContract,
   type ToolExtra,
@@ -54,11 +56,13 @@ function formatFileInfoDetail(info: FileInfo): string {
 
 async function handleGetMultipleFileInfo(
   args: z.infer<typeof GetMultipleFileInfoInputSchema>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: () => void
 ): Promise<ToolResponse<z.infer<typeof GetMultipleFileInfoOutputSchema>>> {
   const result = await getMultipleFileInfo(args.paths, {
     includeMimeType: true,
     ...(signal ? { signal } : {}),
+    ...(onProgress ? { onProgress } : {}),
   });
 
   const structuredResults: z.infer<
@@ -109,7 +113,65 @@ export function registerGetMultipleFileInfoTool(
       extra,
       timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
       context: { path: primaryPath },
-      run: (signal) => handleGetMultipleFileInfo(args, signal),
+      run: async (signal) => {
+        const first = path.basename(args.paths[0] ?? '');
+        const extraPaths =
+          args.paths.length > 1
+            ? `, ${path.basename(args.paths[1] ?? '')}${args.paths.length > 2 ? '…' : ''}`
+            : '';
+        const context = `${args.paths.length} paths [${first}${extraPaths}]`;
+        let progressCursor = 0;
+
+        notifyProgress(extra, {
+          current: 0,
+          message: `🕮 stat_many: ${context}`,
+        });
+
+        const baseReporter = createProgressReporter(extra);
+        const onProgress = (): void => {
+          progressCursor++;
+          baseReporter({
+            current: progressCursor,
+            message: `🕮 stat_many: ${context} [${progressCursor}/${args.paths.length} scanned]`,
+          });
+        };
+
+        try {
+          const result = await handleGetMultipleFileInfo(
+            args,
+            signal,
+            onProgress
+          );
+
+          const sc = result.structuredContent;
+          const total = sc.summary?.total ?? 0;
+          const failed = sc.summary?.failed ?? 0;
+          const succeeded = sc.summary?.succeeded ?? 0;
+
+          let suffix: string;
+          if (failed) {
+            suffix = `${succeeded}/${total} OK, ${failed} failed`;
+          } else {
+            suffix = `${total} OK`;
+          }
+
+          const finalCurrent = Math.max(total, progressCursor + 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🕮 stat_many: ${context} • ${suffix}`,
+          });
+          return result;
+        } catch (error) {
+          const finalCurrent = Math.max(progressCursor + 1, 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🕮 stat_many: ${context} • failed`,
+          });
+          throw error;
+        }
+      },
       onError: (error) =>
         buildToolErrorResponse(error, ErrorCode.E_NOT_FOUND, primaryPath),
     });
@@ -117,24 +179,6 @@ export function registerGetMultipleFileInfoTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => {
-      const first = path.basename(args.paths[0] ?? '');
-      const extra =
-        args.paths.length > 1 ? `, ${path.basename(args.paths[1] ?? '')}…` : '';
-      return `🕮 stat_many: ${args.paths.length} paths [${first}${extra}]`;
-    },
-    completionMessage: (args, result) => {
-      if (result.isError)
-        return `🕮 stat_many: ${args.paths.length} paths • failed`;
-      const sc = result.structuredContent;
-      if (!sc.ok) return `🕮 stat_many: ${args.paths.length} paths • failed`;
-      const total = sc.summary?.total ?? 0;
-      const succeeded = sc.summary?.succeeded ?? 0;
-      const failed = sc.summary?.failed ?? 0;
-      if (failed)
-        return `🕮 stat_many: ${succeeded}/${total} OK, ${failed} failed`;
-      return `🕮 stat_many: ${total} OK`;
-    },
   });
 
   const validatedHandler = withValidatedArgs(

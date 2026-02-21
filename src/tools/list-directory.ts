@@ -27,6 +27,7 @@ import {
   withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 export const LIST_DIRECTORY_TOOL: ToolContract = {
   name: 'ls',
@@ -215,6 +216,17 @@ export function registerListDirectoryTool(
     wrappedHandler
   );
 
+  if (
+    registerToolTaskIfAvailable(
+      server,
+      'ls',
+      LIST_DIRECTORY_TOOL,
+      validatedHandler,
+      options.iconInfo,
+      options.isInitialized
+    )
+  )
+    return;
   server.registerTool(
     'ls',
     withDefaultIcons({ ...LIST_DIRECTORY_TOOL }, options.iconInfo),

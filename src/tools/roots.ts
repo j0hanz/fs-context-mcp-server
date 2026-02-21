@@ -23,6 +23,7 @@ import {
   withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 export const LIST_ALLOWED_DIRECTORIES_TOOL: ToolContract = {
   name: 'roots',
@@ -92,6 +93,17 @@ export function registerListAllowedDirectoriesTool(
     wrappedHandler
   );
 
+  if (
+    registerToolTaskIfAvailable(
+      server,
+      'roots',
+      LIST_ALLOWED_DIRECTORIES_TOOL,
+      validatedHandler,
+      options.iconInfo,
+      options.isInitialized
+    )
+  )
+    return;
   server.registerTool(
     'roots',
     withDefaultIcons({ ...LIST_ALLOWED_DIRECTORIES_TOOL }, options.iconInfo),

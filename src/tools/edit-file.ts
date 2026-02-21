@@ -23,6 +23,7 @@ import {
   withValidatedArgs,
   wrapToolHandler,
 } from './shared.js';
+import { registerToolTaskIfAvailable } from './task-support.js';
 
 export const EDIT_FILE_TOOL: ToolContract = {
   name: 'edit',
@@ -183,6 +184,17 @@ export function registerEditFileTool(
     wrappedHandler
   );
 
+  if (
+    registerToolTaskIfAvailable(
+      server,
+      'edit',
+      EDIT_FILE_TOOL,
+      validatedHandler,
+      options.iconInfo,
+      options.isInitialized
+    )
+  )
+    return;
   server.registerTool(
     'edit',
     withDefaultIcons({ ...EDIT_FILE_TOOL }, options.iconInfo),

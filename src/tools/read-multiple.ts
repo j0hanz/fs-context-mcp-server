@@ -18,8 +18,10 @@ import {
   buildResourceLink,
   buildToolErrorResponse,
   buildToolResponse,
+  createProgressReporter,
   executeToolWithDiagnostics,
   maybeExternalizeTextContent,
+  notifyProgress,
   READ_ONLY_TOOL_ANNOTATIONS,
   type ToolContract,
   type ToolExtra,
@@ -51,13 +53,15 @@ export const READ_MULTIPLE_FILES_TOOL: ToolContract = {
 async function handleReadMultipleFiles(
   args: z.infer<typeof ReadMultipleFilesInputSchema>,
   signal?: AbortSignal,
-  resourceStore?: ToolRegistrationOptions['resourceStore']
+  resourceStore?: ToolRegistrationOptions['resourceStore'],
+  onReadComplete?: () => void
 ): Promise<ToolResponse<z.infer<typeof ReadMultipleFilesOutputSchema>>> {
   const options: Parameters<typeof readMultipleFiles>[1] = {
     ...(signal ? { signal } : {}),
     ...(args.head !== undefined ? { head: args.head } : {}),
     ...(args.startLine !== undefined ? { startLine: args.startLine } : {}),
     ...(args.endLine !== undefined ? { endLine: args.endLine } : {}),
+    ...(onReadComplete ? { onReadComplete } : {}),
   };
   const results = await readMultipleFiles(args.paths, options);
 
@@ -182,8 +186,66 @@ export function registerReadMultipleFilesTool(
       extra,
       timedSignal: { timeoutMs: DEFAULT_SEARCH_TIMEOUT_MS },
       context: { path: primaryPath },
-      run: (signal) =>
-        handleReadMultipleFiles(args, signal, options.resourceStore),
+      run: async (signal) => {
+        const first = path.basename(args.paths[0] ?? '');
+        const extraPaths =
+          args.paths.length > 1
+            ? `, ${path.basename(args.paths[1] ?? '')}${args.paths.length > 2 ? '…' : ''}`
+            : '';
+        const context = `${args.paths.length} files [${first}${extraPaths}]`;
+        let progressCursor = 0;
+
+        notifyProgress(extra, {
+          current: 0,
+          message: `🕮 read_many: ${context}`,
+        });
+
+        const baseReporter = createProgressReporter(extra);
+        const onReadComplete = (): void => {
+          progressCursor++;
+          baseReporter({
+            current: progressCursor,
+            message: `🕮 read_many: ${context} [${progressCursor}/${args.paths.length} read]`,
+          });
+        };
+
+        try {
+          const result = await handleReadMultipleFiles(
+            args,
+            signal,
+            options.resourceStore,
+            onReadComplete
+          );
+
+          const sc = result.structuredContent;
+          const total = sc.summary?.total ?? 0;
+          const failed = sc.summary?.failed ?? 0;
+          const succeeded = sc.summary?.succeeded ?? 0;
+
+          let suffix: string;
+          if (failed) {
+            suffix = `${succeeded}/${total} read, ${failed} failed`;
+          } else {
+            suffix = `${total} files read`;
+          }
+
+          const finalCurrent = Math.max(total, progressCursor + 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🕮 read_many: ${context} • ${suffix}`,
+          });
+          return result;
+        } catch (error) {
+          const finalCurrent = Math.max(progressCursor + 1, 1);
+          notifyProgress(extra, {
+            current: finalCurrent,
+            total: finalCurrent,
+            message: `🕮 read_many: ${context} • failed`,
+          });
+          throw error;
+        }
+      },
       onError: (error) =>
         buildToolErrorResponse(error, ErrorCode.E_NOT_FILE, primaryPath),
     });
@@ -191,24 +253,6 @@ export function registerReadMultipleFilesTool(
 
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
-    progressMessage: (args) => {
-      const first = path.basename(args.paths[0] ?? '');
-      const extra =
-        args.paths.length > 1 ? `, ${path.basename(args.paths[1] ?? '')}…` : '';
-      return `🕮 read_many: ${args.paths.length} files [${first}${extra}]`;
-    },
-    completionMessage: (args, result) => {
-      if (result.isError)
-        return `🕮 read_many: ${args.paths.length} files • failed`;
-      const sc = result.structuredContent;
-      if (!sc.ok) return `🕮 read_many: ${args.paths.length} files • failed`;
-      const total = sc.summary?.total ?? 0;
-      const succeeded = sc.summary?.succeeded ?? 0;
-      const failed = sc.summary?.failed ?? 0;
-      if (failed)
-        return `🕮 read_many: ${succeeded}/${total} read, ${failed} failed`;
-      return `🕮 read_many: ${total} files read`;
-    },
   });
 
   const validatedHandler = withValidatedArgs(

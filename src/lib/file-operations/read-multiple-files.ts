@@ -45,6 +45,7 @@ interface ReadMultipleOptions {
   startLine?: number;
   endLine?: number;
   signal?: AbortSignal;
+  onReadComplete?: () => void;
 }
 
 interface FileReadTask {
@@ -129,7 +130,8 @@ async function readSingleFile(
 async function readFilesInParallel(
   filesToProcess: FileReadTask[],
   options: NormalizedReadMultipleOptions,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onReadComplete?: () => void
 ): Promise<{
   results: { index: number; value: ReadMultipleResult }[];
   errors: { index: number; error: Error }[];
@@ -140,7 +142,11 @@ async function readFilesInParallel(
   }
   return processInParallel(
     filesToProcess,
-    async (task) => readSingleFile(task, readOptions),
+    async (task) => {
+      const result = await readSingleFile(task, readOptions);
+      onReadComplete?.();
+      return result;
+    },
     PARALLEL_CONCURRENCY,
     signal
   );
@@ -486,7 +492,8 @@ export async function readMultipleFiles(
   const { results, errors } = await readFilesInParallel(
     filesToProcess,
     normalized,
-    signal
+    signal,
+    options.onReadComplete
   );
 
   applyResults(output, results);
