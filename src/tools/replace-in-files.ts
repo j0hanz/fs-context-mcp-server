@@ -61,6 +61,7 @@ export const SEARCH_AND_REPLACE_TOOL: ToolContract = {
   inputSchema: SearchAndReplaceInputSchema,
   outputSchema: SearchAndReplaceOutputSchema,
   annotations: DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS,
+  taskSupport: 'required',
   gotchas: [
     'Literal mode is default; `isRegex=true` enables RE2 + capture replacements (`$1`, `$2`).',
   ],

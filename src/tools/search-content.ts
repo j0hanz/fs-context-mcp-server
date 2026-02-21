@@ -61,6 +61,7 @@ export const SEARCH_CONTENT_TOOL: ToolContract = {
   gotchas: [
     'Inline match rows are capped (first 50); full structured results are externalized via `resourceUri`.',
   ],
+  taskSupport: 'required',
 } as const;
 
 function assertValidRegexPattern(pattern: string): void {

@@ -46,4 +46,9 @@ export interface ToolContract {
    * Common pitfalls or warnings for documentation.
    */
   gotchas?: string[];
+
+  /**
+   * Task support level for the tool. Defaults to 'optional'.
+   */
+  taskSupport?: 'optional' | 'required' | 'forbidden';
 }

@@ -113,6 +113,32 @@ function assertToolErrorCode(
   );
 }
 
+async function callTool(
+  client: Client,
+  params: { name: string; arguments?: Record<string, unknown> }
+): Promise<unknown> {
+  try {
+    return await client.callTool(params);
+  } catch (error: any) {
+    if (
+      error?.code === -32600 &&
+      error?.message?.includes('requires task-based execution')
+    ) {
+      const stream = client.experimental.tasks.callToolStream(params);
+      let lastResult: unknown;
+      for await (const message of stream) {
+        if (message.type === 'result') {
+          lastResult = message.result;
+        } else if (message.type === 'error') {
+          throw message.error;
+        }
+      }
+      return lastResult;
+    }
+    throw error;
+  }
+}
+
 function resourceText(resourceResult: unknown): string {
   assert.ok(resourceResult && typeof resourceResult === 'object');
   const contents = (resourceResult as { contents?: unknown }).contents;
@@ -224,20 +250,20 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(resourceText(instructions), /filesystem-mcp/iu);
 
     const rootsText = assertToolOk(
-      await client.callTool({ name: 'roots', arguments: {} }),
+      await callTool(client, { name: 'roots', arguments: {} }),
       'roots'
     );
     assert.match(rootsText, /\b1 workspace roots/u);
 
     const lsText = assertToolOk(
-      await client.callTool({ name: 'ls', arguments: { path: tmpRoot } }),
+      await callTool(client, { name: 'ls', arguments: { path: tmpRoot } }),
       'ls'
     );
     assert.ok(!lsText.includes('.secret.env'));
     assert.ok(!lsText.includes('node_modules'));
 
     const lsIgnoredText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'ls',
         arguments: { path: tmpRoot, includeIgnored: true },
       }),
@@ -246,7 +272,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.ok(lsIgnoredText.includes('node_modules'));
 
     const findText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'find',
         arguments: { path: tmpRoot, pattern: '**/*.txt' },
       }),
@@ -255,7 +281,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(findText, /hello\.txt/u);
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'tree',
         arguments: { path: tmpRoot, maxDepth: 2 },
       }),
@@ -263,7 +289,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     const readText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'read',
         arguments: { path: path.join(tmpRoot, 'hello.txt') },
       }),
@@ -272,7 +298,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(readText, /Hello world/u);
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'read_many',
         arguments: {
           paths: [
@@ -286,7 +312,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     const grepText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'grep',
         arguments: {
           path: tmpRoot,
@@ -300,7 +326,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(grepText, /Found \d+/u);
 
     const statText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'stat',
         arguments: { path: path.join(tmpRoot, 'hello.txt') },
       }),
@@ -309,7 +335,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(statText, /\(file\)/u);
 
     const statManyText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'stat_many',
         arguments: {
           paths: [
@@ -323,7 +349,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(statManyText, /missing\.txt/u);
 
     const fileHashText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'calculate_hash',
         arguments: { path: path.join(tmpRoot, 'hello.txt') },
       }),
@@ -332,7 +358,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(fileHashText, /^[0-9a-f]{64}$/u);
 
     const dirHashText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'calculate_hash',
         arguments: { path: path.join(tmpRoot, 'dirA') },
       }),
@@ -341,7 +367,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(dirHashText, /files/u);
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'mkdir',
         arguments: { path: path.join(tmpRoot, 'newdir', 'sub') },
       }),
@@ -349,7 +375,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'write',
         arguments: {
           path: path.join(tmpRoot, 'newdir', 'sub', 'written.txt'),
@@ -360,7 +386,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'edit',
         arguments: {
           path: path.join(tmpRoot, 'newdir', 'sub', 'written.txt'),
@@ -372,7 +398,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'edit',
         arguments: {
           path: path.join(tmpRoot, 'newdir', 'sub', 'written.txt'),
@@ -383,7 +409,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'mv',
         arguments: {
           source: path.join(tmpRoot, 'newdir', 'sub', 'written.txt'),
@@ -394,7 +420,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolErrorCode(
-      await client.callTool({
+      await callTool(client, {
         name: 'rm',
         arguments: {
           path: path.join(tmpRoot, 'newdir'),
@@ -407,7 +433,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'rm',
         arguments: { path: path.join(tmpRoot, 'newdir'), recursive: true },
       }),
@@ -415,7 +441,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'rm',
         arguments: {
           path: path.join(tmpRoot, 'missing-delete.txt'),
@@ -426,7 +452,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     const diffText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'diff_files',
         arguments: {
           original: path.join(tmpRoot, 'patch-target.txt'),
@@ -439,7 +465,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(diffText, /@@/u);
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'apply_patch',
         arguments: {
           path: path.join(tmpRoot, 'patch-target.txt'),
@@ -451,7 +477,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'apply_patch',
         arguments: {
           path: path.join(tmpRoot, 'patch-target.txt'),
@@ -463,7 +489,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     const patchedReadText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'read',
         arguments: { path: path.join(tmpRoot, 'patch-target.txt') },
       }),
@@ -472,7 +498,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(patchedReadText, /BETA/u);
 
     assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'search_and_replace',
         arguments: {
           path: tmpRoot,
@@ -486,7 +512,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     const searchReplaceText = assertToolOk(
-      await client.callTool({
+      await callTool(client, {
         name: 'search_and_replace',
         arguments: {
           path: tmpRoot,
@@ -500,7 +526,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     assert.match(searchReplaceText, / 1 /u);
 
     assertToolErrorCode(
-      await client.callTool({
+      await callTool(client, {
         name: 'read',
         arguments: { path: outsidePath },
       }),
@@ -509,7 +535,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
     );
 
     assertToolErrorCode(
-      await client.callTool({
+      await callTool(client, {
         name: 'write',
         arguments: { path: outsidePath, content: 'blocked' },
       }),
@@ -517,7 +543,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       'E_ACCESS_DENIED'
     );
 
-    const largeReadResult = await client.callTool({
+    const largeReadResult = await callTool(client, {
       name: 'read',
       arguments: { path: path.join(tmpRoot, 'large.txt') },
     });
@@ -535,14 +561,14 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
       path.join(tmpRoot, 'dirA'),
     ]);
     assertToolErrorCode(
-      await multiRootSession.client.callTool({ name: 'ls', arguments: {} }),
+      await callTool(multiRootSession.client, { name: 'ls', arguments: {} }),
       'multiRoot(lsWithoutPath)',
       'E_INVALID_INPUT'
     );
 
     allowCwdSession = await startSession(['--allow-cwd']);
     const allowRootsText = assertToolOk(
-      await allowCwdSession.client.callTool({ name: 'roots', arguments: {} }),
+      await callTool(allowCwdSession.client, { name: 'roots', arguments: {} }),
       'roots(--allow-cwd)'
     );
     assert.ok(
@@ -551,7 +577,7 @@ await it('runs protocol-level MCP regression coverage via SDK client', async () 
 
     allowCwdAliasSession = await startSession(['--allow_cwd']);
     const aliasRootsText = assertToolOk(
-      await allowCwdAliasSession.client.callTool({
+      await callTool(allowCwdAliasSession.client, {
         name: 'roots',
         arguments: {},
       }),

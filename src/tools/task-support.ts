@@ -450,10 +450,15 @@ export function tryRegisterToolTask<
   if (!hasTaskToolCapability(server)) return false;
   const tasks = getExperimentalTaskRegistration(server);
   if (!tasks?.registerToolTask) return false;
+
+  const existingExecution = (toolDef as any).execution || {};
+  const taskSupport =
+    (toolDef as any).taskSupport || existingExecution.taskSupport || 'optional';
+
   tasks.registerToolTask(
     toolName,
     withDefaultIcons(
-      { ...toolDef, execution: { taskSupport: 'optional' } },
+      { ...toolDef, execution: { ...existingExecution, taskSupport } },
       iconInfo
     ),
     taskHandler

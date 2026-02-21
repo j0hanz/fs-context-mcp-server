@@ -244,6 +244,13 @@ function canSendProgress(extra: ToolExtra): extra is ToolExtra & {
   );
 }
 
+function canReportProgress(extra: ToolExtra): boolean {
+  const taskExtra = extra as any;
+  const hasTask =
+    taskExtra.taskId !== undefined && taskExtra.taskStore !== undefined;
+  return canSendProgress(extra) || hasTask;
+}
+
 export interface IconInfo {
   src: string;
   mimeType: string;
@@ -418,29 +425,59 @@ function buildNotInitializedResult<T>(): ToolResult<T> {
   );
 }
 
-async function sendProgressNotification(
+async function reportProgress(
   extra: ToolExtra,
-  params: ProgressNotificationParams
+  progress: { current: number; total?: number; message?: string }
 ): Promise<void> {
-  if (!canSendProgress(extra)) return;
-  try {
-    await extra.sendNotification({
-      method: 'notifications/progress',
-      params,
-    });
-  } catch (error) {
-    // Ignore progress notification failures to avoid breaking tool execution.
-    console.error('Failed to send progress notification:', error);
+  const taskExtra = extra as any;
+  if (taskExtra.taskId && taskExtra.taskStore) {
+    const store = taskExtra.taskStore;
+    if (typeof store.updateTaskStatus === 'function') {
+      try {
+        let statusMessage = progress.message;
+        if (progress.total !== undefined) {
+          statusMessage = statusMessage
+            ? `${statusMessage} (${progress.current}/${progress.total})`
+            : `${progress.current}/${progress.total}`;
+        } else if (!statusMessage) {
+          statusMessage = `${progress.current}`;
+        }
+        await store.updateTaskStatus(
+          taskExtra.taskId,
+          'working',
+          statusMessage
+        );
+      } catch (error) {
+        console.error('Failed to update task status message:', error);
+      }
+    }
+  }
+
+  if (canSendProgress(extra)) {
+    try {
+      await extra.sendNotification({
+        method: 'notifications/progress',
+        params: {
+          progressToken: extra._meta.progressToken,
+          progress: progress.current,
+          ...(progress.total !== undefined ? { total: progress.total } : {}),
+          ...(progress.message !== undefined
+            ? { message: progress.message }
+            : {}),
+        },
+      });
+    } catch (error) {
+      console.error('Failed to send progress notification:', error);
+    }
   }
 }
 
 export function createProgressReporter(
   extra: ToolExtra
 ): (progress: { total?: number; current: number; message?: string }) => void {
-  if (!canSendProgress(extra)) {
+  if (!canReportProgress(extra)) {
     return () => {};
   }
-  const token = extra._meta.progressToken;
   // State for monotonic enforcement and rate-limiting.
   let lastProgress = -1;
   let lastSentMs = 0;
@@ -455,9 +492,8 @@ export function createProgressReporter(
     if (now - lastSentMs < PROGRESS_RATE_LIMIT_MS) return;
     lastProgress = current;
     lastSentMs = now;
-    void sendProgressNotification(extra, {
-      progressToken: token,
-      progress: current,
+    void reportProgress(extra, {
+      current,
       ...(total !== undefined ? { total } : {}),
       ...(message !== undefined ? { message } : {}),
     });
@@ -468,14 +504,8 @@ export function notifyProgress(
   extra: ToolExtra,
   progress: { current: number; total?: number; message?: string }
 ): void {
-  if (!canSendProgress(extra)) return;
-  const token = extra._meta.progressToken;
-  void sendProgressNotification(extra, {
-    progressToken: token,
-    progress: progress.current,
-    ...(progress.total !== undefined ? { total: progress.total } : {}),
-    ...(progress.message !== undefined ? { message: progress.message } : {}),
-  });
+  if (!canReportProgress(extra)) return;
+  void reportProgress(extra, progress);
 }
 
 async function withProgress<T>(
@@ -484,15 +514,13 @@ async function withProgress<T>(
   run: () => Promise<T>,
   getCompletionMessage?: (result: T) => string | undefined
 ): Promise<T> {
-  if (!canSendProgress(extra)) {
+  if (!canReportProgress(extra)) {
     return run();
   }
-  const token = extra._meta.progressToken;
 
   const total = 1;
-  await sendProgressNotification(extra, {
-    progressToken: token,
-    progress: 0,
+  await reportProgress(extra, {
+    current: 0,
     total,
     message,
   });
@@ -500,17 +528,15 @@ async function withProgress<T>(
   try {
     const result = await run();
     const endMessage = getCompletionMessage?.(result) ?? message;
-    await sendProgressNotification(extra, {
-      progressToken: token,
-      progress: total,
+    await reportProgress(extra, {
+      current: total,
       total,
       message: endMessage,
     });
     return result;
   } catch (error) {
-    void sendProgressNotification(extra, {
-      progressToken: token,
-      progress: total,
+    void reportProgress(extra, {
+      current: total,
       total,
       message: `${message} • failed`,
     });

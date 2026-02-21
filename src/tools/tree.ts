@@ -37,6 +37,7 @@ export const TREE_TOOL: ToolContract = {
   inputSchema: TreeInputSchema,
   outputSchema: TreeOutputSchema,
   annotations: READ_ONLY_TOOL_ANNOTATIONS,
+  taskSupport: 'required',
   gotchas: ['`maxDepth=0` returns only the root node.'],
 } as const;
 
