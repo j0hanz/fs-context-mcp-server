@@ -136,7 +136,7 @@ export function joinLines(lines: readonly string[]): string {
   return lines.join('\n');
 }
 
-export interface OperationSummary {
+interface OperationSummary {
   truncated?: boolean;
   truncatedReason?: string;
 }

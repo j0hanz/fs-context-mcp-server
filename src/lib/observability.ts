@@ -84,7 +84,7 @@ interface PerfDiagnosticsEvent {
 
 // --- Metrics State ---
 
-export interface ToolMetrics {
+interface ToolMetrics {
   calls: number;
   errors: number;
   totalDurationMs: number;

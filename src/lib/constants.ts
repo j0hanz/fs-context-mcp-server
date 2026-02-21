@@ -73,7 +73,7 @@ const VALID_LOG_LEVELS = [
   'emergency',
 ] as const;
 
-export type ValidLogLevel = (typeof VALID_LOG_LEVELS)[number];
+type ValidLogLevel = (typeof VALID_LOG_LEVELS)[number];
 
 function parseEnvLogLevel(
   envVar: string,

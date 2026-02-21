@@ -193,7 +193,7 @@ interface ToolErrorResponse extends Record<string, unknown> {
 
 export type ToolResult<T> = ToolResponse<T> | ToolErrorResponse;
 
-export function parseToolArgs<Schema extends z.ZodType>(
+function parseToolArgs<Schema extends z.ZodType>(
   schema: Schema,
   args: unknown
 ): z.infer<Schema> {

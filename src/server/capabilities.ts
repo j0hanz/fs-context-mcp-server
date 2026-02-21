@@ -25,7 +25,7 @@ function detectTaskToolSupport(): boolean {
   return cachedTaskToolSupport;
 }
 
-export interface CapabilityOptions {
+interface CapabilityOptions {
   enablePromptListChanged?: boolean;
   enableTaskToolRequests?: boolean;
 }

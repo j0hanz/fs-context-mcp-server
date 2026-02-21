@@ -438,7 +438,7 @@ async function runTaskInBackground<
  * returns `true`. Returns `false` so the caller can fall through to standard
  * `server.registerTool`.
  */
-export function tryRegisterToolTask<
+function tryRegisterToolTask<
   Args extends ZodRawShapeCompat | AnySchema | undefined,
 >(
   server: McpServer,
