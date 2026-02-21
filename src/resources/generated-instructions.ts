@@ -1,5 +1,11 @@
-import { ALL_TOOLS } from '../tools.js';
 import type { ToolContract } from '../tools/contract.js';
+import { buildToolCatalogDetailsOnly } from './tool-catalog.js';
+import {
+  buildCoreContextPack,
+  getSharedConstraints,
+  getToolContracts,
+} from './tool-info.js';
+import { buildWorkflowGuide } from './workflows.js';
 
 const INSTRUCTIONS_HEADER = `# FILESYSTEM-MCP INSTRUCTIONS
 
@@ -26,40 +32,16 @@ const INSTRUCTIONS_HEADER = `# FILESYSTEM-MCP INSTRUCTIONS
 
 ## GOLDEN PATH WORKFLOWS
 
-### A: EXPLORE
-1. \`roots\` (List allowed paths).
-2. \`ls\` (files) | \`tree\` (structure).
-3. \`stat\` | \`stat_many\` (size/type check).
-4. \`read\` | \`read_many\` (content).
-   > **Strict:** Never guess paths. Resolve first.
+See "Workflow Reference" below for detailed execution sequences.
 
-### B: SEARCH
-1. \`find\` (glob candidates).
-2. \`grep\` (content search).
-3. \`read\` (verify context).
-   > **Tip:** Content search requires \`grep\`, not \`find\`.
-
-### C: EDIT
-1. \`edit\` (precise string match).
-2. \`search_and_replace\` (bulk regex/glob).
-3. \`mv\` | \`rm\` (file layout).
-4. \`mkdir\` (create dirs).
-   > **Strict:** Confirm destructive ops (\`write\`, \`mv\`, \`rm\`, bulk replace).
-
-### D: PATCH
-1. \`diff_files\` (generate).
-2. \`apply_patch\` (dryRun: true).
-3. \`apply_patch\` (dryRun: false).
-   > **Tip:** Use \`diff_files\` output directly.
 `;
 
 const INSTRUCTIONS_FOOTER = `
 ## CONSTRAINTS
 
-- **Scope:** Allowed roots only (negotiated via CLI).
-- **Security:** Sensitive files denylisted by default.
-- **Limits:** Max file size & search results enforced.
-- **Cache:** Externalized results are ephemeral (in-memory).
+${getSharedConstraints()
+  .map((c) => `- ${c}`)
+  .join('\n')}
 
 ## ERROR HANDLING
 
@@ -92,12 +74,18 @@ function formatToolSection(tool: ToolContract): string {
 }
 
 export function buildServerInstructions(): string {
-  const toolSections = ALL_TOOLS.map(formatToolSection).join('\n\n');
+  const toolSections = getToolContracts().map(formatToolSection).join('\n\n');
   return [
     INSTRUCTIONS_HEADER,
+    buildCoreContextPack(),
+    '',
+    buildToolCatalogDetailsOnly(),
+    '',
     '## TOOL REFERENCE',
     '',
     toolSections,
+    '',
+    buildWorkflowGuide(),
     '',
     '---',
     INSTRUCTIONS_FOOTER,

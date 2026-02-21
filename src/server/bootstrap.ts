@@ -25,6 +25,8 @@ import {
   registerInstructionResource,
   registerMetricsResource,
   registerResultResources,
+  registerToolCatalogResource,
+  registerWorkflowGuideResource,
 } from '../resources.js';
 import { buildServerInstructions } from '../resources/generated-instructions.js';
 import { registerAllTools } from '../tools.js';
@@ -131,6 +133,8 @@ export async function createServer(
   });
 
   registerInstructionResource(server, serverInstructions, localIcon);
+  registerToolCatalogResource(server, localIcon);
+  registerWorkflowGuideResource(server, localIcon);
   registerGetHelpPrompt(server, serverInstructions, localIcon);
   registerResultResources(server, resourceStore, localIcon);
   registerMetricsResource(server, localIcon);

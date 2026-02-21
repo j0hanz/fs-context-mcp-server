@@ -1,0 +1,57 @@
+import { ALL_TOOLS } from '../tools.js';
+import type { ToolContract } from '../tools/contract.js';
+
+interface ToolEntry {
+  name: string;
+  description: string;
+  annotations?: string[];
+  nuances?: string[];
+  gotchas?: string[];
+}
+
+function toEntry(contract: ToolContract): ToolEntry {
+  const annotations: string[] = [];
+  if (contract.annotations?.destructiveHint) annotations.push('[Destructive]');
+  if (contract.annotations?.idempotentHint) annotations.push('[Idempotent]');
+  if (contract.annotations?.readOnlyHint) annotations.push('[Read-Only]');
+
+  return {
+    name: contract.name,
+    description: contract.description,
+    ...(annotations.length > 0 ? { annotations } : {}),
+    ...(contract.nuances && contract.nuances.length > 0
+      ? { nuances: contract.nuances }
+      : {}),
+    ...(contract.gotchas && contract.gotchas.length > 0
+      ? { gotchas: contract.gotchas }
+      : {}),
+  };
+}
+
+const ENTRIES = Object.fromEntries(
+  ALL_TOOLS.map((contract) => [contract.name, toEntry(contract)])
+) as Record<string, ToolEntry>;
+
+export function getToolContracts(): ToolContract[] {
+  return ALL_TOOLS;
+}
+
+export function buildCoreContextPack(): string {
+  const names = Object.keys(ENTRIES).sort((a, b) => a.localeCompare(b));
+  const rows = names.map((name) => {
+    const e = ENTRIES[name];
+    if (!e) return '';
+    const annotations = e.annotations ? ` ${e.annotations.join(' ')}` : '';
+    return `| \`${e.name}\` | ${e.description}${annotations} |`;
+  });
+  return `## Core Context Pack\n\n| Tool | Purpose |\n|------|---------|\n${rows.join('\n')}`;
+}
+
+export function getSharedConstraints(): string[] {
+  return [
+    'Allowed roots only (negotiated via CLI).',
+    'Sensitive files denylisted by default.',
+    'Max file size & search results enforced.',
+    'Externalized results are ephemeral (in-memory).',
+  ];
+}

@@ -5,6 +5,8 @@ import type { ReadResourceResult } from '@modelcontextprotocol/sdk/types.js';
 import { ErrorCode, McpError } from './lib/errors.js';
 import { globalMetrics } from './lib/observability.js';
 import type { ResourceStore } from './lib/resource-store.js';
+import { buildToolCatalog } from './resources/tool-catalog.js';
+import { buildWorkflowGuide } from './resources/workflows.js';
 import { type IconInfo, withDefaultIcons } from './tools/shared.js';
 
 const RESULT_TEMPLATE = new ResourceTemplate('filesystem-mcp://result/{id}', {
@@ -22,6 +24,15 @@ const METRICS_RESOURCE_NAME = 'filesystem-mcp-metrics';
 const METRICS_RESOURCE_URI = 'filesystem-mcp://metrics';
 const METRICS_RESOURCE_DESCRIPTION =
   'Live per-tool call/error/avgDurationMs metrics snapshot.';
+
+const CATALOG_RESOURCE_NAME = 'filesystem-mcp-catalog';
+const CATALOG_RESOURCE_URI = 'internal://tool-catalog';
+const CATALOG_RESOURCE_DESCRIPTION =
+  'Detailed catalog of tools and their inter-dependencies.';
+
+const WORKFLOW_RESOURCE_NAME = 'filesystem-mcp-workflows';
+const WORKFLOW_RESOURCE_URI = 'internal://workflows';
+const WORKFLOW_RESOURCE_DESCRIPTION = 'Recommended workflows for common tasks.';
 
 export function registerInstructionResource(
   server: McpServer,
@@ -49,6 +60,68 @@ export function registerInstructionResource(
           uri: uri.href,
           mimeType: 'text/markdown',
           text: instructions,
+        },
+      ],
+    })
+  );
+}
+
+export function registerToolCatalogResource(
+  server: McpServer,
+  iconInfo?: IconInfo
+): void {
+  server.registerResource(
+    CATALOG_RESOURCE_NAME,
+    CATALOG_RESOURCE_URI,
+    withDefaultIcons(
+      {
+        title: 'Tool Catalog',
+        description: CATALOG_RESOURCE_DESCRIPTION,
+        mimeType: 'text/markdown',
+        annotations: {
+          audience: ['assistant'],
+          priority: 0.6,
+        },
+      },
+      iconInfo
+    ),
+    (uri): ReadResourceResult => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: 'text/markdown',
+          text: buildToolCatalog(),
+        },
+      ],
+    })
+  );
+}
+
+export function registerWorkflowGuideResource(
+  server: McpServer,
+  iconInfo?: IconInfo
+): void {
+  server.registerResource(
+    WORKFLOW_RESOURCE_NAME,
+    WORKFLOW_RESOURCE_URI,
+    withDefaultIcons(
+      {
+        title: 'Workflow Guide',
+        description: WORKFLOW_RESOURCE_DESCRIPTION,
+        mimeType: 'text/markdown',
+        annotations: {
+          audience: ['assistant'],
+          priority: 0.7,
+        },
+      },
+      iconInfo
+    ),
+    (uri): ReadResourceResult => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: 'text/markdown',
+          text: buildWorkflowGuide(),
         },
       ],
     })
