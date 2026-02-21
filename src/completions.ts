@@ -15,6 +15,7 @@ import { isRecord } from './lib/type-guards.js';
 const MAX_COMPLETION_ITEMS = 100;
 const COMPLETION_RATE_LIMIT_MS = 100;
 const completionLastCallMs = new Map<string, number>();
+const completionLastResult = new Map<string, CompletionResult>();
 
 function extractTopicCompletions(instructions: string): string[] {
   const headers: string[] = [];
@@ -532,6 +533,16 @@ export function registerCompletions(
     const now = Date.now();
     const lastCallMs = completionLastCallMs.get(argName) ?? 0;
     if (now - lastCallMs < COMPLETION_RATE_LIMIT_MS) {
+      const lastResult = completionLastResult.get(argName);
+      if (lastResult) {
+        return {
+          completion: {
+            values: lastResult.values,
+            total: lastResult.total,
+            hasMore: lastResult.hasMore,
+          },
+        };
+      }
       return { completion: { values: [], total: 0, hasMore: false } };
     }
     completionLastCallMs.set(argName, now);
@@ -542,6 +553,8 @@ export function registerCompletions(
       argumentName: argName,
       ...(contextArguments ? { contextArguments } : {}),
     });
+
+    completionLastResult.set(argName, completions);
 
     return {
       completion: {

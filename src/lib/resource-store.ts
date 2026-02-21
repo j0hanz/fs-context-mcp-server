@@ -21,6 +21,7 @@ export interface ResourceStore {
   }): TextResourceEntry;
   getText(uri: string): TextResourceEntry;
   clear(): void;
+  keys(): string[];
 }
 
 interface ResourceStoreOptions {
@@ -227,5 +228,9 @@ export function createInMemoryResourceStore(
     });
   }
 
-  return { putText, getText, clear };
+  function keys(): string[] {
+    return Array.from(byUri.keys());
+  }
+
+  return { putText, getText, clear, keys };
 }
