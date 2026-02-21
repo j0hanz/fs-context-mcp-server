@@ -16,6 +16,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import { registerCompletions } from '../completions.js';
+import { DEFAULT_LOG_LEVEL } from '../lib/constants.js';
 import { formatUnknownErrorMessage } from '../lib/errors.js';
 import { createInMemoryResourceStore } from '../lib/resource-store.js';
 import { pkgInfo } from '../pkg-info.js';
@@ -120,7 +121,7 @@ export async function createServer(
     serverConfig
   );
 
-  const loggingState = createLoggingState('debug');
+  const loggingState = createLoggingState(DEFAULT_LOG_LEVEL);
   const rootsManager = new RootsManager(options, loggingState);
   rootsManagers.set(server, rootsManager);
 
@@ -228,6 +229,22 @@ async function createHttpSession(
   return { server: mcpServer, transport };
 }
 
+function sendJsonRpcError(
+  res: http.ServerResponse,
+  status: number,
+  code: number,
+  message: string
+): void {
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      error: { code, message },
+      id: null,
+    })
+  );
+}
+
 export async function startHttpServer(
   port: number,
   options: ServerOptions
@@ -279,96 +296,33 @@ export async function startHttpServer(
           const session = sessions.get(sessionId);
           if (session) {
             await session.transport.handleRequest(req, res, body);
-          } else {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(
-              JSON.stringify({
-                jsonrpc: '2.0',
-                error: {
-                  code: -32000,
-                  message: 'Bad Request: Session not found',
-                },
-                id: null,
-              })
-            );
           }
         } else if (!sessionId && isInitializeRequest(body)) {
           const { transport } = await createHttpSession(options, sessions);
           await transport.handleRequest(req, res, body);
+        } else if (sessionId) {
+          sendJsonRpcError(res, 400, -32000, 'Bad Request: Session not found');
         } else {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              error: {
-                code: -32000,
-                message: 'Bad Request: No valid session ID provided',
-              },
-              id: null,
-            })
+          sendJsonRpcError(
+            res,
+            400,
+            -32000,
+            'Bad Request: No valid session ID provided'
           );
         }
-      } else if (method === 'GET') {
+      } else if (method === 'GET' || method === 'DELETE') {
         if (!sessionId || !sessions.has(sessionId)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              error: {
-                code: -32000,
-                message: 'Bad Request: Invalid or missing session ID',
-              },
-              id: null,
-            })
+          sendJsonRpcError(
+            res,
+            400,
+            -32000,
+            'Bad Request: Invalid or missing session ID'
           );
           return;
         }
         const session = sessions.get(sessionId);
         if (session) {
           await session.transport.handleRequest(req, res);
-        } else {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              error: {
-                code: -32000,
-                message: 'Bad Request: Session not found',
-              },
-              id: null,
-            })
-          );
-        }
-      } else if (method === 'DELETE') {
-        if (!sessionId || !sessions.has(sessionId)) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              error: {
-                code: -32000,
-                message: 'Bad Request: Invalid or missing session ID',
-              },
-              id: null,
-            })
-          );
-          return;
-        }
-        const session = sessions.get(sessionId);
-        if (session) {
-          await session.transport.handleRequest(req, res);
-        } else {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              jsonrpc: '2.0',
-              error: {
-                code: -32000,
-                message: 'Bad Request: Session not found',
-              },
-              id: null,
-            })
-          );
         }
       } else {
         res.writeHead(405, { Allow: 'GET, POST, DELETE' });
@@ -380,14 +334,7 @@ export async function startHttpServer(
         formatUnknownErrorMessage(error)
       );
       if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            error: { code: -32603, message: 'Internal Server Error' },
-            id: null,
-          })
-        );
+        sendJsonRpcError(res, 500, -32603, 'Internal Server Error');
       }
     }
   }

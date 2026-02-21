@@ -62,6 +62,40 @@ function parseEnvList(envVar: string): string[] {
   return entries;
 }
 
+const VALID_LOG_LEVELS = [
+  'debug',
+  'info',
+  'notice',
+  'warning',
+  'error',
+  'critical',
+  'alert',
+  'emergency',
+] as const;
+
+export type ValidLogLevel = (typeof VALID_LOG_LEVELS)[number];
+
+function parseEnvLogLevel(
+  envVar: string,
+  defaultValue: ValidLogLevel
+): ValidLogLevel {
+  const value = process.env[envVar];
+  if (!value) return defaultValue;
+  const normalized = value.trim().toLowerCase();
+  if ((VALID_LOG_LEVELS as readonly string[]).includes(normalized)) {
+    return normalized as ValidLogLevel;
+  }
+  console.error(
+    `[WARNING] Invalid ${envVar} value: ${value} (must be ${VALID_LOG_LEVELS.join('|')}). Using default: ${defaultValue}`
+  );
+  return defaultValue;
+}
+
+export const DEFAULT_LOG_LEVEL = parseEnvLogLevel(
+  'FILESYSTEM_MCP_LOG_LEVEL',
+  'debug'
+);
+
 // Auto-tuned parallelism based on CPU cores (no env override)
 const BYTES_PER_PARALLEL_TASK = 64 * MIB;
 const BYTES_PER_SEARCH_WORKER = 128 * MIB;
