@@ -764,6 +764,18 @@ export const SearchAndReplaceInputSchema = z.strictObject({
     .describe(
       'Preview matches without writing. Check changedFiles and matches in the response before committing.'
     ),
+  includeHidden: z
+    .boolean()
+    .optional()
+    .describe(
+      'Include hidden files and directories (starting with .) in the search scope. Default: false.'
+    ),
+  includeIgnored: z
+    .boolean()
+    .optional()
+    .describe(
+      'Include files and directories ignored by .gitignore rules (e.g. node_modules, dist). Default: false.'
+    ),
 });
 
 export const SearchAndReplaceOutputSchema = z.strictObject({

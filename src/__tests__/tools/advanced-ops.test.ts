@@ -191,6 +191,51 @@ await it('advanced operations integration test', async () => {
       assert.strictEqual(c1, 'const x = 2;');
       assert.strictEqual(c2, 'const y = 2;');
     }
+
+    // 4b. Search and Replace with includeIgnored
+    {
+      const ignoredDir = path.join(tmpDir, 'dist');
+      await fs.mkdir(ignoredDir);
+      await fs.writeFile(
+        path.join(ignoredDir, 'bundle.js'),
+        'const z = 1;',
+        'utf-8'
+      );
+
+      const { fakeServer: sarFS2, getHandler: sarGH2 } =
+        createSingleToolCapture();
+      registerSearchAndReplaceTool(sarFS2);
+      const sarHandler2 = sarGH2();
+
+      // Without includeIgnored: dist/ is excluded by default
+      const withoutIgnored = (await sarHandler2(
+        {
+          path: tmpDir,
+          filePattern: '**/*.js',
+          searchPattern: '1',
+          replacement: '2',
+          dryRun: true,
+        },
+        {}
+      )) as any;
+      assert.equal(withoutIgnored.isError, undefined);
+      assert.strictEqual(withoutIgnored.structuredContent.filesChanged, 0);
+
+      // With includeIgnored: dist/ is included
+      const withIgnored = (await sarHandler2(
+        {
+          path: tmpDir,
+          filePattern: '**/*.js',
+          searchPattern: '1',
+          replacement: '2',
+          dryRun: true,
+          includeIgnored: true,
+        },
+        {}
+      )) as any;
+      assert.equal(withIgnored.isError, undefined);
+      assert.strictEqual(withIgnored.structuredContent.filesChanged, 1);
+    }
   } finally {
     await setAllowedDirectoriesResolved(previousAllowed);
     try {

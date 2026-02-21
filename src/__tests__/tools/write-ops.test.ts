@@ -85,6 +85,7 @@ await it('write operations integration test', async () => {
       assert.deepStrictEqual(result.structuredContent.unmatchedEdits, [
         'Missing',
       ]);
+      assert.match(result.content[0].text, /unmatched/u);
       const content = await fs.readFile(filePath, 'utf-8');
       assert.strictEqual(content, 'Hello MCP');
     }

@@ -312,8 +312,8 @@ async function handleSearchAndReplace(
   const entries = globEntries({
     cwd: root,
     pattern: args.filePattern,
-    excludePatterns: DEFAULT_EXCLUDE_PATTERNS,
-    includeHidden: false,
+    excludePatterns: args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS,
+    includeHidden: args.includeHidden ?? false,
     baseNameMatch: false,
     caseSensitiveMatch: true, // Default to sensitive for file paths
     followSymbolicLinks: false,

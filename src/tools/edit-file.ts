@@ -125,10 +125,18 @@ async function handleEditFile(
     await atomicWriteFile(validPath, newContent, { encoding: 'utf-8', signal });
   }
 
+  const unmatchedNote =
+    unmatchedEdits.length > 0
+      ? ` — ${unmatchedEdits.length} unmatched: [${unmatchedEdits
+          .map((s) =>
+            JSON.stringify(s.length > 40 ? `${s.slice(0, 40)}\u2026` : s)
+          )
+          .join(', ')}]`
+      : '';
   const message =
     appliedEdits === 0
-      ? `No edits applied to ${args.path}`
-      : `Successfully applied ${appliedEdits} edits to ${args.path}`;
+      ? `No edits applied to ${args.path}${unmatchedNote}`
+      : `Successfully applied ${appliedEdits} edits to ${args.path}${unmatchedNote}`;
 
   return buildToolResponse(message, structured);
 }
