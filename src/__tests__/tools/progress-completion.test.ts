@@ -147,10 +147,7 @@ void describe('progress notifications', () => {
       const notifications: ProgressNotification[] = [];
       const rootPath = path.parse(getTestDir()).root;
 
-      await handler(
-        { path: rootPath },
-        createExtra(notifications)
-      );
+      await handler({ path: rootPath }, createExtra(notifications));
 
       assert.ok(
         notifications.length >= 2,

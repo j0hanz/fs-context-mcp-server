@@ -413,7 +413,7 @@ export function registerSearchAndReplaceTool(
           baseReporter({
             current,
             ...(total !== undefined ? { total } : {}),
-            message: `🛠 search_and_replace: "${args.searchPattern}" — ${current} files processed`,
+            message: `🛠 search_and_replace: ${args.searchPattern} [${current} files processed]`,
           });
         };
 

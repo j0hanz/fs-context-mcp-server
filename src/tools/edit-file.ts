@@ -164,7 +164,8 @@ export function registerEditFileTool(
     guard: options.isInitialized,
     progressMessage: (args) => {
       const name = path.basename(args.path);
-      return `🛠 edit: ${name} [${args.edits.length} edits]`;
+      const dryTag = args.dryRun ? ' [dry run]' : '';
+      return `🛠 edit: ${name} [${args.edits.length} edits]${dryTag}`;
     },
     completionMessage: (args, result) => {
       const name = path.basename(args.path);
@@ -172,10 +173,16 @@ export function registerEditFileTool(
       const sc = result.structuredContent;
       if (!sc.ok) return `🛠 edit: ${name} • failed`;
 
-      if (sc.lineRange) {
-        return `🛠 edit: ${name} • [${sc.lineRange[0]}-${sc.lineRange[1]}]`;
+      const applied = sc.appliedEdits ?? 0;
+      const unmatched = sc.unmatchedEdits?.length ?? 0;
+      const dryPrefix = args.dryRun ? 'dry run — ' : '';
+      if (unmatched > 0) {
+        return `🛠 edit: ${name} • ${dryPrefix}${applied} applied, ${unmatched} unmatched`;
       }
-      return `🛠 edit: ${name} • [${sc.appliedEdits ?? 0} edits]`;
+      if (sc.lineRange) {
+        return `🛠 edit: ${name} • ${dryPrefix}lines ${sc.lineRange[0]}–${sc.lineRange[1]}`;
+      }
+      return `🛠 edit: ${name} • ${dryPrefix}${applied} applied`;
     },
   });
 

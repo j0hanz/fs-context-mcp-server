@@ -271,7 +271,7 @@ export function registerCalculateHashTool(
           baseReporter({
             current,
             ...(total !== undefined ? { total } : {}),
-            message: `🕮 calculate_hash: ${baseName} — ${current} ${fileWord} hashed`,
+            message: `🕮 calculate_hash: ${baseName} [${current} ${fileWord} hashed]`,
           });
         };
 
