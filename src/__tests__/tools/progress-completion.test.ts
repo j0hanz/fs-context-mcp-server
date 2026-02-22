@@ -141,5 +141,22 @@ void describe('progress notifications', () => {
       assert.strictEqual(result.isError, true);
       assertTerminalProgressOnFailure(notifications);
     });
+
+    void it('mkdir progress messages do not leak full root path', async () => {
+      const handler = getHandler('mkdir');
+      const notifications: ProgressNotification[] = [];
+      const rootPath = path.parse(getTestDir()).root;
+
+      await handler(
+        { path: rootPath },
+        createExtra(notifications)
+      );
+
+      assert.ok(
+        notifications.length >= 2,
+        `Expected at least 2 progress notifications, got ${notifications.length}`
+      );
+      assertMessagesDoNotContainPath(notifications, rootPath);
+    });
   });
 });

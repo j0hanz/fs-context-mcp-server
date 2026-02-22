@@ -72,11 +72,11 @@ export function registerCreateDirectoryTool(
   const wrappedHandler = wrapToolHandler(handler, {
     guard: options.isInitialized,
     progressMessage: (args) => {
-      const name = path.basename(args.path) || args.path;
+      const name = path.basename(args.path) || '.';
       return `🛠 mkdir: ${name}`;
     },
     completionMessage: (args, result) => {
-      const name = path.basename(args.path) || args.path;
+      const name = path.basename(args.path) || '.';
       if (result.isError) return `🛠 mkdir: ${name} • failed`;
       return `🛠 mkdir: ${name} • created`;
     },
