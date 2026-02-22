@@ -73,7 +73,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.0.0",
+    "eslint": "^10.0.1",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
     "@types/node": "^24",
     "eslint-config-prettier": "^10.1.8",
@@ -81,7 +81,7 @@
     "eslint-plugin-depend": "^1.4.0",
     "eslint-plugin-unused-imports": "^4.4.1",
     "jscpd": "^4.0.8",
-    "knip": "^5.84.1",
+    "knip": "^5.85.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
