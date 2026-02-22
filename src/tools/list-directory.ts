@@ -147,7 +147,7 @@ async function handleListDirectory(
   const dirPath = resolvePathOrRoot(args.path);
   const cursorOffset =
     args.cursor !== undefined ? decodeCursor(args.cursor) : 0;
-  const pageSize = args.maxEntries ?? 20_000;
+  const pageSize = args.maxEntries;
   const options: Parameters<typeof listDirectory>[1] = {
     includeHidden: args.includeHidden,
     excludePatterns: args.includeIgnored ? [] : DEFAULT_EXCLUDE_PATTERNS,

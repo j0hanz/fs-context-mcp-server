@@ -1,5 +1,17 @@
 import { z } from 'zod';
 
+import {
+  DEFAULT_LIST_MAX_ENTRIES,
+  DEFAULT_SEARCH_CONTENT_RESULTS,
+  DEFAULT_SEARCH_RESULTS,
+  DEFAULT_TREE_DEPTH,
+  DEFAULT_TREE_ENTRIES,
+  MAX_LIST_ENTRIES,
+  MAX_SEARCH_DEPTH,
+  MAX_SEARCH_RESULTS,
+  MAX_TREE_DEPTH,
+  MAX_TREE_ENTRIES,
+} from './lib/constants.js';
 import { ErrorCode } from './lib/errors.js';
 
 function isSafeGlobPattern(value: string): boolean {
@@ -165,16 +177,19 @@ export const ListDirectoryInputSchema = z.strictObject({
     .number()
     .int({ error: 'Must be integer' })
     .min(1, 'Min: 1')
-    .max(50, 'Max: 50')
+    .max(MAX_TREE_DEPTH, `Max: ${MAX_TREE_DEPTH}`)
     .optional()
     .describe('Max recursion depth when pattern is provided'),
   maxEntries: z
     .number()
     .int({ error: 'Must be integer' })
     .min(1, 'Min: 1')
-    .max(20000, 'Max: 20,000')
+    .max(MAX_LIST_ENTRIES, `Max: ${MAX_LIST_ENTRIES}`)
     .optional()
-    .describe('Maximum entries to return before truncation'),
+    .default(DEFAULT_LIST_MAX_ENTRIES)
+    .describe(
+      `Maximum entries to return before truncation. Default: ${DEFAULT_LIST_MAX_ENTRIES}`
+    ),
   sortBy: ListDirectorySortSchema.optional()
     .default('name')
     .describe('Sort field (name, size, modified, type)'),
@@ -213,10 +228,12 @@ export const SearchFilesInputSchema = z.strictObject({
     .number()
     .int({ error: 'Must be integer' })
     .min(1, 'Min: 1')
-    .max(10000, 'Max: 10,000')
+    .max(MAX_SEARCH_RESULTS, `Max: ${MAX_SEARCH_RESULTS}`)
     .optional()
-    .default(100)
-    .describe('Max results (1-10000)'),
+    .default(DEFAULT_SEARCH_RESULTS)
+    .describe(
+      `Max results (1-${MAX_SEARCH_RESULTS}). Default: ${DEFAULT_SEARCH_RESULTS}`
+    ),
   includeIgnored: z
     .boolean()
     .optional()
@@ -234,7 +251,7 @@ export const SearchFilesInputSchema = z.strictObject({
     .number()
     .int({ error: 'Must be integer' })
     .min(0, 'Min: 0')
-    .max(100, 'Max: 100')
+    .max(MAX_SEARCH_DEPTH, `Max: ${MAX_SEARCH_DEPTH}`)
     .optional()
     .describe('Maximum directory depth to scan'),
   cursor: z
@@ -249,18 +266,20 @@ export const TreeInputSchema = z.strictObject({
     .number()
     .int({ error: 'Must be integer' })
     .min(0, 'Min: 0')
-    .max(50, 'Max: 50')
+    .max(MAX_TREE_DEPTH, `Max: ${MAX_TREE_DEPTH}`)
     .optional()
-    .default(5)
-    .describe('Depth (0=root node only, no children). Default: 5'),
+    .default(DEFAULT_TREE_DEPTH)
+    .describe(
+      `Depth (0=root node only, no children). Default: ${DEFAULT_TREE_DEPTH}`
+    ),
   maxEntries: z
     .number()
     .int({ error: 'Must be integer' })
     .min(1, 'Min: 1')
-    .max(20000, 'Max: 20,000')
+    .max(MAX_TREE_ENTRIES, `Max: ${MAX_TREE_ENTRIES}`)
     .optional()
-    .default(1000)
-    .describe('Max entries (Default: 1000)'),
+    .default(DEFAULT_TREE_ENTRIES)
+    .describe(`Max entries. Default: ${DEFAULT_TREE_ENTRIES}`),
   includeHidden: z
     .boolean()
     .optional()
@@ -313,10 +332,12 @@ export const SearchContentInputSchema = z.strictObject({
     .number()
     .int({ error: 'Must be integer' })
     .min(0, 'Min: 0')
-    .max(10000, 'Max: 10,000')
+    .max(MAX_SEARCH_RESULTS, `Max: ${MAX_SEARCH_RESULTS}`)
     .optional()
-    .default(500)
-    .describe('Maximum match rows to return'),
+    .default(DEFAULT_SEARCH_CONTENT_RESULTS)
+    .describe(
+      `Maximum match rows to return. Default: ${DEFAULT_SEARCH_CONTENT_RESULTS}`
+    ),
   filePattern: z
     .string()
     .min(1, 'Pattern required')

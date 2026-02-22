@@ -1,3 +1,8 @@
+import {
+  DEFAULT_SEARCH_CONTENT_RESULTS,
+  MAX_SEARCH_RESULTS,
+  MAX_TEXT_FILE_SIZE,
+} from '../lib/constants.js';
 import { ALL_TOOLS } from '../tools.js';
 import type { ToolContract } from '../tools/contract.js';
 
@@ -51,7 +56,7 @@ export function getSharedConstraints(): string[] {
   return [
     'Allowed roots only (negotiated via CLI).',
     'Sensitive files denylisted by default.',
-    'Max file size & search results enforced.',
+    `Max file size (${Math.floor(MAX_TEXT_FILE_SIZE / 1024 / 1024)}MB) & search results (${MAX_SEARCH_RESULTS} files, ${DEFAULT_SEARCH_CONTENT_RESULTS} lines) enforced.`,
     'Externalized results are ephemeral (in-memory).',
   ];
 }

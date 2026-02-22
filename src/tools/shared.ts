@@ -48,6 +48,7 @@ function publishContextDiagnostics(event: ContextDiagnosticsEvent): void {
 export const READ_ONLY_TOOL_ANNOTATIONS = {
   readOnlyHint: true,
   idempotentHint: true,
+  destructiveHint: false,
   openWorldHint: false,
 } as const;
 
@@ -60,6 +61,7 @@ export const DESTRUCTIVE_WRITE_TOOL_ANNOTATIONS = {
 export const IDEMPOTENT_WRITE_TOOL_ANNOTATIONS = {
   readOnlyHint: false,
   idempotentHint: true,
+  destructiveHint: false,
   openWorldHint: false,
 } as const;
 
